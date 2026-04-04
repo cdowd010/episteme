@@ -45,6 +45,6 @@ def run_health_check(
     Checks performed:
       1. Domain invariant validation (epistemic/invariants.py)
       2. Render staleness (views/render.py)
-      3. File structure integrity (core/validate.py)
+      3. File structure integrity (controlplane/validate.py)
     """
     raise NotImplementedError

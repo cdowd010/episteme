@@ -1,9 +1,9 @@
-"""Tests for core/gateway.py — resolve_resource, GATEWAY_RESOURCE_ALIASES, GatewayResult."""
+"""Tests for controlplane/gateway.py — resolve_resource, GATEWAY_RESOURCE_ALIASES, GatewayResult."""
 from __future__ import annotations
 
 import pytest
 
-from horizon_research.core.gateway import (
+from horizon_research.controlplane.gateway import (
     GATEWAY_RESOURCE_ALIASES,
     GatewayResult,
 )
@@ -38,7 +38,7 @@ class TestResolveResource:
     @pytest.fixture
     def gateway(self):
         from unittest.mock import MagicMock
-        from horizon_research.core.gateway import Gateway
+        from horizon_research.controlplane.gateway import Gateway
         return Gateway(
             context=MagicMock(),
             repo=MagicMock(),

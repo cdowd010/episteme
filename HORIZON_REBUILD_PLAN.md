@@ -176,7 +176,7 @@ were good ideas and should be preserved.
 └─────────────────────┬────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────┐
-│  Core Services (core/) — always available            │
+│  Core Services (controlplane/) — always available            │
 │  Mutations:  gateway · results                       │
 │  Queries:    validate · check · export               │
 │  Policy:     automation (render-trigger table)       │
@@ -215,7 +215,7 @@ were good ideas and should be preserved.
 
 **Principles:**
 - **Equal interfaces**: `interfaces/cli` and `interfaces/mcp` are peers. Neither
-    is primary. Both expose the same core/views services.
+    is primary. Both expose the same controlplane/views services.
     No MCP-specific or CLI-specific business logic.
 - **View/mutation separation**: view services never mutate the epistemic web
     (render is the one exception: it writes derived files, not canonical data).
@@ -247,7 +247,7 @@ src/
     │   ├── results_repository.py   # Implements ResultRecorder (Phase 6)
     │   ├── markdown_renderer.py    # Implements WebRenderer
     │   └── transaction_log.py      # JSONL provenance log
-    ├── core/                       # Layer 3A: Core Services — mutations + queries
+    ├── controlplane/                       # Layer 3A: Core Services — mutations + queries
     │   ├── __init__.py
     │   ├── gateway.py              # Single mutation/query boundary
     │   ├── validate.py             # Structural validation (read-only)
@@ -265,12 +265,12 @@ src/
         ├── __init__.py             # Documents the interface layer contract
         ├── cli/                    # Humans + scripts (Click commands)
         │   ├── __init__.py
-        │   ├── main.py             # Click commands; thin wrappers over core/views
+        │   ├── main.py             # Click commands; thin wrappers over controlplane/views
         │   └── formatters.py       # Rich tables, JSON fallback
         └── mcp/                    # AI agents (FastMCP)
             ├── __init__.py
             ├── server.py           # FastMCP entry point, tool registration
-            └── tools.py            # Tool handlers; thin wrappers over core/views
+            └── tools.py            # Tool handlers; thin wrappers over controlplane/views
             # future: rest/, gui/, sdk/ go here as equal peers
 ```
 
@@ -279,7 +279,7 @@ src/
 - **Acyclic dependencies**: `epistemic ← adapters ← core ← views ← interfaces/*`
 - **Stable dependencies**: `epistemic/` changes least; `interfaces/*` change most.
 - **No duplicated logic**: every MCP tool handler and CLI command calls the same
-    core/views function. If a handler does more than parse + call + format,
+    controlplane/views function. If a handler does more than parse + call + format,
     move the logic up.
 
 ### 3.5 The Gateway We Keep
@@ -425,7 +425,7 @@ Dependency philosophy:
 - **Domain core (`epistemic/`)**: stdlib only. Zero external imports. This
   is the gravity well — it must be fast, portable, and free of supply-chain
   risk.
-- **Core services (`core/`) and view services (`views/`)**: stdlib only.
+- **Core services (`controlplane/`) and view services (`views/`)**: stdlib only.
   Business logic should not depend on third-party libraries.
 - **CLI (`interfaces/cli/`)**: `click` for argument parsing and command
   composition. `rich` for terminal output (tables, panels, color, progress).
@@ -1790,7 +1790,7 @@ def build_project_context(workspace: Path) -> ProjectContext:
     return ProjectContext(workspace=workspace, config=config, paths=paths)
 ```
 
-### 7.2 Gateway (`core/gateway.py`)
+### 7.2 Gateway (`controlplane/gateway.py`)
 
 The gateway becomes the single external mutation and query boundary. The CLI,
 future API surfaces, and automation should go through it instead of reaching
@@ -1957,14 +1957,14 @@ requires a migration.
 | Step | What | Tests |
 |------|------|-------|
 | 3.1 | `config.py` — build `ProjectContext` from config | Default/custom project layout tests |
-| 3.2 | `core/gateway.py` — typed register/get/list/set/transition/query boundary | Integration tests through InMemoryRepository |
+| 3.2 | `controlplane/gateway.py` — typed register/get/list/set/transition/query boundary | Integration tests through InMemoryRepository |
 | 3.3 | Gateway rollback semantics | Simulate downstream render/sync failure and assert old web restored |
-| 3.4 | `core/validate.py` — validation orchestration | Compare findings with current system on characterization fixtures |
-| 3.5 | `core/automation.py` — declarative render + stale-trigger contracts | Normalize automation graph; unknown renderer fails fast |
+| 3.4 | `controlplane/validate.py` — validation orchestration | Compare findings with current system on characterization fixtures |
+| 3.5 | `controlplane/automation.py` — declarative render + stale-trigger contracts | Normalize automation graph; unknown renderer fails fast |
 | 3.6 | `views/render.py` — generated surfaces with incremental SHA-256 cache | Snapshot tests for claims, predictions, assumptions, discoveries; cache hit/miss tests |
-| 3.7 | `core/check.py` — check-refs, check-stale, sync-prose, verify-prose-sync | Link scanner, staleness rules (uses `Analysis.uses_parameters` ↔ `Parameter.used_in_analyses`), AUTO marker sync |
+| 3.7 | `controlplane/check.py` — check-refs, check-stale, sync-prose, verify-prose-sync | Link scanner, staleness rules (uses `Analysis.uses_parameters` ↔ `Parameter.used_in_analyses`), AUTO marker sync |
 | 3.8 | `views/metrics.py` — repo metrics and tier-A evidence counting | Correlation-aware group counting, stressed/active failure summaries |
-| 3.9 | `views/status.py`, `views/health.py`, `core/export.py` | Read-model and health tests |
+| 3.9 | `views/status.py`, `views/health.py`, `controlplane/export.py` | Read-model and health tests |
 | 3.10 | Transaction / provenance log adapter | Append, rollback, and dry-run behavior tests |
 | 3.11 | Mutation provenance — `_last_modified`, `_modified_by` on every gateway write | Write + read-back; provenance preserved through round-trip |
 
@@ -1998,7 +1998,7 @@ contract. This is the single most important interface decision in Phase 4:
 MCP and CLI are two presentations of the same operation, not two separate
 implementations.
 
-`GatewayResult` is defined once in `core/gateway.py` (see section 3.5).
+`GatewayResult` is defined once in `controlplane/gateway.py` (see section 3.5).
 Reproduced here for reference:
 
 ```python
@@ -2448,12 +2448,12 @@ is always returned.
 
 | Step | What | Tests |
 |------|------|-------|
-| 6.1 | `core/results.py` — `record_result(context, prediction_id, value, status, uncertainty, notes, dry_run)` | Records to `data/results.json`; transitions prediction status correctly |
+| 6.1 | `controlplane/results.py` — `record_result(context, prediction_id, value, status, uncertainty, notes, dry_run)` | Records to `data/results.json`; transitions prediction status correctly |
 | 6.2 | `adapters/results_repository.py` — load/save `AnalysisResult` list from `data/results.json` | Round-trip; multiple results per prediction preserved in order |
 | 6.3 | `horizon record <prediction_id>` CLI command | `--value`, `--uncertainty`, `--status`, `--notes`, `--no-transition`, `--json` flags work |
 | 6.4 | `record_result` MCP tool | Returns correct `GatewayResult` envelope |
 | 6.5 | `horizon_research.record()` SDK shim | Callable from any Python script; delegates to gateway |
-| 6.6 | `core/export.py` — `export_json`, `export_markdown` | Exports include recorded results alongside predictions |
+| 6.6 | `controlplane/export.py` — `export_json`, `export_markdown` | Exports include recorded results alongside predictions |
 | 6.7 | `horizon results <prediction_id>` — show result history | Loads from `data/results.json`; shows value, uncertainty, status, git_sha, timestamp |
 | 6.8 | Git SHA auto-capture in `horizon record` | Captured from `git rev-parse HEAD`; warns if analysis `path` has uncommitted changes |
 | 6.9 | `parameter_snapshot` auto-capture in `record_result` | Reads current values of `Analysis.uses_parameters` from web at record time; stored in `AnalysisResult.parameter_snapshot`; round-trips through JSON |
@@ -2498,20 +2498,20 @@ Everything below is real and valuable but not on the critical path for Phase 1�
 | Principle | How It's Followed | Where |
 |-----------|-------------------|-------|
 | **Reuse/Release Equivalence (REP)** | The public release boundary is `horizon_research`; the kernel lives in `horizon_research.epistemic`, and internal modules can change behind that stable root without changing console scripts | Phase 2 packaging |
-| **S — Single Responsibility** | Each module has exactly one reason to change | `web.py` (graph rules), `core/gateway.py` (transaction boundary), `json_repository.py` (serialization), `interfaces/cli/main.py` (parsing) |
+| **S — Single Responsibility** | Each module has exactly one reason to change | `web.py` (graph rules), `controlplane/gateway.py` (transaction boundary), `json_repository.py` (serialization), `interfaces/cli/main.py` (parsing) |
 | **O — Open/Closed** | New validators = new functions, not modifications. New entity types = new classes. | `invariants.py`, `model.py` |
 | **L — Liskov Substitution** | `InMemoryRepository` and `JsonFileRepository` interchangeable | `ports.py`, all adapters |
 | **I — Interface Segregation** | `WebRepository` has only `load()` and `save()`. `ResultRecorder` is separate. | `ports.py` |
-| **D — Dependency Inversion** | Domain defines protocols. Adapters implement them. Core depends on abstractions. | `ports.py`, `core/gateway.py` |
+| **D — Dependency Inversion** | Domain defines protocols. Adapters implement them. Core depends on abstractions. | `ports.py`, `controlplane/gateway.py` |
 | **Low Coupling** | Kernel code has zero imports from adapters or interfaces | Package DAG: `interfaces/* → views → core → adapters → epistemic` |
-| **High Cohesion** | `epistemic/` = kernel reasoning. `core/` = mutation/query boundary. `views/` = composed summaries. `adapters/` = I/O. `interfaces/*` = UI. | Package layout |
-| **Common Closure (CCP)** | Modules that change together are packaged together: automation/render/check, results ingestion | `core/`, `views/` |
+| **High Cohesion** | `epistemic/` = kernel reasoning. `controlplane/` = mutation/query boundary. `views/` = composed summaries. `adapters/` = I/O. `interfaces/*` = UI. | Package layout |
+| **Common Closure (CCP)** | Modules that change together are packaged together: automation/render/check, results ingestion | `controlplane/`, `views/` |
 | **Common Reuse (CRP)** | Optional extras (MCP, compute) stay separate from the core install | Package layout, optional extras |
 | **DRY** | Bidirectional links maintained once (web mutations). Validation rules each exist once. | `web.py`, `invariants.py` |
 | **KISS** | Plain dataclasses, native Python types, `dict`/`set`/`list`. No metaclasses. Dependencies only at CLI/MCP boundaries where they directly improve UX. | Entire codebase |
 | **YAGNI** | No plugin system, no event bus, no database, no web server, no generic graph engine. Dependencies earn their place by improving end-user experience, not developer convenience. | Explicit in Phase 1-7 scope limits |
 | **Separation of Concerns** | Structural invariants (mutation-time) vs semantic validation (on-demand) vs persistence vs rendering vs UI | Layer architecture |
-| **Convention over Configuration** | Default `project/` layout and minimal `horizon.toml`; declarative automation graph only for the places that truly vary | `config.py`, `core/automation.py` |
+| **Convention over Configuration** | Default `project/` layout and minimal `horizon.toml`; declarative automation graph only for the places that truly vary | `config.py`, `controlplane/automation.py` |
 | **Principle of Least Privilege** | Execution defaults to no network, no subprocess, no writes outside declared roots; CI defaults to read-only permissions except release jobs | ``, `adapters/results.py`, CI/CD rollout |
 | **Law of Demeter** | Entities hold IDs, not objects. Traverse through `EpistemicWeb` methods. | `model.py`, `web.py` |
 | **Composition over Inheritance** | No entity inherits from another. Protocols for interfaces, not abstract base classes. | `model.py`, `ports.py` |
@@ -2521,7 +2521,7 @@ Everything below is real and valuable but not on the critical path for Phase 1�
 | **Fail Fast** | Domain throws on broken refs/cycles. Don't wait for post-hoc validation. | `web.py` |
 | **Acyclic Dependencies (ADP)** | `interfaces/* → features → views → core → adapters → epistemic`. No cycles. | Package DAG |
 | **Stable Dependencies (SDP)** | `epistemic/` (most stable) ← everything else. `interfaces/*` (least stable) → all layers below. | Package DAG |
-| **Stable Abstractions (SAP)** | Stable packages define protocols and normalized contracts; unstable packages stay concrete and close to I/O | `epistemic/ports.py`, `core/automation.py`, `interfaces/*`, `adapters/` |
+| **Stable Abstractions (SAP)** | Stable packages define protocols and normalized contracts; unstable packages stay concrete and close to I/O | `epistemic/ports.py`, `controlplane/automation.py`, `interfaces/*`, `adapters/` |
 
 ---
 
@@ -2549,7 +2549,7 @@ is not. Build the right thing from scratch.
 | What | How It Carries Forward |
 |------|----------------------|
 | Domain vocabulary (claims, assumptions, predictions, independence groups) | Rebuilt as typed entities in `epistemic/model.py` |
-| Gateway as single mutation boundary | Rebuilt as `core/gateway.py` with typed contracts |
+| Gateway as single mutation boundary | Rebuilt as `controlplane/gateway.py` with typed contracts |
 | Transactional write → validate → render → rollback | Same pipeline, clean implementation |
 | Declarative automation graph | Same config format, clean loader |
 | Sandbox execution model | Same deny-by-default philosophy, clean executor |
@@ -2608,7 +2608,7 @@ correctly, the transition is complete. The data survives; the code doesn't.
 - Packaging, config, and workflow contracts should be tested as code.
 - Flat JSON files. Reconsider only if merge conflicts become a real problem.
 - Native Python types (`dict`, `set`, `list`) in the domain model.
-- Domain core (`epistemic/`), `core/`, and `views/` are stdlib only.
+- Domain core (`epistemic/`), `controlplane/`, and `views/` are stdlib only.
   `interfaces/cli/` uses `click` and `rich` for a professional UX.
   `interfaces/mcp/` uses `fastmcp` as an optional extra. Compute deps (`numpy`, `scipy`) are
   optional extras. The dependency tree stays shallow — direct deps only.
@@ -2707,7 +2707,7 @@ data flows through the system for the three most common operations.
 6. **Exit**: `sys.exit(1 if critical > 0 else 0)`
 
 Module imports: `src/horizon_research/interfaces/cli/main.py` →
-`src/horizon_research/core/validate.py` →
+`src/horizon_research/controlplane/validate.py` →
 `src/horizon_research/epistemic/invariants.py`,
 `src/horizon_research/adapters/json_repository.py`. No cycles.
 
@@ -2783,11 +2783,11 @@ state — JSON, rendered markdown, and prose surfaces all agree.
 | --- | --- | --- |
 | Domain model unit tests | In-memory only | `src/horizon_research/epistemic/web.py`, `src/horizon_research/epistemic/invariants.py` |
 | Repository round-trip tests | Product fixture | `src/horizon_research/adapters/json_repository.py` |
-| Validator unit tests | Product fixture | `src/horizon_research/core/validate.py` |
+| Validator unit tests | Product fixture | `src/horizon_research/controlplane/validate.py` |
 | Renderer snapshot tests | Product fixture | `src/horizon_research/views/render.py` |
-| Automation/config contract tests | Parse files as data | `src/horizon_research/core/automation.py`, `pyproject.toml`, workflow files |
-| Gateway integration tests | Product fixture + InMemoryRepo | `src/horizon_research/core/gateway.py` |
-| Rollback tests | Product fixture | `src/horizon_research/core/gateway.py` |
+| Automation/config contract tests | Parse files as data | `src/horizon_research/controlplane/automation.py`, `pyproject.toml`, workflow files |
+| Gateway integration tests | Product fixture + InMemoryRepo | `src/horizon_research/controlplane/gateway.py` |
+| Rollback tests | Product fixture | `src/horizon_research/controlplane/gateway.py` |
 | CLI integration tests | Repo fixture or subprocess | `src/horizon_research/interfaces/cli/main.py` |
 | Config loading tests | Temp dirs | `src/horizon_research/config.py` |
 | Limitation/gap tests | Synthetic fixtures | benchmark validators |
@@ -2820,13 +2820,13 @@ Is it resolving paths from config or building ProjectContext?
     → src/horizon_research/config.py
 
 Is it declarative wiring between source data, generated outputs, and stale triggers?
-    → src/horizon_research/core/automation.py
+    → src/horizon_research/controlplane/automation.py
 
 Is it CRUD on a resource type, or orchestrating a mutation pipeline?
-    → src/horizon_research/core/gateway.py
+    → src/horizon_research/controlplane/gateway.py
 
 Is it validating data for correctness?
-    → src/horizon_research/core/validate.py (orchestration) or src/horizon_research/epistemic/invariants.py (pure rules)
+    → src/horizon_research/controlplane/validate.py (orchestration) or src/horizon_research/epistemic/invariants.py (pure rules)
 
 Is it generating markdown from JSON?
     → src/horizon_research/views/render.py (incremental) or src/horizon_research/adapters/markdown_renderer.py (templates)
@@ -2835,13 +2835,13 @@ Is it computing project health metrics?
     → src/horizon_research/views/metrics.py
 
 Is it checking links, staleness, or prose sync?
-    → src/horizon_research/core/check.py
+    → src/horizon_research/controlplane/check.py
 
 Is it displaying project state or health summaries?
     → src/horizon_research/views/status.py or src/horizon_research/views/health.py
 
 Is it recording analysis results from external tools?
-    → src/horizon_research/core/results.py (logic) or src/horizon_research/adapters/results_repository.py (persistence)
+    → src/horizon_research/controlplane/results.py (logic) or src/horizon_research/adapters/results_repository.py (persistence)
 
 Is it archiving/activating research programs?
     → program_manager (outer shell — NOT in the product core)
@@ -2855,9 +2855,9 @@ Is it pure domain logic (entities, invariants, graph queries)?
 1. If it parses `sys.argv`, it goes in `src/horizon_research/interfaces/cli/`.
 2. If it is an MCP tool handler, it goes in `src/horizon_research/interfaces/mcp/`.
 3. If it computes paths from config, it goes in `src/horizon_research/config.py`.
-4. If it expresses source → output or stale-trigger wiring, it goes in `src/horizon_research/core/automation.py`.
-5. If it mutates canonical JSON, it goes through `src/horizon_research/core/gateway.py`.
-6. If it only reads data and returns findings, it goes in `src/horizon_research/core/validate.py` or `src/horizon_research/epistemic/invariants.py`.
+4. If it expresses source → output or stale-trigger wiring, it goes in `src/horizon_research/controlplane/automation.py`.
+5. If it mutates canonical JSON, it goes through `src/horizon_research/controlplane/gateway.py`.
+6. If it only reads data and returns findings, it goes in `src/horizon_research/controlplane/validate.py` or `src/horizon_research/epistemic/invariants.py`.
 
 ---
 

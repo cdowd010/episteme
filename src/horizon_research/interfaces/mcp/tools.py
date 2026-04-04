@@ -27,8 +27,8 @@ from ...adapters.json_repository import JsonRepository
 from ...adapters.markdown_renderer import MarkdownRenderer
 from ...adapters.transaction_log import JsonTransactionLog
 from ...config import ProjectContext
-from ...core.gateway import Gateway
-from ...core.validate import DomainValidator
+from ...controlplane.gateway import Gateway
+from ...controlplane.validate import DomainValidator
 from ...views.health import run_health_check
 from ...views.status import get_status
 
@@ -107,7 +107,7 @@ def register_tools(server, context: ProjectContext) -> None:
         """
         repo = JsonRepository(context.paths.data_dir)
         validator = DomainValidator()
-        from ...core.validate import validate_project
+        from ...controlplane.validate import validate_project
         findings = validate_project(context, repo)
         status = "CLEAN" if not any(
             f.severity.name == "CRITICAL" for f in findings
@@ -164,7 +164,7 @@ def register_tools(server, context: ProjectContext) -> None:
         Returns analyses whose uses_parameters set includes a parameter
         that has changed since the analysis was last run.
         """
-        from ...core.check import check_stale
+        from ...controlplane.check import check_stale
         findings = check_stale(context)
         return {
             "status": "ok",
@@ -177,7 +177,7 @@ def register_tools(server, context: ProjectContext) -> None:
     @server.tool()
     def check_refs() -> dict:
         """Verify all ID cross-references in the epistemic web are intact."""
-        from ...core.check import check_refs
+        from ...controlplane.check import check_refs
         findings = check_refs(context)
         return {
             "status": "ok",
@@ -195,7 +195,7 @@ def register_tools(server, context: ProjectContext) -> None:
         output_path: write to this path; if None, return in response data.
         """
         from pathlib import Path
-        from ...core.export import export_json, export_markdown
+        from ...controlplane.export import export_json, export_markdown
         repo = JsonRepository(context.paths.data_dir)
         out = Path(output_path) if output_path else context.paths.project_dir / "export"
         if fmt == "json":

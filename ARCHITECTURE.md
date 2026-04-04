@@ -79,7 +79,7 @@ Horizon's MCP server is the primary interface for AI agents. An agent calls `reg
 └─────────────────────┬────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────┐
-│  Core Services (core/) — always available            │
+│  Core Services (controlplane/) — always available            │
 │  Mutations:  gateway · results                       │
 │  Queries:    validate · check · export               │
 │  Policy:     automation (render-trigger table)       │
@@ -113,7 +113,7 @@ Horizon's MCP server is the primary interface for AI agents. An agent calls `reg
 ```mermaid
 graph TD
     IFACE["interfaces/*"] --> VIEWS["views/"]
-    IFACE --> CORE["core/"]
+    IFACE --> CORE["controlplane/"]
     VIEWS --> CORE
     CORE --> ADP["adapters/"]
     CORE --> EPI["epistemic/"]
@@ -121,7 +121,7 @@ graph TD
     CORE -.->|"through abstract interfaces"| ADP
 ```
 
-The dashed arrow means `core/` uses adapters only through abstract interfaces defined in `epistemic/ports.py` — it never imports a concrete adapter class directly. Concrete adapters are wired together in the interface layer at startup when the Gateway is constructed.
+The dashed arrow means `controlplane/` uses adapters only through abstract interfaces defined in `epistemic/ports.py` — it never imports a concrete adapter class directly. Concrete adapters are wired together in the interface layer at startup when the Gateway is constructed.
 
 ### Interface layer design
 
@@ -133,7 +133,7 @@ All entry points live under `interfaces/` as equal peers. No interface is primar
 - `interfaces/gui/` — future web UI
 - `interfaces/sdk/` — future Python SDK
 
-Every interface is a **thin adapter**: parse inputs, call the same core/views/features function, format outputs. If a handler contains business logic, it belongs in `core/` or `views/` instead.
+Every interface is a **thin adapter**: parse inputs, call the same controlplane/views/features function, format outputs. If a handler contains business logic, it belongs in `controlplane/` or `views/` instead.
 
 One exception: agent scaffolding (`.horizon/agents.md`, `get_protocol`, `horizon init --with-agent`) lives in `interfaces/mcp/` only. It is AI-agent-specific documentation infrastructure, not shared product logic.
 
@@ -237,7 +237,7 @@ The cost is O(n) memory per mutation (a full deep copy), acceptable at research 
 ```mermaid
 sequenceDiagram
     actor Agent as AI Agent / CLI
-    participant GW as Gateway (core/gateway.py)
+    participant GW as Gateway (controlplane/gateway.py)
     participant Repo as JsonRepository
     participant Web as EpistemicWeb
     participant Val as DomainValidator
@@ -274,8 +274,8 @@ Key properties:
 sequenceDiagram
     actor Agent as AI Agent / CLI
     participant HC as views/health.py
-    participant Val as core/validate.py
-    participant Chk as core/check.py
+    participant Val as controlplane/validate.py
+    participant Chk as controlplane/check.py
 
     Agent->>HC: run_health_check(context, repo, validator)
     HC->>Val: validate_structure(web)
@@ -313,7 +313,7 @@ src/horizon_research/
 │   ├── markdown_renderer.py     # implements WebRenderer
 │   └── transaction_log.py       # implements TransactionLog
 │
-├── core/                        # ── CORE SERVICES ───────────────────────────
+├── controlplane/                        # ── CORE SERVICES ───────────────────────────
 │   ├── gateway.py               # Single mutation/query boundary + GatewayResult
 │   ├── validate.py              # validate_project, validate_structure
 │   ├── check.py                 # check_stale, check_refs, sync_prose
@@ -334,7 +334,7 @@ src/horizon_research/
     │   └── formatters.py        # Rich tables + JSON fallback
     └── mcp/                     # AI agents
         ├── server.py            # FastMCP entry point
-        └── tools.py             # Tool handlers → thin wrappers over core/views
+        └── tools.py             # Tool handlers → thin wrappers over controlplane/views
         # future: rest/, gui/, sdk/ go here as equal peers
 ```
 
@@ -343,13 +343,13 @@ src/horizon_research/
 | From | May import | May NOT import |
 |------|-----------|----------------|
 | `epistemic/` | stdlib only | anything |
-| `adapters/` | `epistemic/`, stdlib | `core/`, `views/`, `interfaces/` |
+| `adapters/` | `epistemic/`, stdlib | `controlplane/`, `views/`, `interfaces/` |
 | `config.py` | stdlib only | anything |
-| `core/` | `epistemic/`, `adapters/` (via protocols), `config` | `views/`, `interfaces/` |
-| `views/` | `core/`, `epistemic/`, `config` | `interfaces/` |
+| `controlplane/` | `epistemic/`, `adapters/` (via protocols), `config` | `views/`, `interfaces/` |
+| `views/` | `controlplane/`, `epistemic/`, `config` | `interfaces/` |
 | `interfaces/*` | all layers above | other interfaces (e.g. `cli/` cannot import `mcp/`) |
 
-`core/` accesses adapters **only through the abstract interfaces defined in `epistemic/ports.py`** — it never imports a concrete adapter class directly. Concrete adapters are wired in the interface layer at startup when the Gateway is constructed.
+`controlplane/` accesses adapters **only through the abstract interfaces defined in `epistemic/ports.py`** — it never imports a concrete adapter class directly. Concrete adapters are wired in the interface layer at startup when the Gateway is constructed.
 
 ---
 
@@ -434,10 +434,10 @@ class ProjectContext:
 ```mermaid
 graph LR
     workspace["workspace/"] --> |"build_context()"| ctx["ProjectContext"]
-    ctx --> GW["core/gateway.py"]
+    ctx --> GW["controlplane/gateway.py"]
     ctx --> HC["views/health.py"]
     ctx --> ST["views/status.py"]
-    ctx --> CH["core/check.py"]
+    ctx --> CH["controlplane/check.py"]
 ```
 
 ---
@@ -531,4 +531,4 @@ All interfaces are presentations, not implementations. All business logic lives 
 interfaces/*  →  features  →  views  →  core  →  epistemic  ←  adapters
 ```
 
-`epistemic/` defines the interfaces. `adapters/` implements them. `core/` uses them. The domain has zero knowledge of JSON files, markdown, or the MCP protocol. The entire epistemic kernel and core services can be tested in memory without touching the filesystem.
+`epistemic/` defines the interfaces. `adapters/` implements them. `controlplane/` uses them. The domain has zero knowledge of JSON files, markdown, or the MCP protocol. The entire epistemic kernel and core services can be tested in memory without touching the filesystem.

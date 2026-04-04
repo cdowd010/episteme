@@ -1,4 +1,4 @@
-"""Core services — mutations and structural queries.
+"""Control-plane services — mutations and structural queries.
 
 Always available. No feature flags required.
 Both CLI and MCP route through these services.
@@ -11,5 +11,5 @@ Modules:
   export     — Bulk export (read-only)
   automation — Render-trigger policy table
 
-Dependency rule: core → epistemic, adapters, config. Never → views, features.
+Dependency rule: controlplane → epistemic, adapters, config. Never → views, features.
 """

@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from ...core.gateway import GatewayResult
+from ...controlplane.gateway import GatewayResult
 from ...views.health import HealthReport
 from ...views.status import ProjectStatus
 

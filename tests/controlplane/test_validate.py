@@ -1,9 +1,9 @@
-"""Tests for core/validate.py — DomainValidator."""
+"""Tests for controlplane/validate.py — DomainValidator."""
 from __future__ import annotations
 
 import pytest
 
-from horizon_research.core.validate import DomainValidator
+from horizon_research.controlplane.validate import DomainValidator
 from horizon_research.epistemic.types import ConfidenceTier, Severity
 from horizon_research.epistemic.web import EpistemicWeb
 

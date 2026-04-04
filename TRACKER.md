@@ -42,11 +42,11 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 ## Phase 3 — Core and View Services
 > Goal: single mutation boundary + view services wired to JSON repo.
 
-- [ ] `core/gateway.py` — register, get, list, set, transition, query; validate-after-write; rollback on failure; dry-run
-- [ ] `core/validate.py` — validate_project, validate_structure
-- [ ] `core/check.py` — check_refs, check_stale (uses `Analysis.uses_parameters` ↔ `Parameter.used_in_analyses`)
-- [ ] `core/export.py` — export_json, export_markdown
-- [ ] `core/automation.py` — render trigger table wired into gateway
+- [ ] `controlplane/gateway.py` — register, get, list, set, transition, query; validate-after-write; rollback on failure; dry-run
+- [ ] `controlplane/validate.py` — validate_project, validate_structure
+- [ ] `controlplane/check.py` — check_refs, check_stale (uses `Analysis.uses_parameters` ↔ `Parameter.used_in_analyses`)
+- [ ] `controlplane/export.py` — export_json, export_markdown
+- [ ] `controlplane/automation.py` — render trigger table wired into gateway
 - [ ] `views/render.py` — SHA-256 fingerprint cache + incremental render
 - [ ] `views/health.py` — run_health_check; structural findings + broken `source` references
 - [ ] `views/status.py` — get_status, format_status_dict
@@ -105,12 +105,12 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 > Goal: Horizon consumes results from researcher-run analyses. No execution, no sandboxing.
 
 - [ ] `adapters/results_repository.py` — load/save `AnalysisResult` list from `data/results.json`; multiple results per analysis in insertion order
-- [ ] `core/results.py` — `record_result(context, analysis_id, prediction_id, value, uncertainty, status, notes, dry_run)`; persists to `data/results.json`; transitions prediction status; appends to transaction log
+- [ ] `controlplane/results.py` — `record_result(context, analysis_id, prediction_id, value, uncertainty, status, notes, dry_run)`; persists to `data/results.json`; transitions prediction status; appends to transaction log
 - [ ] `horizon record <analysis_id>` CLI command — `--value`, `--uncertainty`, `--status`, `--notes`, `--no-transition`, `--json`
 - [ ] `record_result` MCP tool — returns standard `GatewayResult` envelope
 - [ ] `horizon_research.record()` SDK shim — one-line instrumentation for any Python script
 - [ ] Git SHA auto-capture in `horizon record` — calls `git rev-parse HEAD`; warns if `Analysis.path` file has uncommitted changes at record time
-- [ ] `core/export.py` — export includes recorded results with uncertainty and git_sha
+- [ ] `controlplane/export.py` — export includes recorded results with uncertainty and git_sha
 - [ ] `horizon results <analysis_id>` — show result history; displays value, uncertainty, status, git_sha, source, timestamp
 - [ ] Tests: `record_result` persists to `data/results.json` and transitions prediction status correctly
 - [ ] Tests: `--no-transition` suppresses status change

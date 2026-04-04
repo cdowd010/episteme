@@ -2,11 +2,11 @@
 
 Primary interface:  MCP server (AI agents call tools)
 Secondary interface: CLI (humans and scripts)
-Both route through:  core.gateway.Gateway
+Both route through:  controlplane.gateway.Gateway
 
 Layer cake (top to bottom):
   mcp / cli       — external interfaces
-  core/views/features — layered services above the epistemic kernel
+  controlplane/views/features — layered services above the epistemic kernel
   epistemic       — domain kernel: EpistemicWeb, entities, invariants, ports
   adapters        — JSON repo, markdown renderer, sandbox executor, tx log
 

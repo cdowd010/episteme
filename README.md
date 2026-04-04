@@ -99,7 +99,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a full technical walkthrough.
 └─────────────────────┬────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────┐
-│  Core Services (core/) — always available            │
+│  Core Services (controlplane/) — always available            │
 │  gateway · validate · check · export · automation    │
 └─────────────────────┬────────────────────────────────┘
                       │
@@ -140,7 +140,7 @@ src/horizon_research/
 │   ├── json_repository.py
 │   ├── markdown_renderer.py
 │   └── transaction_log.py
-├── core/                   # Core services — mutations + queries
+├── controlplane/                   # Core services — mutations + queries
 │   ├── gateway.py          # Single mutation/query boundary
 │   ├── validate.py         # Structural validation
 │   ├── check.py            # check_stale, check_refs

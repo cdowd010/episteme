@@ -1,9 +1,9 @@
-"""Tests for core/automation.py — RenderTrigger and should_render."""
+"""Tests for controlplane/automation.py — RenderTrigger and should_render."""
 from __future__ import annotations
 
 import pytest
 
-from horizon_research.core.automation import (
+from horizon_research.controlplane.automation import (
     DEFAULT_RENDER_TRIGGERS,
     RenderTrigger,
     should_render,
