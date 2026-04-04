@@ -9,7 +9,7 @@
 Horizon makes the hidden dependency graph of a research project explicit and machine-navigable — claims, assumptions, predictions, analyses, and the invariants that connect them. It does not reason about the research. It gives researchers and AI agents the structure to reason themselves.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status: Early Development](https://img.shields.io/badge/status-early%20development-orange.svg)](TRACKER.md)
 
 ---
@@ -193,4 +193,4 @@ See [TRACKER.md](TRACKER.md) for the full task-level breakdown.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE).
