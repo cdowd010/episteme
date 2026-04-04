@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.epistemic.model import (
+from desitter.epistemic.model import (
     Analysis,
     Assumption,
     Claim,
@@ -16,7 +16,7 @@ from horizon_research.epistemic.model import (
     Prediction,
     Theory,
 )
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     AnalysisId,
     AssumptionId,
     ClaimId,
@@ -29,7 +29,7 @@ from horizon_research.epistemic.types import (
     PredictionId,
     TheoryId,
 )
-from horizon_research.epistemic.web import (
+from desitter.epistemic.web import (
     BrokenReferenceError,
     CycleError,
     DuplicateIdError,

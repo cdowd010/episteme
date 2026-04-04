@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     AssumptionId,
     AssumptionType,
     ClaimCategory,

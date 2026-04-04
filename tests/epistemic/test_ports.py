@@ -1,15 +1,15 @@
 """Tests for epistemic/ports.py — protocol structural subtyping."""
 from __future__ import annotations
 
-from horizon_research.epistemic.ports import (
+from desitter.epistemic.ports import (
     ProseSync,
     TransactionLog,
     WebRenderer,
     WebRepository,
     WebValidator,
 )
-from horizon_research.epistemic.types import Finding, Severity
-from horizon_research.epistemic.web import EpistemicWeb
+from desitter.epistemic.types import Finding, Severity
+from desitter.epistemic.web import EpistemicWeb
 
 
 class _FakeRepo:

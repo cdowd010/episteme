@@ -34,7 +34,7 @@ This file is an operational compliance guide for the repository. It is not legal
 
 - This repository is designed to stay on the safer side of U.S. copyright practice by storing factual citation metadata and original notes rather than expressive source content.
 - If future work needs to include substantial third-party text, images, tables, or PDFs, do not commit it until the license or permission basis is recorded explicitly.
-- `python src/horizon.py validate` treats tracked image/document asset extensions as policy-gated inputs. A committed `.pdf`, office document, or image asset must either stay out of the repository or be explicitly allowlisted with a documented permission basis.
+- `python src/desitter.py validate` treats tracked image/document asset extensions as policy-gated inputs. A committed `.pdf`, office document, or image asset must either stay out of the repository or be explicitly allowlisted with a documented permission basis.
 
 ## 6. Third-Party Software And Tooling
 
@@ -42,7 +42,7 @@ This file is an operational compliance guide for the repository. It is not legal
 - New direct dependencies under strong-copyleft, network-copyleft, source-available-restrictive, or unclear terms should not be added unless Chris explicitly approves the legal tradeoff.
 - Vendored third-party code must not be copied into the repository unless the upstream license is recorded and compatible with the outbound license of the destination files.
 - Stronger-copyleft tools may be used only as bounded exceptions when they are separate executables or local runtimes, are not vendored into the repository, are not redistributed by the repository, and their review basis is recorded.
-- The current reviewed software inventory lives in `data/third_party_software.json` and is rendered to `views/third_party_software.md`. `python src/horizon.py validate` blocks unreviewed declared dependencies and current-use tools classified as having a high legal impact.
+- The current reviewed software inventory lives in `data/third_party_software.json` and is rendered to `views/third_party_software.md`. `python src/desitter.py validate` blocks unreviewed declared dependencies and current-use tools classified as having a high legal impact.
 - Hosted code-generation or coding-assistant tools with unclear, restrictive, or output-encumbering terms should be treated as prohibited until explicitly reviewed.
 
 ## 7. Directory License Boundary Map

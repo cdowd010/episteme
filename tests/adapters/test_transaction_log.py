@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from horizon_research.adapters.transaction_log import JsonTransactionLog
+from desitter.adapters.transaction_log import JsonTransactionLog
 
 
 class TestAppend:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.controlplane.gateway import (
+from desitter.controlplane.gateway import (
     GATEWAY_RESOURCE_ALIASES,
     GatewayResult,
 )
@@ -38,7 +38,7 @@ class TestResolveResource:
     @pytest.fixture
     def gateway(self):
         from unittest.mock import MagicMock
-        from horizon_research.controlplane.gateway import Gateway
+        from desitter.controlplane.gateway import Gateway
         return Gateway(
             context=MagicMock(),
             repo=MagicMock(),
@@ -70,7 +70,7 @@ class TestGatewayResult:
         assert r.data is None
 
     def test_full(self):
-        from horizon_research.epistemic.types import Finding, Severity
+        from desitter.epistemic.types import Finding, Severity
         f = Finding(Severity.INFO, "s", "m")
         r = GatewayResult(
             status="BLOCKED",

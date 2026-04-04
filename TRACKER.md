@@ -1,4 +1,4 @@
-# Horizon Research — Project Tracker
+# deSitter — Project Tracker
 
 Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 
@@ -29,9 +29,9 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 - [ ] `adapters/json_repository.py` — load/save EpistemicWeb as JSON files; round-trip includes `source`, `uses_parameters`, `used_in_analyses`
 - [ ] `adapters/transaction_log.py` — JSONL provenance log (append/read)
 - [ ] `adapters/markdown_renderer.py` — claims, predictions, assumptions, theories, analyses summary views; renders `doi:` and `arxiv:` sources as links
-- [ ] `config.py` — `load_config` + `build_context`; `horizon.toml` parsing; already implemented as stub
+- [ ] `config.py` — `load_config` + `build_context`; `desitter.toml` parsing; already implemented as stub
 - [ ] `pyproject.toml` — verify `pip install -e .` works
-- [ ] `horizon_research/__init__.py` — re-export common public API entry points
+- [ ] `desitter/__init__.py` — re-export common public API entry points
 - [ ] Tests: round-trip load/save for all entity types including new fields
 - [ ] Tests: context path derivation from workspace root
 
@@ -67,8 +67,8 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 ### CLI (`interfaces/cli/`)
 - [ ] `interfaces/cli/main.py` — commands: `register`, `get`, `list`, `set`, `transition`, `validate`, `health`, `status`, `render`, `export`, `init`
 - [ ] `interfaces/cli/formatters.py` — Rich tables + JSON fallback; `doi:` and `arxiv:` sources rendered as clickable links
-- [ ] `__main__.py` — `python -m horizon_research` works
-- [ ] `horizon init` — creates `project_config.json`, standard directory layout; idempotent
+- [ ] `__main__.py` — `python -m desitter` works
+- [ ] `ds init` — creates `project_config.json`, standard directory layout; idempotent
 
 ### MCP Server (`interfaces/mcp/`)
 - [ ] `interfaces/mcp/server.py` — FastMCP server, tool registration
@@ -77,7 +77,7 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 ### Tests
 - [ ] Tests: core CLI commands via CliRunner
 - [ ] Tests: MCP tool handlers with gateway fakes
-- [ ] Tests: `horizon init` creates correct directory layout
+- [ ] Tests: `ds init` creates correct directory layout
 
 **Exit criteria:** An AI agent can register, validate, health-check, and export through MCP. A human can do the same through the CLI.
 
@@ -87,14 +87,14 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 > Goal: the web becomes navigable. Researcher can traverse and audit without writing JSON.
 
 - [ ] Rich progress bars for long-running operations
-- [ ] `horizon status` dashboard (color-coded, summary panels)
-- [ ] `horizon validate --fix` dry-run suggestions
+- [ ] `ds status` dashboard (color-coded, summary panels)
+- [ ] `ds validate --fix` dry-run suggestions
 - [ ] Consistent error messages with actionable hints
-- [ ] `horizon add <type>` — interactive prompts for all core entity types; prompts for `source`, `derivation`
-- [ ] `horizon show <type> [id]` — human-readable view with relationships; `source` rendered as link
-- [ ] `horizon log [id]` — mutation history from transaction log
+- [ ] `ds add <type>` — interactive prompts for all core entity types; prompts for `source`, `derivation`
+- [ ] `ds show <type> [id]` — human-readable view with relationships; `source` rendered as link
+- [ ] `ds log [id]` — mutation history from transaction log
 - [ ] Shell completions (bash, zsh, fish) with resource ID tab-completion
-- [ ] `horizon config set|get` — read/write `project_config.json` without editing JSON directly
+- [ ] `ds config set|get` — read/write `project_config.json` without editing JSON directly
 - [ ] Quickstart guide: install → init → add theory → add claim → add prediction → record result → render
 
 **Exit criteria:** A researcher unfamiliar with the project can install, init, add a claim, and render views without consulting source code.
@@ -102,16 +102,16 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 ---
 
 ## Phase 6 — Results Ingestion
-> Goal: Horizon consumes results from researcher-run analyses. No execution, no sandboxing.
+> Goal: deSitter consumes results from researcher-run analyses. No execution, no sandboxing.
 
 - [ ] `adapters/results_repository.py` — load/save `AnalysisResult` list from `data/results.json`; multiple results per analysis in insertion order
 - [ ] `controlplane/results.py` — `record_result(context, analysis_id, prediction_id, value, uncertainty, status, notes, dry_run)`; persists to `data/results.json`; transitions prediction status; appends to transaction log
-- [ ] `horizon record <analysis_id>` CLI command — `--value`, `--uncertainty`, `--status`, `--notes`, `--no-transition`, `--json`
+- [ ] `ds record <analysis_id>` CLI command — `--value`, `--uncertainty`, `--status`, `--notes`, `--no-transition`, `--json`
 - [ ] `record_result` MCP tool — returns standard `GatewayResult` envelope
-- [ ] `horizon_research.record()` SDK shim — one-line instrumentation for any Python script
-- [ ] Git SHA auto-capture in `horizon record` — calls `git rev-parse HEAD`; warns if `Analysis.path` file has uncommitted changes at record time
+- [ ] `desitter.record()` SDK shim — one-line instrumentation for any Python script
+- [ ] Git SHA auto-capture in `ds record` — calls `git rev-parse HEAD`; warns if `Analysis.path` file has uncommitted changes at record time
 - [ ] `controlplane/export.py` — export includes recorded results with uncertainty and git_sha
-- [ ] `horizon results <analysis_id>` — show result history; displays value, uncertainty, status, git_sha, source, timestamp
+- [ ] `ds results <analysis_id>` — show result history; displays value, uncertainty, status, git_sha, source, timestamp
 - [ ] Tests: `record_result` persists to `data/results.json` and transitions prediction status correctly
 - [ ] Tests: `--no-transition` suppresses status change
 - [ ] Tests: uncertainty round-trips through JSON

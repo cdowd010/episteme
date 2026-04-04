@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     ClaimStatus,
     DeadEndStatus,
     DiscoveryStatus,
     PredictionStatus,
     TheoryStatus,
 )
-from horizon_research.epistemic.web import BrokenReferenceError
+from desitter.epistemic.web import BrokenReferenceError
 
 from .conftest import (
     make_claim_id,

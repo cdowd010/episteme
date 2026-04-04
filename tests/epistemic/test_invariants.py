@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.epistemic.invariants import (
+from desitter.epistemic.invariants import (
     validate_all,
     validate_assumption_testability,
     validate_coverage,
@@ -15,7 +15,7 @@ from horizon_research.epistemic.invariants import (
     validate_tests_conditional_overlap,
     validate_tier_constraints,
 )
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     AssumptionType,
     ClaimCategory,
     ClaimStatus,
@@ -26,7 +26,7 @@ from horizon_research.epistemic.types import (
     PredictionStatus,
     Severity,
 )
-from horizon_research.epistemic.web import EpistemicWeb
+from desitter.epistemic.web import EpistemicWeb
 
 from .conftest import (
     make_analysis,

@@ -4,8 +4,8 @@ Builds the FastMCP server, registers all tool handlers from tools.py,
 and exposes a run() function as the entry point.
 
 Usage:
-    horizon-mcp                           # installed console script
-    python -m horizon_research            # via __main__.py
+    ds-mcp                                # installed console script
+    python -m desitter            # via __main__.py
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ try:
 except ImportError as exc:
     raise ImportError(
         "MCP server requires the 'mcp' extra: "
-        "pip install 'horizon-research[mcp]'"
+        "pip install 'desitter[mcp]'"
     ) from exc
 
 from pathlib import Path
@@ -33,7 +33,7 @@ def create_server(workspace: Path | None = None) -> fastmcp.FastMCP:
     context = build_context(ws, config)
 
     server = fastmcp.FastMCP(
-        name="horizon-research",
+        name="desitter",
         description="Epistemic web data system for research projects",
     )
     register_tools(server, context)

@@ -4,17 +4,17 @@ All commands construct a ProjectContext, wire a Gateway, and delegate
 to the appropriate service. No business logic here.
 
 Command surface (mirrors MCP tools):
-  horizon register <resource>        — register entity (payload from stdin or --data)
-  horizon get <resource> <id>        — retrieve by ID
-  horizon list <resource>            — list all of a type
-  horizon set <resource> <id>        — update fields (payload from stdin or --data)
-  horizon transition <resource> <id> <status>
-  horizon validate                   — run all domain validators
-  horizon health                     — composed health report
-  horizon status                     — high-level project snapshot
-  horizon render [--force]           — regenerate markdown views
-  horizon export [--format json|md]  — bulk export
-  horizon init                       — initialise a new project workspace
+    ds register <resource>             — register entity (payload from stdin or --data)
+    ds get <resource> <id>             — retrieve by ID
+    ds list <resource>                 — list all of a type
+    ds set <resource> <id>             — update fields (payload from stdin or --data)
+    ds transition <resource> <id> <status>
+    ds validate                        — run all domain validators
+    ds health                          — composed health report
+    ds status                          — high-level project snapshot
+    ds render [--force]                — regenerate markdown views
+    ds export [--format json|md]       — bulk export
+    ds init                            — initialise a new project workspace
 """
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from .formatters import print_gateway_result, print_health_report, print_status
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
 def cli(ctx: click.Context, workspace: Path | None, output_json: bool) -> None:
-    """Horizon Research — epistemic web data system."""
+    """deSitter — epistemic web data system."""
     ws = workspace or Path.cwd()
     config = load_config(ws)
     context = build_context(ws, config)
@@ -140,7 +140,7 @@ def export(ctx: click.Context, fmt: str, output: Path | None) -> None:
 @cli.command()
 @click.option("--workspace", "ws_path", type=click.Path(path_type=Path), default=None)
 def init(ws_path: Path | None) -> None:
-    """Initialise a new Horizon project workspace.
+    """Initialise a new deSitter project workspace.
 
     Creates project_config.json and the standard directory layout.
     Idempotent — safe to run on an existing workspace.

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.controlplane.validate import DomainValidator
-from horizon_research.epistemic.types import ConfidenceTier, Severity
-from horizon_research.epistemic.web import EpistemicWeb
+from desitter.controlplane.validate import DomainValidator
+from desitter.epistemic.types import ConfidenceTier, Severity
+from desitter.epistemic.web import EpistemicWeb
 
 from tests.epistemic.conftest import make_prediction
 

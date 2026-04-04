@@ -1,12 +1,12 @@
-"""Tests for config.py — HorizonConfig, ProjectPaths, ProjectContext, load_config, build_context."""
+"""Tests for config.py — DesitterConfig, ProjectPaths, ProjectContext, load_config, build_context."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from horizon_research.config import (
-    HorizonConfig,
+from desitter.config import (
+    DesitterConfig,
     ProjectContext,
     ProjectPaths,
     build_context,
@@ -14,13 +14,13 @@ from horizon_research.config import (
 )
 
 
-class TestHorizonConfig:
+class TestDesitterConfig:
     def test_defaults(self):
-        cfg = HorizonConfig()
+        cfg = DesitterConfig()
         assert cfg.project_dir == Path("project")
 
     def test_custom_project_dir(self):
-        cfg = HorizonConfig(project_dir=Path("custom"))
+        cfg = DesitterConfig(project_dir=Path("custom"))
         assert cfg.project_dir == Path("custom")
 
 
@@ -30,19 +30,19 @@ class TestLoadConfig:
         assert cfg.project_dir == Path("project")
 
     def test_empty_toml(self, tmp_path):
-        (tmp_path / "horizon.toml").write_text("", encoding="utf-8")
+        (tmp_path / "desitter.toml").write_text("", encoding="utf-8")
         cfg = load_config(tmp_path)
         assert cfg.project_dir == Path("project")
 
     def test_custom_project_dir(self, tmp_path):
-        (tmp_path / "horizon.toml").write_text(
-            '[horizon]\nproject_dir = "my_project"\n', encoding="utf-8"
+        (tmp_path / "desitter.toml").write_text(
+            '[desitter]\nproject_dir = "my_project"\n', encoding="utf-8"
         )
         cfg = load_config(tmp_path)
         assert cfg.project_dir == Path("my_project")
 
-    def test_missing_horizon_section(self, tmp_path):
-        (tmp_path / "horizon.toml").write_text(
+    def test_missing_desitter_section(self, tmp_path):
+        (tmp_path / "desitter.toml").write_text(
             "[other]\nkey = 1\n", encoding="utf-8"
         )
         cfg = load_config(tmp_path)
@@ -51,7 +51,7 @@ class TestLoadConfig:
 
 class TestBuildContext:
     def test_path_derivation(self, tmp_path):
-        cfg = HorizonConfig(project_dir=Path("proj"))
+        cfg = DesitterConfig(project_dir=Path("proj"))
         ctx = build_context(tmp_path, cfg)
         assert ctx.workspace == tmp_path
         assert ctx.config is cfg
@@ -63,5 +63,5 @@ class TestBuildContext:
         assert ctx.paths.transaction_log_file == tmp_path / "proj" / "data" / "transaction_log.jsonl"
 
     def test_default_config(self, tmp_path):
-        ctx = build_context(tmp_path, HorizonConfig())
+        ctx = build_context(tmp_path, DesitterConfig())
         assert ctx.paths.project_dir == tmp_path / "project"

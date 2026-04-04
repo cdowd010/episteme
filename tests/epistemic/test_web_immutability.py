@@ -5,11 +5,11 @@ import copy
 
 import pytest
 
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     ClaimStatus,
     PredictionStatus,
 )
-from horizon_research.epistemic.web import EpistemicWeb
+from desitter.epistemic.web import EpistemicWeb
 
 from .conftest import (
     make_assumption,

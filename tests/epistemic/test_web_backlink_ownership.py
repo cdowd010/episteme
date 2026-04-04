@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.epistemic import DiscoveryStatus, TheoryStatus
-from horizon_research.epistemic.model import (
+from desitter.epistemic import DiscoveryStatus, TheoryStatus
+from desitter.epistemic.model import (
     Analysis,
     Assumption,
     Claim,
@@ -12,7 +12,7 @@ from horizon_research.epistemic.model import (
     Parameter,
     Prediction,
 )
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     AnalysisId,
     AssumptionId,
     AssumptionType,
@@ -28,7 +28,7 @@ from horizon_research.epistemic.types import (
     PredictionId,
     PredictionStatus,
 )
-from horizon_research.epistemic.web import BrokenReferenceError, EpistemicWeb
+from desitter.epistemic.web import BrokenReferenceError, EpistemicWeb
 
 
 def test_register_backlink_fields_are_owned_by_web() -> None:

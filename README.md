@@ -1,4 +1,4 @@
-# Horizon Research
+# deSitter
 
 > **Early Development — not ready for use.**
 > The API, file formats, and CLI surface are unstable and will change without notice.
@@ -6,7 +6,7 @@
 
 **An audit scaffold for research epistemic webs.**
 
-Horizon makes the hidden dependency graph of a research project explicit and machine-navigable — claims, assumptions, predictions, analyses, and the invariants that connect them. It does not reason about the research. It gives researchers and AI agents the structure to reason themselves.
+deSitter makes the hidden dependency graph of a research project explicit and machine-navigable — claims, assumptions, predictions, analyses, and the invariants that connect them. It does not reason about the research. It gives researchers and AI agents the structure to reason themselves.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -18,23 +18,23 @@ Horizon makes the hidden dependency graph of a research project explicit and mac
 
 Research projects accumulate a hidden graph of epistemic dependencies: claim C depends on assumption A, prediction P follows from C, analysis S tests P. When that graph is implicit and untracked, it breaks silently — a refuted prediction doesn't update the claims that depend on it, a changed assumption doesn't propagate to its consequences.
 
-Horizon makes that graph explicit and keeps it consistent:
+deSitter makes that graph explicit and keeps it consistent:
 
 - **Register** claims, assumptions, predictions, analyses, theories, and their relationships
 - **Validate** the epistemic web against hard invariants (bidirectional links, DAG structure, tier constraints, coverage)
-- **Record** analysis results — Horizon never runs analyses; researchers run them and record the outcome
+- **Record** analysis results — deSitter never runs analyses; researchers run them and record the outcome
 - **Render** human-readable views (markdown tables, summaries) incrementally
 - **Inspect** the web for structural gaps — uncovered claims, untested assumptions, missing derivations
 - **Health-check** the project in one command — usable by CI or an AI agent
 
 ### The Audit Scaffold Principle
 
-Horizon surfaces structural facts about the epistemic graph. It never makes logical judgments or prescriptive recommendations. The system is the scaffold. The researcher or AI agent is the auditor.
+deSitter surfaces structural facts about the epistemic graph. It never makes logical judgments or prescriptive recommendations. The system is the scaffold. The researcher or AI agent is the auditor.
 
 This means:
 - `get_structural_gaps` returns observations ("this assumption has no tested_by prediction"), not advice
 - `health_check` reports invariant violations, not research strategy
-- An AI agent calls traversal tools and applies its own domain knowledge — Horizon provides the map, not the conclusions
+- An AI agent calls traversal tools and applies its own domain knowledge — deSitter provides the map, not the conclusions
 
 The primary interface is an **MCP server** so AI agents (Claude, Cursor, Copilot) can call all operations as typed tools with no subprocess wrangling. A full **CLI** provides the same surface for humans and scripts.
 
@@ -43,25 +43,25 @@ The primary interface is an **MCP server** so AI agents (Claude, Cursor, Copilot
 ## Quick Start
 
 ```bash
-pip install horizon-research          # CLI + adapters
-pip install "horizon-research[mcp]"   # + MCP server
+pip install desitter          # CLI + adapters
+pip install "desitter[mcp]"   # + MCP server
 ```
 
 ```bash
 # Initialise a project workspace
-horizon init
+ds init
 
 # Register a claim
-horizon register claim '{"id": "C-001", "statement": "...", "type": "foundational", ...}'
+ds register claim '{"id": "C-001", "statement": "...", "type": "foundational", ...}'
 
 # Run all health checks
-horizon health
+ds health
 
 # Inspect structural gaps
-horizon inspect
+ds inspect
 
 # Start the MCP server (for AI agent use)
-horizon-mcp
+ds-mcp
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for a full technical walkthrough.
@@ -77,7 +77,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a full technical walkthrough.
 | **Human parity** | Every MCP operation is also a CLI command. Humans get rich terminal output; scripts get `--json` |
 | **Single gateway** | All mutations go through one boundary. No MCP-specific or CLI-specific business logic |
 | **Invariants at mutation time** | Broken references, cycles, and bidirectional inconsistencies are caught when introduced — not discovered later |
-| **Consumer model** | Horizon records analysis results from researcher-run tools. It never executes analyses itself |
+| **Consumer model** | deSitter records analysis results from researcher-run tools. It never executes analyses itself |
 | **Domain-neutral** | Works for physics, ML, medicine, social science. The vocabulary is general empirical reasoning |
 | **Zero-friction dependencies** | Epistemic kernel is stdlib-only. `click`/`rich` for CLI UX. `fastmcp` opt-in for MCP |
 
@@ -105,7 +105,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for a full technical walkthrough.
                       │
 ┌─────────────────────▼────────────────────────────────┐
 │  Config (config.py) — runtime contract               │
-│  HorizonConfig · ProjectContext · ProjectPaths       │
+│  DesitterConfig · ProjectContext · ProjectPaths       │
 └─────────────────────┬────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────┐
@@ -128,8 +128,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for data flow, package layout, design dec
 ## Package Layout
 
 ```
-src/horizon_research/
-├── config.py               # HorizonConfig, ProjectContext, load_config(), build_context()
+src/desitter/
+├── config.py               # DesitterConfig, ProjectContext, load_config(), build_context()
 ├── epistemic/              # Domain kernel — pure Python, zero I/O
 │   ├── types.py            # Typed IDs, enums, Finding
 │   ├── model.py            # Entity dataclasses (Claim, Prediction, …)
@@ -183,7 +183,7 @@ pytest --cov
 | 2 | Persistence, config, packaging | Pending |
 | 3 | Core and view services (gateway, validate, health, render) | Pending |
 | 4 | Interface layer — MCP server + CLI | Pending |
-| 5 | Human-first UX (Rich output, `horizon inspect`) | Pending |
+| 5 | Human-first UX (Rich output, `ds inspect`) | Pending |
 | 6 | Results ingestion (record_result, SDK shim) | Pending |
 | 7 | Governance — sessions, close gates (opt-in) | Pending |
 

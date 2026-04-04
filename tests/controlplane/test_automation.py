@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.controlplane.automation import (
+from desitter.controlplane.automation import (
     DEFAULT_RENDER_TRIGGERS,
     RenderTrigger,
     should_render,

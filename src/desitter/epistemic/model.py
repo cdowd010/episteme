@@ -47,7 +47,7 @@ class Claim:
 
     'parameter_constraints' is an annotation map: {ParameterId: constraint_str}.
     The constraint string is human-readable ("< 0.05", "> 3.0", "in [0.1, 10]").
-    Horizon does not evaluate constraints — it surfaces them when a referenced
+    deSitter does not evaluate constraints — it surfaces them when a referenced
     parameter changes, so the researcher knows to re-check this claim.
     """
     id: ClaimId
@@ -159,12 +159,12 @@ class PairwiseSeparation:
 class Analysis:
     """A piece of analytical work whose results feed back into the epistemic web.
 
-    Horizon does not run analyses — the researcher runs them using their
+    deSitter does not run analyses — the researcher runs them using their
     preferred tools (SageMath, Python, R, Jupyter, etc.) and records the
-    result via `horizon record` or the `record_result` MCP tool.
+    result via `ds record` or the `record_result` MCP tool.
 
     'path' and 'command' are provenance pointers: they tell the researcher
-    (or agent) where the code lives and how to run it. Horizon never invokes
+    (or agent) where the code lives and how to run it. deSitter never invokes
     them. The git SHA at record time is captured on the AnalysisResult, giving
     a complete immutable provenance chain: path + SHA + recorded value.
 

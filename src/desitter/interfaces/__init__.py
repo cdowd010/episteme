@@ -11,7 +11,7 @@ Current interfaces:
 Planned interfaces:
   rest/  — REST API adapter (FastAPI or similar)
   gui/   — Desktop or web GUI adapter
-  sdk/   — Python library API (horizon_research.record(), etc.)
+  sdk/   — Python library API (desitter.record(), etc.)
 
 Adding a new interface means creating a new subdirectory here.
 Nothing in controlplane/, views/, or epistemic/ needs to change.

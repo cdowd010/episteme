@@ -1,12 +1,12 @@
 # Architecture
 
-This document explains how Horizon Research works end-to-end: the layer model, the epistemic domain, data flow through the system, key design decisions, and the package dependency rules.
+This document explains how deSitter works end-to-end: the layer model, the epistemic domain, data flow through the system, key design decisions, and the package dependency rules.
 
 ---
 
 ## Table of Contents
 
-1. [What Horizon Is](#1-what-horizon-is)
+1. [What deSitter Is](#1-what-desitter-is)
 2. [The Layer Cake](#2-the-layer-cake)
 3. [The Epistemic Web](#3-the-epistemic-web)
 4. [Data Flow: Registering a Claim](#4-data-flow-registering-a-claim)
@@ -19,7 +19,7 @@ This document explains how Horizon Research works end-to-end: the layer model, t
 
 ---
 
-## 1. What Horizon Is
+## 1. What deSitter Is
 
 ### The problem
 
@@ -27,30 +27,30 @@ Research projects accumulate a hidden graph of dependencies between ideas. A cla
 
 **Epistemic** means "relating to knowledge and how it's justified." An **epistemic web** is the explicit, machine-checkable graph of those dependencies: what claims exist, what they depend on, what predictions they make, and what evidence supports or refutes them.
 
-Horizon manages that graph.
+deSitter manages that graph.
 
 ### The Audit Scaffold Principle
 
-Horizon is an **audit scaffold**, not a reasoning engine. It surfaces structural facts about the epistemic graph — missing links, untested assumptions, uncovered predictions — and gives researchers and AI agents the navigational structure to do their own reasoning.
+deSitter is an **audit scaffold**, not a reasoning engine. It surfaces structural facts about the epistemic graph — missing links, untested assumptions, uncovered predictions — and gives researchers and AI agents the navigational structure to do their own reasoning.
 
-**What Horizon does:**
+**What deSitter does:**
 - Records the structure of the epistemic graph
 - Enforces referential integrity and bidirectional invariants
 - Reports structural observations (`StructuralGap`, `Finding`)
 - Exposes a traversal API so agents can navigate the graph
 
-**What Horizon does not do:**
+**What deSitter does not do:**
 - Make logical judgments about whether a theory is correct
 - Prescribe which experiments to run
 - Suggest how to fix a structural gap
-- Execute analyses (the researcher runs them; Horizon records the results)
+- Execute analyses (the researcher runs them; deSitter records the results)
 
-This distinction matters. An AI agent calling `get_structural_gaps` gets a list of observations — "Assumption A-003 has a falsifiable consequence but no predictions in `tested_by`" — and applies its own domain knowledge to decide what to do about it. Horizon provides the map. The researcher or agent is the auditor.
+This distinction matters. An AI agent calling `get_structural_gaps` gets a list of observations — "Assumption A-003 has a falsifiable consequence but no predictions in `tested_by`" — and applies its own domain knowledge to decide what to do about it. deSitter provides the map. The researcher or agent is the auditor.
 
 ### Control plane vs. data plane
 
 - The **data plane** is the project state on disk: canonical JSON registries of claims and predictions, generated markdown views, recorded analysis results. This is the research artifact.
-- The **control plane** is the code that manages that data plane: validates consistency, renders views, records results, and exposes everything through a stable API. This is Horizon.
+- The **control plane** is the code that manages that data plane: validates consistency, renders views, records results, and exposes everything through a stable API. This is deSitter.
 - The **epistemic web** is the in-memory representation of the data plane that the control plane works with — the domain model at the core.
 
 ---
@@ -61,7 +61,7 @@ This distinction matters. An AI agent calling `get_structural_gaps` gets a list 
 
 MCP (Model Context Protocol) is an open standard that lets AI agents (Claude, Cursor, GitHub Copilot, etc.) call typed tools exposed by a server — similar to REST APIs, but designed specifically for AI agent use. Instead of an HTTP request, an agent calls a named tool with structured arguments and gets a structured result back. No subprocess wrangling, no screen scraping.
 
-Horizon's MCP server is the primary interface for AI agents. An agent calls `register_claim(...)` or `run_health_check()` directly as a tool, with full type information and structured responses.
+deSitter's MCP server is the primary interface for AI agents. An agent calls `register_claim(...)` or `run_health_check()` directly as a tool, with full type information and structured responses.
 
 ### The layers
 
@@ -87,7 +87,7 @@ Horizon's MCP server is the primary interface for AI agents. An agent calls `reg
                       │
 ┌─────────────────────▼────────────────────────────────┐
 │  Config (config.py) — runtime contract               │
-│  HorizonConfig · ProjectContext · ProjectPaths       │
+│  DesitterConfig · ProjectContext · ProjectPaths       │
 │  load_config() · build_context()                     │
 └─────────────────────┬────────────────────────────────┘
                       │
@@ -135,7 +135,7 @@ All entry points live under `interfaces/` as equal peers. No interface is primar
 
 Every interface is a **thin adapter**: parse inputs, call the same controlplane/views/features function, format outputs. If a handler contains business logic, it belongs in `controlplane/` or `views/` instead.
 
-One exception: agent scaffolding (`.horizon/agents.md`, `get_protocol`, `horizon init --with-agent`) lives in `interfaces/mcp/` only. It is AI-agent-specific documentation infrastructure, not shared product logic.
+One exception: agent scaffolding (`.desitter/agents.md`, `get_protocol`, `ds init --with-agent`) lives in `interfaces/mcp/` only. It is AI-agent-specific documentation infrastructure, not shared product logic.
 
 ---
 
@@ -184,7 +184,7 @@ erDiagram
 | **Claim** | Atomic falsifiable assertion. Forms a DAG via `depends_on` — derived claims build on foundational ones. |
 | **Assumption** | Premise taken as given. Empirical [E] assumptions may have a `falsifiable_consequence`; methodological [M] ones describe how the study is run. |
 | **Prediction** | Testable consequence of one or more claims. Has a tier, status, and measurement regime. `claim_ids` is the full set of claims that jointly imply this prediction. |
-| **Analysis** | A piece of analytical work. Horizon never runs it — the researcher runs it and records the result via `horizon record` or the `record_result` MCP tool. `path` and `command` are provenance pointers. |
+| **Analysis** | A piece of analytical work. deSitter never runs it — the researcher runs it and records the result via `ds record` or the `record_result` MCP tool. `path` and `command` are provenance pointers. |
 | **IndependenceGroup** | A cluster of predictions sharing a common derivation chain. Prevents overcounting correlated evidence — two analyses that both depend on the same data aren't independent. |
 | **Theory** | Higher-level explanatory framework. Organises related claims and predictions. |
 | **Discovery** | A significant finding worth recording, even if it doesn't fit neatly into claims or predictions. |
@@ -294,10 +294,10 @@ sequenceDiagram
 ## 6. Package Layout and Dependency Rules
 
 ```
-src/horizon_research/
+src/desitter/
 ├── __init__.py                  # version, public API re-exports
-├── __main__.py                  # python -m horizon_research → CLI
-├── config.py                    # HorizonConfig, ProjectContext, ProjectPaths,
+├── __main__.py                  # python -m desitter → CLI
+├── config.py                    # DesitterConfig, ProjectContext, ProjectPaths,
 │                                #   load_config(), build_context()
 │
 ├── epistemic/                   # ── DOMAIN KERNEL ───────────────────────────
@@ -425,7 +425,7 @@ Adding a new resource type means one entry in this table.
 @dataclass
 class ProjectContext:
     workspace: Path
-    config: HorizonConfig    # project_dir, …
+    config: DesitterConfig    # project_dir, …
     paths: ProjectPaths      # all derived filesystem paths, computed once at startup
 ```
 
@@ -485,17 +485,17 @@ graph LR
 
 ### The Audit Scaffold Principle
 
-Horizon surfaces structural facts; it never makes logical judgments. This shapes every API:
+deSitter surfaces structural facts; it never makes logical judgments. This shapes every API:
 
 - `get_structural_gaps` returns observations, not recommendations
 - `health_check` reports invariant violations, not research strategy
 - `check_stale` identifies which analyses need re-running after a parameter change — it does not decide whether re-running is necessary
 
-This keeps Horizon domain-neutral and usable across disciplines. A system that understood "what to do next" would need to understand the research domain. A system that surfaces "what is structurally incomplete" works for physics, medicine, and ML equally.
+This keeps deSitter domain-neutral and usable across disciplines. A system that understood "what to do next" would need to understand the research domain. A system that surfaces "what is structurally incomplete" works for physics, medicine, and ML equally.
 
 ### Consumer model (no execution)
 
-Horizon does not run analyses. The researcher runs them using their preferred tools (SageMath, Python, R, Jupyter) and records results via `horizon record` or the `record_result` MCP tool.
+deSitter does not run analyses. The researcher runs them using their preferred tools (SageMath, Python, R, Jupyter) and records results via `ds record` or the `record_result` MCP tool.
 
 Analysis entities carry `path` and `command` as documentation only — provenance pointers the researcher can follow. The git SHA at record time is captured on the result, giving an immutable chain: `path + SHA + recorded value`.
 

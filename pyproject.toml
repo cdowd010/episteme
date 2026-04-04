@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "horizon-research"
+name = "desitter"
 version = "0.1.0"
 description = "A control plane for managing research epistemic webs"
 readme = "README.md"
@@ -27,18 +27,19 @@ dev = [
     "pytest-cov>=5.0",
 ]
 all = [
-    "horizon-research[mcp,compute]",
+    "desitter[mcp,compute]",
 ]
 
 [project.scripts]
-horizon = "horizon_research.interfaces.cli.main:cli"
+ds = "desitter.interfaces.cli.main:cli"
+ds-mcp = "desitter.interfaces.mcp.server:run"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/horizon_research"]
+packages = ["src/desitter"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.coverage.run]
-source = ["horizon_research"]
+source = ["desitter"]

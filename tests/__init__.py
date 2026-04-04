@@ -1,4 +1,4 @@
-"""Test suite for horizon_research.
+"""Test suite for desitter.
 
 Structure mirrors the package layout:
   tests/epistemic/     — domain core: pure Python, no I/O, milliseconds

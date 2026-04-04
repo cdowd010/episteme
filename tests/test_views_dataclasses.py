@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from horizon_research.epistemic.types import Finding, Severity
-from horizon_research.views.health import HealthReport
+from desitter.epistemic.types import Finding, Severity
+from desitter.views.health import HealthReport
 
 
 class TestHealthReport:

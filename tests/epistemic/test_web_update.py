@@ -5,7 +5,7 @@ import copy
 
 import pytest
 
-from horizon_research.epistemic.types import (
+from desitter.epistemic.types import (
     AnalysisId,
     AssumptionId,
     AssumptionType,
@@ -20,7 +20,7 @@ from horizon_research.epistemic.types import (
     PredictionStatus,
     TheoryStatus,
 )
-from horizon_research.epistemic.web import BrokenReferenceError, EpistemicWeb
+from desitter.epistemic.web import BrokenReferenceError, EpistemicWeb
 
 from .conftest import (
     make_analysis,

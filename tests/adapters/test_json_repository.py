@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from horizon_research.adapters.json_repository import JsonRepository
+from desitter.adapters.json_repository import JsonRepository
 
 
 class TestLoadFile:
