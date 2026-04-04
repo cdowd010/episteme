@@ -15,8 +15,11 @@ from typing import Any
 from .types import (
     AnalysisId,
     AssumptionId,
+    AssumptionType,
+    ClaimCategory,
     ClaimId,
     ClaimStatus,
+    ClaimType,
     ConceptId,
     ConfidenceTier,
     DeadEndId,
@@ -47,11 +50,11 @@ class Claim:
     """
     id: ClaimId
     statement: str
-    type: str                                    # "foundational" | "derived"
+    type: ClaimType
     scope: str                                   # "global", "domain-specific"
     falsifiability: str
     status: ClaimStatus = ClaimStatus.ACTIVE
-    category: str = "qualitative"                # "numerical" | "qualitative"
+    category: ClaimCategory = ClaimCategory.QUALITATIVE
     assumptions: set[AssumptionId] = field(default_factory=set)
     depends_on: set[ClaimId] = field(default_factory=set)
     analyses: set[AnalysisId] = field(default_factory=set)
@@ -70,7 +73,7 @@ class Assumption:
     """
     id: AssumptionId
     statement: str
-    type: str                                    # "E" (empirical), "M" (methodological)
+    type: AssumptionType
     scope: str
     used_in_claims: set[ClaimId] = field(default_factory=set)
     depends_on: set[AssumptionId] = field(default_factory=set)

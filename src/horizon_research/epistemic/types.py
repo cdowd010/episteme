@@ -89,3 +89,18 @@ class ClaimStatus(Enum):
     ACTIVE = "active"        # normal, in-use
     REVISED = "revised"      # statement updated; downstream may need re-evaluation
     RETRACTED = "retracted"  # found to be wrong; predictions citing it are broken
+
+
+class ClaimType(Enum):
+    FOUNDATIONAL = "foundational"  # axiomatic starting point; must not depend on other claims
+    DERIVED = "derived"            # follows from other claims via depends_on
+
+
+class ClaimCategory(Enum):
+    NUMERICAL = "numerical"    # a quantitative assertion; should have linked analyses
+    QUALITATIVE = "qualitative"
+
+
+class AssumptionType(Enum):
+    EMPIRICAL = "E"        # can in principle be falsified by observation
+    METHODOLOGICAL = "M"   # a choice of method or modelling convention

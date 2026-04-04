@@ -10,7 +10,18 @@ Semantic/coverage invariants live here and are checked on demand.
 """
 from __future__ import annotations
 
-from .types import ClaimStatus, Finding, Severity
+from .types import (
+    AssumptionType,
+    ClaimCategory,
+    ClaimStatus,
+    ClaimType,
+    ConfidenceTier,
+    EvidenceKind,
+    Finding,
+    MeasurementRegime,
+    PredictionStatus,
+    Severity,
+)
 from .web import EpistemicWeb
 
 
@@ -18,29 +29,29 @@ def validate_tier_constraints(web: EpistemicWeb) -> list[Finding]:
     """Tier A: 0 free params. Tier B: must state conditional_on."""
     findings: list[Finding] = []
     for pid, pred in web.predictions.items():
-        if pred.tier.value == "A" and pred.free_params != 0:
+        if pred.tier == ConfidenceTier.A and pred.free_params != 0:
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",
                 f"Tier A prediction has {pred.free_params} free params (must be 0)",
             ))
-        if pred.tier.value == "B" and not pred.conditional_on:
+        if pred.tier == ConfidenceTier.B and not pred.conditional_on:
             findings.append(Finding(
                 Severity.WARNING,
                 f"predictions/{pid}",
                 "Tier B prediction missing 'conditional_on'",
             ))
-        if pred.measurement_regime.value == "measured" and pred.observed is None:
+        if pred.measurement_regime == MeasurementRegime.MEASURED and pred.observed is None:
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",
-                "measurement_regime='measured' requires an observed value",
+                "measurement_regime=MEASURED requires an observed value",
             ))
-        if pred.measurement_regime.value == "bound_only" and pred.observed_bound is None:
+        if pred.measurement_regime == MeasurementRegime.BOUND_ONLY and pred.observed_bound is None:
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",
-                "measurement_regime='bound_only' requires observed_bound",
+                "measurement_regime=BOUND_ONLY requires observed_bound",
             ))
     return findings
 
@@ -87,7 +98,7 @@ def validate_coverage(web: EpistemicWeb) -> list[Finding]:
     findings: list[Finding] = []
 
     for cid, claim in web.claims.items():
-        if claim.category == "numerical" and not claim.analyses:
+        if claim.category == ClaimCategory.NUMERICAL and not claim.analyses:
             findings.append(Finding(
                 Severity.INFO,
                 f"claims/{cid}",
@@ -95,7 +106,7 @@ def validate_coverage(web: EpistemicWeb) -> list[Finding]:
             ))
 
     for aid, assumption in web.assumptions.items():
-        if assumption.type == "E" and not assumption.falsifiable_consequence:
+        if assumption.type == AssumptionType.EMPIRICAL and not assumption.falsifiable_consequence:
             findings.append(Finding(
                 Severity.WARNING,
                 f"assumptions/{aid}",
@@ -104,7 +115,7 @@ def validate_coverage(web: EpistemicWeb) -> list[Finding]:
 
     stressed = [
         pid for pid, p in web.predictions.items()
-        if p.status.value == "STRESSED"
+        if p.status == PredictionStatus.STRESSED
     ]
     if stressed:
         findings.append(Finding(
@@ -195,13 +206,69 @@ def validate_implicit_assumption_coverage(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
+def validate_tests_conditional_overlap(web: EpistemicWeb) -> list[Finding]:
+    """CRITICAL: a prediction cannot both test and condition on the same assumption.
+
+    tests_assumptions means 'this outcome bears on whether the assumption holds'.
+    conditional_on means 'this prediction is only valid if the assumption holds'.
+    These are logically contradictory for the same assumption.
+    """
+    findings: list[Finding] = []
+    for pid, pred in web.predictions.items():
+        overlap = pred.tests_assumptions & pred.conditional_on
+        if overlap:
+            findings.append(Finding(
+                Severity.CRITICAL,
+                f"predictions/{pid}",
+                f"Assumption(s) in both tests_assumptions and conditional_on "
+                f"(logically contradictory): {sorted(overlap)}",
+            ))
+    return findings
+
+
+def validate_foundational_claim_deps(web: EpistemicWeb) -> list[Finding]:
+    """WARNING: foundational claims are axioms and should not depend on other claims."""
+    findings: list[Finding] = []
+    for cid, claim in web.claims.items():
+        if claim.type == ClaimType.FOUNDATIONAL and claim.depends_on:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"claims/{cid}",
+                f"Foundational claim has depends_on entries "
+                f"(foundational claims are axioms): {sorted(claim.depends_on)}",
+            ))
+    return findings
+
+
+def validate_evidence_consistency(web: EpistemicWeb) -> list[Finding]:
+    """WARNING: flag evidence_kind/tier combinations that are logically inconsistent.
+
+    Tier C is a fit/consistency check by definition — it cannot simultaneously
+    be a novel prediction (which would be Tier A or B).
+    """
+    findings: list[Finding] = []
+    for pid, pred in web.predictions.items():
+        if (pred.tier == ConfidenceTier.C
+                and pred.evidence_kind == EvidenceKind.NOVEL_PREDICTION):
+            findings.append(Finding(
+                Severity.WARNING,
+                f"predictions/{pid}",
+                "Tier C (fit/consistency) prediction marked as NOVEL_PREDICTION — "
+                "fit checks are definitionally not novel predictions",
+            ))
+    return findings
+
+
 def validate_all(web: EpistemicWeb) -> list[Finding]:
     """Run all domain validators."""
     return (
         validate_retracted_claim_citations(web)
+        + validate_tests_conditional_overlap(web)
         + validate_tier_constraints(web)
+        + validate_evidence_consistency(web)
         + validate_independence_semantics(web)
         + validate_coverage(web)
         + validate_assumption_testability(web)
         + validate_implicit_assumption_coverage(web)
+        + validate_foundational_claim_deps(web)
     )
