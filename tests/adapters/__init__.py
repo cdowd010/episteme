@@ -1,0 +1,4 @@
+"""Tests for infrastructure adapters.
+
+Uses tmp_path fixtures (pytest) for filesystem-backed adapter tests.
+"""

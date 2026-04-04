@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "horizon-research"
+version = "0.1.0"
+description = "A control plane for managing research epistemic webs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+mcp = [
+    "fastmcp>=0.1",
+]
+compute = [
+    "numpy>=1.26",
+    "scipy>=1.12",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+all = [
+    "horizon-research[mcp,compute]",
+]
+
+[project.scripts]
+horizon = "horizon_research.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/horizon_research"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["horizon_research"]
