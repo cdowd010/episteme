@@ -93,8 +93,8 @@ deSitter's MCP server is the primary interface for AI agents. An agent calls `re
                       │
 ┌─────────────────────▼────────────────────────────────┐
 │  Infrastructure Adapters (adapters/)                 │
-│  json_repository · results_repository                │
-│  transaction_log · markdown_renderer                 │
+│  json_repository · transaction_log                   │
+│  markdown_renderer                                   │
 └─────────────────────┬────────────────────────────────┘
                       │
 ┌─────────────────────▼────────────────────────────────┐
@@ -168,9 +168,11 @@ erDiagram
     Claim ||--o{ Analysis : "covered_by"
     Prediction }o--o{ Claim : "claim_ids"
     Prediction }o--o{ Assumption : "tests_assumptions"
+    Prediction }o--o{ Assumption : "conditional_on"
     Prediction }o--o| Analysis : "analysis"
     Prediction }o--o| IndependenceGroup : "independence_group"
     IndependenceGroup ||--o{ Prediction : "member_predictions"
+    IndependenceGroup ||--|| PairwiseSeparation : "separated_from"
     Theory }o--o{ Claim : "related_claims"
     Theory }o--o{ Prediction : "related_predictions"
     DeadEnd }o--o{ Prediction : "related_predictions"
@@ -181,16 +183,17 @@ erDiagram
 
 | Entity | Role |
 |--------|------|
-| **Claim** | Atomic falsifiable assertion. Forms a DAG via `depends_on` — derived claims build on foundational ones. |
-| **Assumption** | Premise taken as given. Empirical [E] assumptions may have a `falsifiable_consequence`; methodological [M] ones describe how the study is run. |
-| **Prediction** | Testable consequence of one or more claims. Has a tier, status, and measurement regime. `claim_ids` is the full set of claims that jointly imply this prediction. |
-| **Analysis** | A piece of analytical work. deSitter never runs it — the researcher runs it and records the result via `ds record` or the `record_result` MCP tool. `path` and `command` are provenance pointers. |
+| **Claim** | Atomic falsifiable assertion. Forms a DAG via `depends_on` — derived claims build on foundational ones. `parameter_constraints` is an annotation map `{ParameterId: constraint_str}` — deSitter surfaces these when the referenced parameter changes so the researcher knows to re-check the claim. |
+| **Assumption** | Premise taken as given. Empirical [E] assumptions may have a `falsifiable_consequence`; methodological [M] ones describe how the study is run. `depends_on` captures presupposition chains between assumptions. |
+| **Prediction** | Testable consequence of one or more claims. Has a tier, status, and measurement regime. `claim_ids` is the full set of claims that jointly imply this prediction. `tests_assumptions` marks assumptions under active test; `conditional_on` marks assumptions taken as given for the prediction to be valid. |
+| **Analysis** | A piece of analytical work. deSitter never runs it — the researcher runs it and records the result via `ds record` or the `record_result` MCP tool. `path` and `command` are provenance pointers. `uses_parameters` links to all parameters the analysis depends on, enabling staleness detection. |
 | **IndependenceGroup** | A cluster of predictions sharing a common derivation chain. Prevents overcounting correlated evidence — two analyses that both depend on the same data aren't independent. |
+| **PairwiseSeparation** | Documents the explicit justification for why two independence groups are genuinely separate. Every pair of groups must have a separation record — enforced by `validate_independence_semantics`. |
 | **Theory** | Higher-level explanatory framework. Organises related claims and predictions. |
 | **Discovery** | A significant finding worth recording, even if it doesn't fit neatly into claims or predictions. |
 | **DeadEnd** | A known dead end or abandoned direction. Valuable negative results that constrain the hypothesis space. |
 | **Concept** | A defined vocabulary term specific to the project. |
-| **Parameter** | A physical or mathematical constant (e.g., `c = 3e8 m/s`) referenced by analyses. Enables staleness detection: when a parameter changes, `check_stale` identifies which analyses need re-running. |
+| **Parameter** | A physical or mathematical constant (e.g., `c = 3e8 m/s`) referenced by analyses. Enables staleness detection: when a parameter changes, `check_stale` identifies which analyses need re-running. `used_in_analyses` is the bidirectional backlink maintained automatically by the web. |
 
 ### Bidirectional invariants
 
@@ -205,6 +208,51 @@ Five relationships in the web are **bidirectional** — both sides of the link m
 | `analysis.uses_parameters` contains `PAR-001` | `parameter.used_in_analyses` must contain `AN-001` |
 
 **Why bother?** Without this, a claim can reference an assumption that doesn't know it's being used. If you ask "which claims depend on A-001?", the answer is wrong — and you might delete A-001 thinking nothing needs it. Bidirectionality makes graph traversal safe in both directions.
+
+### Domain invariant validators
+
+Ten pure validator functions in `epistemic/invariants.py` check the web on demand. Each takes an `EpistemicWeb` and returns `list[Finding]`. `validate_all` composes them.
+
+| Validator | What it checks |
+|-----------|----------------|
+| `validate_tier_constraints` | Tier A predictions have 0 free params; Tier B have `conditional_on`; MEASURED predictions have an observed value |
+| `validate_independence_semantics` | Group membership consistency; every group pair has a `PairwiseSeparation` |
+| `validate_coverage` | Claims without analyses; Tier A predictions without independence groups |
+| `validate_assumption_testability` | Empirical assumptions with a `falsifiable_consequence` but no `tested_by` predictions |
+| `validate_retracted_claim_citations` | Predictions and claims that still cite retracted claims |
+| `validate_implicit_assumption_coverage` | Predictions that implicitly rest on empirical assumptions not in `tests_assumptions` |
+| `validate_tests_conditional_overlap` | Predictions where `tests_assumptions` and `conditional_on` share the same assumption (conflicting signals) |
+| `validate_foundational_claim_deps` | Foundational claims that incorrectly have `depends_on` entries |
+| `validate_evidence_consistency` | CONFIRMED/REFUTED predictions without a linked analysis; analyses with no linked predictions |
+| `validate_all` | Composite — runs all validators and returns merged findings |
+
+### Mutation API
+
+`EpistemicWeb` exposes a full copy-on-write mutation API. All methods return a **new web**; the original is untouched.
+
+| Method family | Entities covered |
+|---------------|------------------|
+| `register_*(entity)` | All 11 entity types: claim, assumption, prediction, analysis, theory, independence_group, discovery, dead_end, concept, parameter, pairwise_separation |
+| `update_*(entity)` | claim, assumption, prediction, analysis, theory, independence_group, discovery, dead_end, concept, parameter, pairwise_separation |
+| `remove_*(id)` | prediction, claim, assumption, parameter |
+| `transition_*(id, new_status)` | prediction, claim, theory, discovery, dead_end |
+
+All `register_*` and `update_*` methods enforce referential integrity (no broken IDs), check for cycles where applicable, and maintain all bidirectional links atomically.
+
+### Traversal and impact queries
+
+The web exposes a set of pure query methods for navigating the graph and computing blast radii. These are the primary tools for AI agents and health-check services.
+
+| Method | Returns | Use case |
+|--------|---------|----------|
+| `claim_lineage(cid)` | `set[ClaimId]` | All ancestor claims via `depends_on` (transitive closure) |
+| `assumption_lineage(cid)` | `set[AssumptionId]` | All assumptions reachable from a claim and its ancestors, including assumption presupposition chains |
+| `prediction_implicit_assumptions(pid)` | `set[AssumptionId]` | Every assumption a prediction silently rests on, including `conditional_on` and all assumption `depends_on` chains |
+| `refutation_impact(pid)` | `{claim_ids, claim_ancestors, implicit_assumptions}` | What is called into question when a prediction is refuted |
+| `assumption_support_status(aid)` | `{direct_claims, dependent_predictions, tested_by}` | Everything that depends on an assumption, directly and transitively |
+| `claims_depending_on_claim(cid)` | `set[ClaimId]` | All downstream claims built on this claim (forward traversal) |
+| `predictions_depending_on_claim(cid)` | `set[PredictionId]` | All predictions whose derivation chain includes this claim |
+| `parameter_impact(pid)` | `{stale_analyses, constrained_claims, affected_claims, affected_predictions}` | Full blast radius of a parameter change |
 
 ### Prediction tiers
 
@@ -309,17 +357,17 @@ src/desitter/
 │
 ├── adapters/                    # ── INFRASTRUCTURE ──────────────────────────
 │   ├── json_repository.py       # implements WebRepository
-│   ├── results_repository.py    # implements ResultRecorder (Phase 6)
 │   ├── markdown_renderer.py     # implements WebRenderer
-│   └── transaction_log.py       # implements TransactionLog
+│   └── transaction_log.py       # implements TransactionLog ✔ done
+│                                # results_repository.py — Phase 6
 │
 ├── controlplane/                        # ── CORE SERVICES ───────────────────────────
 │   ├── gateway.py               # Single mutation/query boundary + GatewayResult
 │   ├── validate.py              # validate_project, validate_structure
 │   ├── check.py                 # check_stale, check_refs, sync_prose
-│   ├── results.py               # record_result (Phase 6)
 │   ├── export.py                # export_json, export_markdown
-│   └── automation.py            # Render-trigger policy table
+│   └── automation.py            # Render-trigger policy table ✔ done
+│                                # results.py — Phase 6
 │
 ├── views/                       # ── VIEW SERVICES ───────────────────────────
 │   ├── health.py                # run_health_check → HealthReport

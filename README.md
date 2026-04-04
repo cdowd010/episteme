@@ -139,13 +139,13 @@ src/desitter/
 ├── adapters/               # Infrastructure — stdlib only
 │   ├── json_repository.py
 │   ├── markdown_renderer.py
-│   └── transaction_log.py
+│   └── transaction_log.py  # implemented
 ├── controlplane/                   # Core services — mutations + queries
 │   ├── gateway.py          # Single mutation/query boundary
 │   ├── validate.py         # Structural validation
 │   ├── check.py            # check_stale, check_refs
 │   ├── export.py           # Bulk JSON/markdown export
-│   └── automation.py       # Render-trigger policy table
+│   └── automation.py       # Render-trigger policy table (implemented)
 ├── views/                  # View services — read-only composed summaries
 │   ├── health.py           # Composed health report
 │   ├── render.py           # Incremental markdown generation
@@ -179,8 +179,8 @@ pytest --cov
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 1 | Domain core — EpistemicWeb, entities, invariants | In progress |
-| 2 | Persistence, config, packaging | Pending |
+| 1 | Domain core — EpistemicWeb, entities, invariants | **Complete — 295 tests passing** |
+| 2 | Persistence, config, packaging | **Partial** — `config.py`, `transaction_log.py`, `automation.py` done; JSON repo + renderer stubbed |
 | 3 | Core and view services (gateway, validate, health, render) | Pending |
 | 4 | Interface layer — MCP server + CLI | Pending |
 | 5 | Human-first UX (Rich output, `ds inspect`) | Pending |
