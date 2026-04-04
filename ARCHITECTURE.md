@@ -23,21 +23,35 @@ This document explains how Horizon Research works end-to-end: the layer model, t
 
 ### The problem
 
-Research projects accumulate a hidden graph of dependencies between ideas. A claim depends on an assumption. A prediction follows from that claim. A script verifies that prediction. These relationships exist whether or not you track them — but when they're implicit, they break silently: a refuted prediction doesn't update the claims that rely on it, a changed assumption doesn't propagate, and months later nobody knows why a conclusion was drawn.
+Research projects accumulate a hidden graph of dependencies between ideas. A claim depends on an assumption. A prediction follows from that claim. An analysis tests that prediction. These relationships exist whether or not you track them — but when they're implicit, they break silently: a refuted prediction doesn't update the claims that rely on it, a changed assumption doesn't propagate, and months later nobody knows why a conclusion was drawn.
 
 **Epistemic** means "relating to knowledge and how it's justified." An **epistemic web** is the explicit, machine-checkable graph of those dependencies: what claims exist, what they depend on, what predictions they make, and what evidence supports or refutes them.
 
 Horizon manages that graph.
 
+### The Audit Scaffold Principle
+
+Horizon is an **audit scaffold**, not a reasoning engine. It surfaces structural facts about the epistemic graph — missing links, untested assumptions, uncovered predictions — and gives researchers and AI agents the navigational structure to do their own reasoning.
+
+**What Horizon does:**
+- Records the structure of the epistemic graph
+- Enforces referential integrity and bidirectional invariants
+- Reports structural observations (`StructuralGap`, `Finding`)
+- Exposes a traversal API so agents can navigate the graph
+
+**What Horizon does not do:**
+- Make logical judgments about whether a theory is correct
+- Prescribe which experiments to run
+- Suggest how to fix a structural gap
+- Execute analyses (the researcher runs them; Horizon records the results)
+
+This distinction matters. An AI agent calling `get_structural_gaps` gets a list of observations — "Assumption A-003 has a falsifiable consequence but no predictions in `tested_by`" — and applies its own domain knowledge to decide what to do about it. Horizon provides the map. The researcher or agent is the auditor.
+
 ### Control plane vs. data plane
 
-These terms come from networking and infrastructure (used in Kubernetes, SDN, etc.) but apply cleanly here:
-
-- The **data plane** is the project state that lives on disk: canonical JSON registries of claims and predictions, generated markdown views, verification scripts, and integrity logs. This is the raw material — the research artifacts.
-- The **control plane** is the code that *manages* that data plane: it validates consistency, renders views, executes scripts, and exposes everything through a stable API. This is Horizon.
-- The **epistemic web** is the in-memory representation of the data plane that the control plane works with — not the whole product, just the domain model at its core.
-
-This means Horizon is not a graph library. It is a product that manages a research project end-to-end, the same way Kubernetes manages a cluster.
+- The **data plane** is the project state on disk: canonical JSON registries of claims and predictions, generated markdown views, recorded analysis results. This is the research artifact.
+- The **control plane** is the code that manages that data plane: validates consistency, renders views, records results, and exposes everything through a stable API. This is Horizon.
+- The **epistemic web** is the in-memory representation of the data plane that the control plane works with — the domain model at the core.
 
 ---
 
@@ -45,49 +59,59 @@ This means Horizon is not a graph library. It is a product that manages a resear
 
 ### What is MCP?
 
-MCP (Model Context Protocol) is an open standard, introduced by Anthropic, that lets AI agents (Claude, Cursor, GitHub Copilot, etc.) call typed tools exposed by a server — similar to how REST APIs expose endpoints, but designed specifically for AI agent use. Instead of an HTTP request, an agent calls a named tool with structured arguments and gets a structured result back. No subprocess wrangling, no screen scraping.
+MCP (Model Context Protocol) is an open standard that lets AI agents (Claude, Cursor, GitHub Copilot, etc.) call typed tools exposed by a server — similar to REST APIs, but designed specifically for AI agent use. Instead of an HTTP request, an agent calls a named tool with structured arguments and gets a structured result back. No subprocess wrangling, no screen scraping.
 
-Horizon's primary interface is an MCP server so that an AI agent can call `register_claim(...)` or `run_health_check()` directly as a tool, with full type information and structured responses.
+Horizon's MCP server is the primary interface for AI agents. An agent calls `register_claim(...)` or `run_health_check()` directly as a tool, with full type information and structured responses.
 
 ### The layers
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  MCP Server (primary)    │  CLI (secondary)           │
-│  AI agents · tools API   │  Humans · scripts · --json │
-└────────────────────────┬─────────────────────────────┘
-                         │  Both route through the Gateway.
-                         │  No MCP-specific or CLI-specific logic.
-┌────────────────────────▼─────────────────────────────┐
-│  ProjectContext                                       │
-│  Runtime contract: paths, config, caches, logs        │
-│  Passed explicitly to every service. No globals.      │
-└────────────────────────┬─────────────────────────────┘
-                         │
-┌────────────────────────▼─────────────────────────────┐
-│  Control-Plane Services                               │
-│  Gateway · Validate · Render · Health · Status        │
-│  Check · Metrics · Export                             │
-│  Execution Pipeline · Governance (opt-in)             │
-└────────────────────────┬─────────────────────────────┘
-                         │
-┌────────────────────────▼─────────────────────────────┐
-│  Domain Core  (epistemic/)                            │
-│  EpistemicWeb · entities · invariants · lineage       │
-│  Pure Python. Zero I/O. Zero external deps.           │
-└────────────────────────┬─────────────────────────────┘
-                         │  epistemic/ defines interfaces.
-                         │  adapters/ implements them.
-┌────────────────────────▼─────────────────────────────┐
-│  Infrastructure Adapters                              │
-│  JSON repository · Markdown renderer · Sandbox        │
-│  Transaction log                                      │
-└────────────────────────┬─────────────────────────────┘
-                         │
-┌────────────────────────▼─────────────────────────────┐
-│  Data Plane (filesystem)                              │
-│  project/data/*.json · views/ · verify_scripts/       │
-│  integrity/query_transaction_log.jsonl                │
+│  Interface Layer (interfaces/) — equal peers         │
+│  cli/  Humans + scripts       mcp/  AI agents        │
+│  rest/ future · gui/ future · sdk/ future            │
+└─────────────────────┬────────────────────────────────┘
+                      │  (no business logic in any interface)
+┌─────────────────────▼────────────────────────────────┐
+│  Feature Services (features/) — opt-in, flagged      │
+│  goals · discovery · protocols · governance/         │
+│  Registered only when feature flag is true           │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  View Services (views/) — always available           │
+│  health · render · status · metrics                  │
+│  Read-only composed summaries + derived files        │
+│  Never depend on features/                           │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Core Services (core/) — always available            │
+│  Mutations:  gateway · results                       │
+│  Queries:    validate · check · export               │
+│  Policy:     automation (render-trigger table)       │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Config (config.py) — runtime contract               │
+│  ProjectFeatures · HorizonConfig · ProjectContext    │
+│  load_config() · build_context()                     │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Infrastructure Adapters (adapters/)                 │
+│  json_repository · results_repository                │
+│  transaction_log · markdown_renderer                 │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Epistemic Kernel (epistemic/) — pure Python, no I/O │
+│  model · web · invariants · types · ports            │
+└──────────────────────────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Data Plane — filesystem                             │
+│  project/data/ (entity JSON) · project/views/ (md)  │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -95,14 +119,33 @@ Horizon's primary interface is an MCP server so that an AI agent can call `regis
 
 ```mermaid
 graph TD
-    MCP["mcp/"] --> CP["controlplane/"]
-    CLI["cli/"] --> CP
-    CP --> EPI["epistemic/"]
-    ADP["adapters/"] --> EPI
-    CP -.->|"through abstract interfaces"| ADP
+    IFACE["interfaces/*"] --> FEAT["features/"]
+    IFACE --> VIEWS["views/"]
+    IFACE --> CORE["core/"]
+    FEAT --> VIEWS
+    FEAT --> CORE
+    VIEWS --> CORE
+    CORE --> ADP["adapters/"]
+    CORE --> EPI["epistemic/"]
+    ADP --> EPI
+    CORE -.->|"through abstract interfaces"| ADP
 ```
 
-The dashed arrow means `controlplane/` uses adapters only through abstract interfaces defined in `epistemic/ports.py` — it never imports a concrete adapter class directly. This is explained in [Section 9](#9-the-adapter-pattern).
+The dashed arrow means `core/` uses adapters only through abstract interfaces defined in `epistemic/ports.py` — it never imports a concrete adapter class directly. Concrete adapters are wired together in the interface layer at startup when the Gateway is constructed.
+
+### Interface layer design
+
+All entry points live under `interfaces/` as equal peers. No interface is primary:
+
+- `interfaces/cli/` — humans and scripts (Click commands + Rich formatting)
+- `interfaces/mcp/` — AI agents (FastMCP tools)
+- `interfaces/rest/` — future REST API
+- `interfaces/gui/` — future web UI
+- `interfaces/sdk/` — future Python SDK
+
+Every interface is a **thin adapter**: parse inputs, call the same core/views/features function, format outputs. If a handler contains business logic, it belongs in `core/` or `views/` instead.
+
+One exception: agent scaffolding (`.horizon/agents.md`, `get_protocol`, `horizon init --with-agent`) lives in `interfaces/mcp/` only. It is AI-agent-specific documentation infrastructure, not shared product logic.
 
 ---
 
@@ -115,11 +158,11 @@ Consider a physics research project making claims about E8 symmetry theory:
 ```
 Claim C-001: "E8 symmetry predicts the W boson mass"
   └─ depends on Assumption A-001: "The gauge group is compact and simple"
-  └─ verified by Script S-001: gauge_couplings.py
+  └─ covered by Analysis AN-001: gauge_couplings.py
 
 Prediction P-001: "W mass = 80.379 GeV"  [Tier A, status: CONFIRMED]
-  └─ belongs to Claim C-001
-  └─ verified by Script S-001
+  └─ follows from Claim C-001
+  └─ tested by Analysis AN-001
   └─ member of IndependenceGroup G-001: "electroweak_sector"
   └─ observed value: 80.377 GeV
 ```
@@ -132,51 +175,56 @@ The epistemic web is the live, validated graph of all these relationships across
 erDiagram
     Claim ||--o{ Assumption : "depends on"
     Claim ||--o{ Claim : "depends_on (DAG)"
-    Claim ||--o{ Script : "verified_by"
-    Prediction }o--|| Claim : "claim_id"
-    Prediction }o--o| Script : "script"
+    Claim ||--o{ Analysis : "covered_by"
+    Prediction }o--o{ Claim : "claim_ids"
+    Prediction }o--o{ Assumption : "tests_assumptions"
+    Prediction }o--o| Analysis : "analysis"
     Prediction }o--o| IndependenceGroup : "independence_group"
     IndependenceGroup ||--o{ Prediction : "member_predictions"
-    Hypothesis }o--o{ Claim : "related_claims"
-    Hypothesis }o--o{ Prediction : "related_predictions"
-    Failure }o--o{ Prediction : "related_predictions"
-    Failure }o--o{ Claim : "related_claims"
+    Theory }o--o{ Claim : "related_claims"
+    Theory }o--o{ Prediction : "related_predictions"
+    DeadEnd }o--o{ Prediction : "related_predictions"
+    DeadEnd }o--o{ Claim : "related_claims"
+    Analysis ||--o{ Parameter : "uses_parameters"
+    Parameter ||--o{ Analysis : "used_in_analyses"
 ```
 
 | Entity | Role |
 |--------|------|
 | **Claim** | Atomic falsifiable assertion. Forms a DAG via `depends_on` — derived claims build on foundational ones. |
-| **Assumption** | Premise taken as given. Empirical [E] assumptions need a falsifiable consequence; methodological [M] ones describe how the study is run. |
-| **Prediction** | Testable consequence of a claim. Has a tier, status, and measurement regime. |
-| **Script** | Verification program that checks whether a prediction holds. |
-| **IndependenceGroup** | A cluster of predictions that share a common derivation. Used to prevent overcounting correlated evidence (e.g., two benchmarks that both come from the same training run aren't independent). Every pair of groups must document *why* they're independent. |
-| **Hypothesis** | Higher-level theoretical path being explored. Loosely groups related claims and predictions. |
-| **Discovery** | A significant finding during research — something worth recording even if it doesn't fit neatly into claims or predictions. |
-| **Failure** | A known problem or dead end. Kept so future work doesn't repeat it. |
+| **Assumption** | Premise taken as given. Empirical [E] assumptions may have a `falsifiable_consequence`; methodological [M] ones describe how the study is run. |
+| **Prediction** | Testable consequence of one or more claims. Has a tier, status, and measurement regime. `claim_ids` is the full set of claims that jointly imply this prediction. |
+| **Analysis** | A piece of analytical work. Horizon never runs it — the researcher runs it and records the result via `horizon record` or the `record_result` MCP tool. `path` and `command` are provenance pointers. |
+| **IndependenceGroup** | A cluster of predictions sharing a common derivation chain. Prevents overcounting correlated evidence — two analyses that both depend on the same data aren't independent. |
+| **Theory** | Higher-level explanatory framework. Organises related claims and predictions. |
+| **Discovery** | A significant finding worth recording, even if it doesn't fit neatly into claims or predictions. |
+| **DeadEnd** | A known dead end or abandoned direction. Valuable negative results that constrain the hypothesis space. |
 | **Concept** | A defined vocabulary term specific to the project. |
-| **Parameter** | A physical or mathematical constant (e.g., `c = 3e8 m/s`) injected into verification scripts at runtime so they don't hard-code values. |
+| **Parameter** | A physical or mathematical constant (e.g., `c = 3e8 m/s`) referenced by analyses. Enables staleness detection: when a parameter changes, `check_stale` identifies which analyses need re-running. |
 
 ### Bidirectional invariants
 
-Three relationships in the web are **bidirectional** — both sides of the link must always agree. This is enforced at mutation time, not checked after the fact.
+Five relationships in the web are **bidirectional** — both sides of the link must always agree. This is enforced at mutation time, not checked after the fact.
 
 | If... | Then... |
 |-------|---------|
 | `claim.assumptions` contains `A-001` | `assumption.used_in_claims` must contain `C-001` |
-| `claim.verified_by` contains `S-001` | `script.claims_covered` must contain `C-001` |
+| `analysis.claims_covered` contains `C-001` | `claim.analyses` must contain `AN-001` |
 | `prediction.independence_group` is `G-001` | `group.member_predictions` must contain `P-001` |
+| `prediction.tests_assumptions` contains `A-001` | `assumption.tested_by` must contain `P-001` |
+| `analysis.uses_parameters` contains `PAR-001` | `parameter.used_in_analyses` must contain `AN-001` |
 
-**Why bother?** Without this, a claim can reference an assumption that doesn't know it's being used. If you then ask "which claims depend on A-001?", the answer is wrong — and you might delete A-001 thinking nothing needs it. The bidirectionality makes graph traversal safe in both directions.
+**Why bother?** Without this, a claim can reference an assumption that doesn't know it's being used. If you ask "which claims depend on A-001?", the answer is wrong — and you might delete A-001 thinking nothing needs it. Bidirectionality makes graph traversal safe in both directions.
 
 ### Prediction tiers
 
 | Tier | Constraint | What it means |
 |------|-----------|---------------|
-| **A** | `free_params == 0` | A pure prediction made before seeing the data. The theory specifies the exact value with no tunable knobs. This is the gold standard — it cannot be retroactively fit to observations. |
+| **A** | `free_params == 0` | A pure prediction made before seeing the data. No tunable knobs. The gold standard. |
 | **B** | must set `conditional_on` | Conditional on auxiliary assumptions beyond the core theory. Still a genuine prediction, but weaker than Tier A. |
-| **C** | — | A fit or consistency check. Not a novel prediction — the theory was adjusted to match this data. Useful for calibration, not for scoring the theory. |
+| **C** | — | A fit or consistency check. Not a novel prediction — the theory was adjusted to match this data. |
 
-The tier system exists because not all "confirmed predictions" are equal. A theory that predicted a result before measurement is more credible than one that was tuned to match it. Tiers make that distinction explicit and machine-checkable.
+The tier system makes the distinction between "predicted before measurement" and "fit after measurement" explicit and machine-checkable.
 
 ### Copy-on-write mutations
 
@@ -190,7 +238,7 @@ new_web = web.register_claim(claim)  # web is unchanged; new_web has 6 claims
 # web is still intact — free rollback, no cleanup needed.
 ```
 
-This is similar to how immutable data structures work in functional programming. The cost is O(n) memory per mutation (a full deep copy), which is acceptable at research scale (hundreds to low thousands of entities). The benefit is that the gateway never needs an explicit undo mechanism.
+The cost is O(n) memory per mutation (a full deep copy), acceptable at research scale. The benefit: the gateway never needs an explicit undo mechanism.
 
 ---
 
@@ -199,7 +247,7 @@ This is similar to how immutable data structures work in functional programming.
 ```mermaid
 sequenceDiagram
     actor Agent as AI Agent / CLI
-    participant GW as Gateway
+    participant GW as Gateway (core/gateway.py)
     participant Repo as JsonRepository
     participant Web as EpistemicWeb
     participant Val as DomainValidator
@@ -224,9 +272,9 @@ sequenceDiagram
 
 Key properties:
 
-- **Validate-after-write:** the web is mutated in memory first, *then* validated. "After" here means after the in-memory mutation, but *before* writing to disk. If validation finds a CRITICAL issue, the new web is discarded and the original on-disk state is never touched. This is safer than validate-before-write because the validator runs against the exact state that would be saved — not a prediction of it.
-- **Single path:** MCP tool handlers and CLI commands call the exact same `Gateway.register()` method. No duplicated logic.
-- **Provenance:** every mutation is logged to `query_transaction_log.jsonl` with a UUID and timestamp, regardless of outcome.
+- **Validate-after-write:** the web is mutated in memory first, *then* validated — but *before* writing to disk. If validation finds a CRITICAL issue, the new web is discarded and the original on-disk state is never touched.
+- **Single path:** MCP tool handlers and CLI commands call the exact same `Gateway.register()` method. No duplicated logic anywhere.
+- **Provenance:** every mutation is logged to the transaction log with a UUID and timestamp, regardless of outcome.
 
 ---
 
@@ -235,18 +283,17 @@ Key properties:
 ```mermaid
 sequenceDiagram
     actor Agent as AI Agent / CLI
-    participant HC as health.run_health_check
-    participant Val as DomainValidator
-    participant Rend as render.check_stale
-    participant Struct as validate.validate_structure
+    participant HC as views/health.py
+    participant Val as core/validate.py
+    participant Chk as core/check.py
 
     Agent->>HC: run_health_check(context, repo, validator)
-    HC->>Val: validate(web)
-    Val-->>HC: domain findings
-    HC->>Rend: check fingerprints vs cache
-    Rend-->>HC: stale surface findings
-    HC->>Struct: check expected paths exist
-    Struct-->>HC: structure findings
+    HC->>Val: validate_structure(web)
+    Val-->>HC: structural findings
+    HC->>Chk: check_stale(context)
+    Chk-->>HC: stale analysis findings
+    HC->>Chk: check_refs(context)
+    Chk-->>HC: broken reference findings
     HC-->>Agent: HealthReport(overall, findings[])
 ```
 
@@ -258,63 +305,72 @@ sequenceDiagram
 
 ```
 src/horizon_research/
-├── __init__.py             # version, quick-start imports
-├── __main__.py             # python -m horizon_research → CLI
-├── config.py               # horizon.toml loading (only file that reads config)
+├── __init__.py                  # version, public API re-exports
+├── __main__.py                  # python -m horizon_research → CLI
+├── config.py                    # ProjectFeatures, HorizonConfig, ProjectContext,
+│                                #   ProjectPaths, load_config(), build_context()
 │
-├── epistemic/              # ── DOMAIN CORE ─────────────────────────────────
-│   ├── types.py            # NewType IDs, enums, Finding dataclass
-│   ├── model.py            # Entity @dataclasses (no methods, no I/O)
-│   ├── web.py              # EpistemicWeb: owns all mutations to the graph
-│   ├── invariants.py       # Pure functions: (EpistemicWeb) -> list[Finding]
-│   └── ports.py            # Abstract interfaces (WebRepository, etc.)
+├── epistemic/                   # ── DOMAIN KERNEL ───────────────────────────
+│   ├── types.py                 # NewType IDs, enums, Finding, Severity
+│   ├── model.py                 # Entity @dataclasses — no methods, no I/O
+│   ├── web.py                   # EpistemicWeb: all mutations to the graph
+│   ├── invariants.py            # Pure functions: (EpistemicWeb) -> list[Finding]
+│   └── ports.py                 # Abstract interfaces (WebRepository, WebRenderer, …)
 │
-├── controlplane/           # ── CONTROL PLANE ───────────────────────────────
-│   ├── context.py          # ProjectContext, HorizonConfig, ProjectPaths
-│   ├── gateway.py          # Gateway class + GatewayResult envelope
-│   ├── validate.py         # validate_project, validate_structure
-│   ├── render.py           # SHA-256 fingerprint cache + incremental render
-│   ├── check.py            # check_refs, check_stale, sync_prose
-│   ├── metrics.py          # compute_metrics, tier_a_evidence_summary
-│   ├── health.py           # run_health_check → HealthReport
-│   ├── status.py           # get_status → ProjectStatus
-│   ├── export.py           # export_json, export_markdown
-│   ├── automation.py       # render trigger table
-│   ├── execution/
-│   │   ├── scripts.py      # run_script, run_all_scripts
-│   │   ├── policy.py       # ExecutionPolicy, resolve_policy
-│   │   └── meta_verify.py  # post-run integrity checks
-│   └── governance/         # opt-in; inactive when governance_enabled=False
-│       ├── session.py      # open/close/list sessions
-│       ├── boundary.py     # check_boundary (no-op when disabled)
-│       └── close.py        # close-gate validation + git publish
+├── adapters/                    # ── INFRASTRUCTURE ──────────────────────────
+│   ├── json_repository.py       # implements WebRepository
+│   ├── results_repository.py    # implements ResultRecorder (Phase 6)
+│   ├── markdown_renderer.py     # implements WebRenderer
+│   └── transaction_log.py       # implements TransactionLog
 │
-├── adapters/               # ── INFRASTRUCTURE ──────────────────────────────
-│   ├── json_repository.py  # implements WebRepository
-│   ├── markdown_renderer.py# implements WebRenderer
-│   ├── sandbox_executor.py # implements ScriptExecutor
-│   └── transaction_log.py  # implements TransactionLog
+├── core/                        # ── CORE SERVICES ───────────────────────────
+│   ├── gateway.py               # Single mutation/query boundary + GatewayResult
+│   ├── validate.py              # validate_project, validate_structure
+│   ├── check.py                 # check_stale, check_refs, sync_prose
+│   ├── results.py               # record_result (Phase 6)
+│   ├── export.py                # export_json, export_markdown
+│   └── automation.py            # Render-trigger policy table
 │
-├── mcp/                    # ── MCP INTERFACE ───────────────────────────────
-│   ├── server.py           # FastMCP server, tool registration
-│   └── tools.py            # tool handlers → thin wrappers over Gateway
+├── views/                       # ── VIEW SERVICES ───────────────────────────
+│   ├── health.py                # run_health_check → HealthReport
+│   ├── render.py                # SHA-256 fingerprint cache + incremental render
+│   ├── status.py                # get_status → ProjectStatus
+│   └── metrics.py               # compute_metrics, tier_a_evidence_summary
 │
-└── cli/                    # ── CLI INTERFACE ───────────────────────────────
-    ├── main.py             # Click command tree
-    └── formatters.py       # Rich tables + JSON fallback
+├── features/                    # ── FEATURE SERVICES ────────────────────────
+│   ├── goals.py                 # ResearchGoal CRUD (features.goals)
+│   ├── discovery.py             # Structural gap reporter (features.inference_gap_analysis)
+│   ├── protocols.py             # Agent documentation registry
+│   └── governance/              # opt-in; inactive when governance=False
+│       ├── session.py           # open/close/list sessions; session counter
+│       ├── boundary.py          # check_boundary (no-op when disabled)
+│       ├── close.py             # close-gate validation + optional git publish
+│       └── schedules.py         # AnalysisSchedule, due_analyses computation
+│
+└── interfaces/                  # ── INTERFACE ADAPTERS ──────────────────────
+    ├── __init__.py              # Interface layer contract documentation
+    ├── cli/                     # Humans + scripts
+    │   ├── main.py              # Click command tree
+    │   └── formatters.py        # Rich tables + JSON fallback
+    └── mcp/                     # AI agents (+ agent scaffolding)
+        ├── server.py            # FastMCP entry point, feature-gated registration
+        └── tools.py             # Tool handlers → thin wrappers over core/views/features
+        # future: rest/, gui/, sdk/ go here as equal peers
 ```
 
 ### Allowed import directions
 
 | From | May import | May NOT import |
 |------|-----------|----------------|
-| `epistemic/` | stdlib only | anything above |
-| `controlplane/` | `epistemic/`, stdlib | `adapters/`, `mcp/`, `cli/` |
-| `adapters/` | `epistemic/`, stdlib | `controlplane/`, `mcp/`, `cli/` |
-| `mcp/` | `controlplane/`, `adapters/`, `epistemic/` | `cli/` |
-| `cli/` | `controlplane/`, `adapters/`, `epistemic/` | `mcp/` |
+| `epistemic/` | stdlib only | anything |
+| `adapters/` | `epistemic/`, stdlib | `core/`, `views/`, `features/`, `interfaces/` |
+| `config.py` | stdlib only | anything |
+| `core/` | `epistemic/`, `adapters/` (via protocols), `config` | `views/`, `features/`, `interfaces/` |
+| `views/` | `core/`, `epistemic/`, `config` | `features/`, `interfaces/` |
+| `features/` | `core/`, `views/`, `epistemic/`, `config` | `interfaces/` |
+| `interfaces/*` | all layers above | other interfaces (e.g. `cli/` cannot import `mcp/`) |
 
-`controlplane/` accesses adapters **only through the abstract interfaces defined in `epistemic/ports.py`** — it never imports a concrete adapter class directly. Concrete adapters are wired together in `mcp/tools.py` and `cli/main.py` at startup when the Gateway is constructed.
+`core/` accesses adapters **only through the abstract interfaces defined in `epistemic/ports.py`** — it never imports a concrete adapter class directly. Concrete adapters are wired in the interface layer at startup when the Gateway is constructed.
 
 ---
 
@@ -345,24 +401,25 @@ class GatewayResult:
     data: dict | None           # populated for get/list/query results
 ```
 
-This envelope is the contract between the Gateway and both interfaces. MCP tools serialize it to a dict. The CLI formatter renders it with Rich.
+This envelope is the contract between the Gateway and all interfaces. MCP tools serialize it to a dict. The CLI formatter renders it with Rich. A future REST API would serialize it to JSON. The contract never changes shape — only how it is presented changes.
 
-`dry_run=True` runs the full mutation and validation pipeline in memory but skips the `repo.save()` call — useful for checking whether a change would be accepted before committing it.
+`dry_run=True` runs the full mutation and validation pipeline in memory but skips `repo.save()` — useful for checking whether a change would be accepted before committing it.
 
 ### Resource aliases
 
-The gateway accepts flexible resource names and resolves them to canonical keys, so CLI users and agents can use natural language forms:
+The gateway accepts flexible resource names and resolves them to canonical keys:
 
 ```python
 GATEWAY_RESOURCE_ALIASES = {
     "claim": "claim", "claims": "claim",
     "prediction": "prediction", "predictions": "prediction",
+    "analysis": "analysis", "analyses": "analysis",
     "independence-group": "independence_group",
     # ...
 }
 ```
 
-Adding a new resource type means one entry in this table, not a new handler class.
+Adding a new resource type means one entry in this table.
 
 ### Transaction lifecycle
 
@@ -383,25 +440,25 @@ Adding a new resource type means one entry in this table, not a new handler clas
 
 ## 8. ProjectContext
 
-`ProjectContext` is the runtime configuration object passed to every control-plane service. It carries data, not callbacks — no hidden collaborators, no module-level globals, no monkey-patching.
+`ProjectContext` is the runtime configuration object passed to every service. It carries data, not callbacks — no hidden collaborators, no module-level globals.
 
 ```python
 @dataclass
 class ProjectContext:
     workspace: Path
-    config: HorizonConfig       # governance_enabled, project_dir, …
-    paths: ProjectPaths         # all derived filesystem paths, computed once at startup
+    config: HorizonConfig    # ProjectFeatures, project_dir, …
+    paths: ProjectPaths      # all derived filesystem paths, computed once at startup
 ```
 
-`ProjectPaths` is computed once in `build_context()` and never re-derived. Every service that needs a file path reads it from `context.paths` — no service computes paths on its own. This makes services fully testable: pass in a `ProjectContext` pointing at a temp directory, and nothing touches the real filesystem.
+`ProjectPaths` is computed once in `build_context()` and never re-derived. Every service that needs a file path reads it from `context.paths`. This makes all services fully testable: pass in a `ProjectContext` pointing at a temp directory and nothing touches the real filesystem.
 
 ```mermaid
 graph LR
     workspace["workspace/"] --> |"build_context()"| ctx["ProjectContext"]
-    ctx --> GW["Gateway"]
-    ctx --> HC["health.run_health_check"]
-    ctx --> ST["status.get_status"]
-    ctx --> CH["check.check_refs"]
+    ctx --> GW["core/gateway.py"]
+    ctx --> HC["views/health.py"]
+    ctx --> ST["views/status.py"]
+    ctx --> CH["core/check.py"]
 ```
 
 ---
@@ -410,13 +467,11 @@ graph LR
 
 ### The problem it solves
 
-The domain core (`epistemic/`) needs to load and save the web, render views, and execute scripts — but it shouldn't know whether storage is JSON files, a database, or an in-memory dict. Hardcoding `JsonRepository` into the domain would mean:
-- Tests would need real JSON files
-- Swapping to a different storage format would require changing domain code
+The domain core (`epistemic/`) needs to load and save the web, render views, and record results — but it shouldn't know whether storage is JSON files, a database, or an in-memory dict. Hardcoding `JsonRepository` into the domain would mean tests need real JSON files and swapping storage formats would require changing domain code.
 
 ### How it works
 
-`epistemic/ports.py` defines **what the domain needs** from infrastructure using Python `Protocol` classes. A `Protocol` is Python's version of a structural interface: any class that has the right methods satisfies it, without needing to inherit from it. This is sometimes called "duck typing with type checking."
+`epistemic/ports.py` defines **what the domain needs** from infrastructure using Python `Protocol` classes — structural interfaces: any class with the right methods satisfies the protocol without needing to inherit from it.
 
 ```python
 # epistemic/ports.py — the interface (what the domain requires)
@@ -424,7 +479,7 @@ class WebRepository(Protocol):
     def load(self) -> EpistemicWeb: ...
     def save(self, web: EpistemicWeb) -> None: ...
 
-# adapters/json_repository.py — one concrete implementation
+# adapters/json_repository.py — production implementation
 class JsonRepository:
     def load(self) -> EpistemicWeb: ...   # reads project/data/*.json
     def save(self, web: EpistemicWeb) -> None: ...
@@ -436,7 +491,7 @@ class InMemoryRepository:
     def save(self, web: EpistemicWeb) -> None: self._web = web
 ```
 
-The `Gateway` receives a `WebRepository` — it never imports `JsonRepository` directly. The concrete adapter is injected at startup in `mcp/tools.py` and `cli/main.py`. This pattern is sometimes called "dependency injection" or "ports and adapters" (Hexagonal Architecture).
+The `Gateway` receives a `WebRepository` — it never imports `JsonRepository` directly. The concrete adapter is injected at startup in `interfaces/mcp/tools.py` and `interfaces/cli/main.py`. This is sometimes called "ports and adapters" (Hexagonal Architecture) or dependency injection.
 
 ```mermaid
 graph LR
@@ -449,38 +504,58 @@ graph LR
 
 ## 10. Key Design Decisions
 
+### The Audit Scaffold Principle
+
+Horizon surfaces structural facts; it never makes logical judgments. This shapes every API:
+
+- `get_structural_gaps` returns observations, not recommendations
+- `health_check` reports invariant violations, not research strategy
+- `check_stale` identifies which analyses need re-running after a parameter change — it does not decide whether re-running is necessary
+
+This keeps Horizon domain-neutral and usable across disciplines. A system that understood "what to do next" would need to understand the research domain. A system that surfaces "what is structurally incomplete" works for physics, medicine, and ML equally.
+
+### Consumer model (no execution)
+
+Horizon does not run analyses. The researcher runs them using their preferred tools (SageMath, Python, R, Jupyter) and records results via `horizon record` or the `record_result` MCP tool.
+
+Analysis entities carry `path` and `command` as documentation only — provenance pointers the researcher can follow. The git SHA at record time is captured on the result, giving an immutable chain: `path + SHA + recorded value`.
+
+This is a deliberate constraint: no sandbox, no subprocess, no supply-chain risk from executing researcher code.
+
+### Feature isolation
+
+Features that go beyond the epistemic core (goals, governance, discovery) are **entirely off by default**. The `ProjectFeatures` flags in `config.py` gate both the MCP tools and CLI commands — not just their behavior, but their registration. A server with `goals=False` never exposes goal tools; they don't exist in that process.
+
+Disabling a feature removes zero dead code paths. The feature simply isn't wired.
+
 ### Immutable mutations (copy-on-write)
 
-Every `EpistemicWeb` mutation returns a new web. This is O(n) per mutation (a full deep copy) but correct and simple. For research-scale webs (hundreds to low thousands of entities) this is fast enough. The benefit: free rollback — the gateway holds the pre-mutation web and discards the new one if validation fails, with no undo stack, no transaction log, no compensating operations.
-
-If this ever becomes a performance bottleneck, the migration path is structural sharing of unchanged sub-dicts (similar to persistent data structures in Clojure). That's not a change to make speculatively.
+Every `EpistemicWeb` mutation returns a new web. This is O(n) per mutation (a full deep copy) but correct and simple. For research-scale webs (hundreds to low thousands of entities) this is fast enough. The benefit: free rollback — the gateway discards the new web if validation fails, with no undo stack needed.
 
 ### Native Python types
 
-Entities use `dict`, `set`, `list` — not `frozenset`, `Mapping`, or `tuple`. The `EpistemicWeb` and the gateway are the encapsulation boundaries, not the container types. This keeps entity construction simple and removes friction when writing tests: you can construct any entity with plain Python literals.
+Entities use `dict`, `set`, `list` — not `frozenset`, `Mapping`, or `tuple`. The `EpistemicWeb` and the gateway are the encapsulation boundaries, not the container types. This keeps entity construction simple and test fixtures readable: you can construct any entity with plain Python literals.
 
 ### Structural vs. semantic invariants
 
-There are two categories of constraint, enforced at different times:
+Two categories of constraint, enforced at different times:
 
-- **Structural invariants** (referential integrity, DAG acyclicity, bidirectional links) are enforced *inside* `EpistemicWeb.register_*` at mutation time. They are guaranteed by construction — it is impossible to create an `EpistemicWeb` that violates them.
-- **Semantic invariants** (tier constraints, coverage gaps, independence semantics) live in `invariants.py` and are checked on demand by the validator. They represent best-practice rules that may legitimately be incomplete during active research.
+- **Structural invariants** (referential integrity, DAG acyclicity, bidirectional links) are enforced *inside* `EpistemicWeb.register_*` at mutation time. They are guaranteed by construction.
+- **Semantic invariants** (tier constraints, coverage gaps, testability) live in `invariants.py` and are checked on demand by the validator. They represent best-practice rules that may legitimately be incomplete during active research.
 
-### One gateway, two interfaces
+### One gateway, many interfaces
 
-MCP and CLI are presentations, not implementations. All business logic lives in the gateway. This means:
-- A bug fixed in the gateway is fixed for both interfaces simultaneously
-- Adding a new resource type requires no changes to MCP or CLI dispatch logic
+All interfaces are presentations, not implementations. All business logic lives in the gateway and the service layers. This means:
+
+- A bug fixed in the gateway is fixed for CLI, MCP, and any future interface simultaneously
+- Adding a new resource type requires no changes to any interface's dispatch logic
 - Testing the gateway fully tests the product behaviour
-
-### Governance is opt-in
-
-`governance/` is entirely inactive when `governance_enabled = false` (the default). The `check_boundary()` call in the gateway is a no-op. No governance code runs on the hot path for projects that don't need it. Enabling governance adds session boundaries and close-gate validation without changing any other behaviour.
+- Adding a REST API or GUI means writing one new `interfaces/` directory, nothing else
 
 ### Dependency inversion at every boundary
 
 ```
-mcp/cli  →  controlplane  →  epistemic  ←  adapters
+interfaces/*  →  features  →  views  →  core  →  epistemic  ←  adapters
 ```
 
-`epistemic/` defines the interfaces. `adapters/` implements them. `controlplane/` uses them. The domain has zero knowledge of JSON files, markdown, subprocesses, or the MCP protocol. This means the entire domain and control plane can be tested in memory without touching the filesystem.
+`epistemic/` defines the interfaces. `adapters/` implements them. `core/` uses them. The domain has zero knowledge of JSON files, markdown, or the MCP protocol. The entire epistemic kernel and core services can be tested in memory without touching the filesystem.

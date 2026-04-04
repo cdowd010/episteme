@@ -66,16 +66,16 @@ Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 > Core tools available on both. Feature tools are MCP-only and feature-gated.
 
 ### Core CLI
-- [ ] `cli/main.py` — core commands: `register`, `get`, `list`, `transition`, `validate`, `health`, `status`, `render`, `export`, `init`
-- [ ] `cli/formatters.py` — Rich tables + JSON fallback; `doi:` and `arxiv:` sources rendered as clickable links in terminal
+- [ ] `interfaces/cli/main.py` — core commands: `register`, `get`, `list`, `transition`, `validate`, `health`, `status`, `render`, `export`, `init`
+- [ ] `interfaces/cli/formatters.py` — Rich tables + JSON fallback; `doi:` and `arxiv:` sources rendered as clickable links in terminal
 - [ ] `__main__.py` — `python -m horizon_research` works
 - [ ] `horizon init` — creates `project_config.json` (name, description, feature flags), directory structure; idempotent; no goals or schedules baked in
 - [ ] `horizon init --with-agent` — generates `.horizon/agents.md` + per-tool adapter files
 - [ ] `horizon init --refresh` — regenerates agent bootstrap files only; never touches project data
 
 ### MCP Server
-- [ ] `mcp/server.py` — FastMCP server; feature-gated tool registration from `ProjectFeatures`
-- [ ] `mcp/tools.py` — core tool handlers: `register`, `get`, `list`, `set`, `transition`, `query`, `validate`, `health`, `status`, `render`, `check_stale`, `check_refs`, `export`, `record_result`
+- [ ] `interfaces/mcp/server.py` — FastMCP server; feature-gated tool registration from `ProjectFeatures`
+- [ ] `interfaces/mcp/tools.py` — core tool handlers: `register`, `get`, `list`, `set`, `transition`, `query`, `validate`, `health`, `status`, `render`, `check_stale`, `check_refs`, `export`, `record_result`
 
 ### MCP Feature Tools (feature-gated; registered only when flag enabled)
 - [ ] `features.goals` — `features/goals.py` CRUD + `adapters/goals_repository.py` (`goals.json`); MCP tools: `get_goal`, `list_goals`, `add_goal`, `achieve_goal`, `link_goal_prediction`; gateway validates linked prediction IDs exist; broken links surface as health findings
