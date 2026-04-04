@@ -25,6 +25,7 @@ from .types import (
     DeadEndId,
     DeadEndStatus,
     DiscoveryId,
+    DiscoveryStatus,
     EvidenceKind,
     IndependenceGroupId,
     MeasurementRegime,
@@ -33,6 +34,7 @@ from .types import (
     PredictionId,
     PredictionStatus,
     TheoryId,
+    TheoryStatus,
 )
 
 
@@ -140,7 +142,7 @@ class IndependenceGroup:
     claim_lineage: set[ClaimId] = field(default_factory=set)
     assumption_lineage: set[AssumptionId] = field(default_factory=set)
     member_predictions: set[PredictionId] = field(default_factory=set)
-    measurement_regime: str | None = None
+    measurement_regime: MeasurementRegime | None = None
     notes: str | None = None
 
 
@@ -188,7 +190,7 @@ class Theory:
     """
     id: TheoryId
     title: str
-    status: str
+    status: TheoryStatus
     summary: str | None = None
     related_claims: set[ClaimId] = field(default_factory=set)
     related_predictions: set[PredictionId] = field(default_factory=set)
@@ -203,8 +205,11 @@ class Discovery:
     date: date
     summary: str
     impact: str
-    status: str
+    status: DiscoveryStatus
+    related_claims: set[ClaimId] = field(default_factory=set)
+    related_predictions: set[PredictionId] = field(default_factory=set)
     references: list[str] = field(default_factory=list)
+    source: str | None = None                    # doi:..., arxiv:..., url, citation
 
 
 @dataclass
@@ -220,6 +225,7 @@ class DeadEnd:
     status: DeadEndStatus
     related_predictions: set[PredictionId] = field(default_factory=set)
     related_claims: set[ClaimId] = field(default_factory=set)
+    references: list[str] = field(default_factory=list)
     source: str | None = None                    # doi:..., arxiv:..., url, or analysis reference
 
 
@@ -227,7 +233,6 @@ class DeadEnd:
 class Concept:
     """A defined term in the project vocabulary."""
     id: ConceptId
-    sort_order: int
     term: str
     definition: str
     aliases: list[str] = field(default_factory=list)

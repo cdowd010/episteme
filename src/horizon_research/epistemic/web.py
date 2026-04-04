@@ -33,12 +33,14 @@ from .types import (
     DeadEndId,
     DeadEndStatus,
     DiscoveryId,
+    DiscoveryStatus,
     IndependenceGroupId,
     ParameterId,
     PairwiseSeparationId,
     PredictionId,
     PredictionStatus,
     TheoryId,
+    TheoryStatus,
 )
 
 
@@ -373,9 +375,11 @@ class EpistemicWeb:
         return new
 
     def register_discovery(self, discovery: Discovery) -> EpistemicWeb:
-        """Add a discovery."""
+        """Add a discovery. Validates related_claims and related_predictions refs."""
         if discovery.id in self.discoveries:
             raise DuplicateIdError(f"Discovery {discovery.id} already exists")
+        self._check_refs_exist(discovery.related_claims, self.claims, "claim")
+        self._check_refs_exist(discovery.related_predictions, self.predictions, "prediction")
         new = self._copy()
         new.discoveries[discovery.id] = copy.deepcopy(discovery)
         return new
@@ -446,6 +450,22 @@ class EpistemicWeb:
             raise BrokenReferenceError(f"Claim {cid} does not exist")
         new = self._copy()
         new.claims[cid].status = new_status
+        return new
+
+    def transition_theory(self, tid: TheoryId, new_status: TheoryStatus) -> EpistemicWeb:
+        """Change a theory's status."""
+        if tid not in self.theories:
+            raise BrokenReferenceError(f"Theory {tid} does not exist")
+        new = self._copy()
+        new.theories[tid].status = new_status
+        return new
+
+    def transition_discovery(self, did: DiscoveryId, new_status: DiscoveryStatus) -> EpistemicWeb:
+        """Change a discovery's status."""
+        if did not in self.discoveries:
+            raise BrokenReferenceError(f"Discovery {did} does not exist")
+        new = self._copy()
+        new.discoveries[did].status = new_status
         return new
 
     # ── Update mutations — re-links bidirectional relationships ───
@@ -620,9 +640,11 @@ class EpistemicWeb:
         return new
 
     def update_discovery(self, new_discovery: Discovery) -> EpistemicWeb:
-        """Replace a discovery's fields."""
+        """Replace a discovery's fields. Validates related refs."""
         if new_discovery.id not in self.discoveries:
             raise BrokenReferenceError(f"Discovery {new_discovery.id} does not exist")
+        self._check_refs_exist(new_discovery.related_claims, self.claims, "claim")
+        self._check_refs_exist(new_discovery.related_predictions, self.predictions, "prediction")
         new = self._copy()
         new.discoveries[new_discovery.id] = copy.deepcopy(new_discovery)
         return new
@@ -648,10 +670,10 @@ class EpistemicWeb:
     # ── Remove mutations — safe deletion with ref checks ──────────
 
     def remove_prediction(self, pid: PredictionId) -> EpistemicWeb:
-        """Remove a prediction. Tears down all backlinks.
+        """Remove a prediction. Tears down all backlinks and scrubs soft references.
 
-        Predictions are leaves in the graph — nothing else references them
-        by ID — so removal is always safe structurally.
+        No entity hard-blocks prediction removal; Theory, DeadEnd, and Discovery
+        hold soft navigational links that are silently scrubbed.
         """
         if pid not in self.predictions:
             raise BrokenReferenceError(f"Prediction {pid} does not exist")
@@ -663,11 +685,13 @@ class EpistemicWeb:
                 new.assumptions[aid].tested_by.discard(pid)
         if pred.independence_group and pred.independence_group in new.independence_groups:
             new.independence_groups[pred.independence_group].member_predictions.discard(pid)
-        # Scrub soft references in theories and dead ends
+        # Scrub soft references in theories, dead ends, and discoveries
         for theory in new.theories.values():
             theory.related_predictions.discard(pid)
         for dead_end in new.dead_ends.values():
             dead_end.related_predictions.discard(pid)
+        for discovery in new.discoveries.values():
+            discovery.related_predictions.discard(pid)
         return new
 
     def remove_claim(self, cid: ClaimId) -> EpistemicWeb:

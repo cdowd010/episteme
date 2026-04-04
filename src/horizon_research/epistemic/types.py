@@ -85,6 +85,19 @@ class DeadEndStatus(Enum):
     ARCHIVED = "archived"
 
 
+class TheoryStatus(Enum):
+    ACTIVE = "active"         # currently under investigation
+    REFINED = "refined"       # initial formulation has been updated
+    ABANDONED = "abandoned"   # no longer pursued
+    SUPERSEDED = "superseded" # replaced by a better framework
+
+
+class DiscoveryStatus(Enum):
+    NEW = "new"                    # recently found, not yet integrated into the web
+    INTEGRATED = "integrated"      # incorporated as claims or predictions
+    ARCHIVED = "archived"          # historical record only
+
+
 class ClaimStatus(Enum):
     ACTIVE = "active"        # normal, in-use
     REVISED = "revised"      # statement updated; downstream may need re-evaluation
