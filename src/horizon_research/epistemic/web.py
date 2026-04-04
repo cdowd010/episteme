@@ -28,6 +28,7 @@ from .types import (
     AnalysisId,
     AssumptionId,
     ClaimId,
+    ClaimStatus,
     ConceptId,
     DeadEndId,
     DeadEndStatus,
@@ -186,6 +187,85 @@ class EpistemicWeb:
             "direct_claims": assumption.used_in_claims.copy(),
             "dependent_predictions": dependent,
             "tested_by": assumption.tested_by.copy(),
+        }
+
+    def claims_depending_on_claim(self, cid: ClaimId) -> set[ClaimId]:
+        """All claims that transitively depend on this claim (forward direction).
+
+        Uses a reverse traversal: builds a reverse depends_on index then
+        BFS from cid. Answers "if this claim is wrong, which downstream
+        claims are built on it?"
+        """
+        reverse: dict[ClaimId, set[ClaimId]] = {}
+        for other_id, claim in self.claims.items():
+            for dep in claim.depends_on:
+                reverse.setdefault(dep, set()).add(other_id)
+        result: set[ClaimId] = set()
+        stack = list(reverse.get(cid, set()))
+        while stack:
+            current = stack.pop()
+            if current in result:
+                continue
+            result.add(current)
+            stack.extend(reverse.get(current, set()))
+        return result
+
+    def predictions_depending_on_claim(self, cid: ClaimId) -> set[PredictionId]:
+        """All predictions whose derivation chain includes this claim.
+
+        Answers "if this claim is retracted, which predictions are now suspect?"
+        """
+        affected_claims = self.claims_depending_on_claim(cid) | {cid}
+        return {
+            pid for pid, pred in self.predictions.items()
+            if pred.claim_ids & affected_claims
+        }
+
+    def parameter_impact(self, pid: ParameterId) -> dict[str, set]:
+        """Full blast radius of a parameter change.
+
+        Walks: parameter → stale analyses → claims covered by those analyses
+        → predictions depending on those claims. Also includes claims that
+        carry a parameter_constraints annotation for this parameter.
+
+        Returns:
+            stale_analyses:       analyses that use this parameter
+            constrained_claims:   claims with a threshold annotation on this parameter
+            affected_claims:      claims covered by stale analyses + constrained claims
+            affected_predictions: all predictions in the downstream chain
+        """
+        param = self.parameters.get(pid)
+        if param is None:
+            return {
+                "stale_analyses": set(), "constrained_claims": set(),
+                "affected_claims": set(), "affected_predictions": set(),
+            }
+        stale_analyses = param.used_in_analyses.copy()
+        # Claims covered by stale analyses
+        affected_claims: set[ClaimId] = set()
+        for anid in stale_analyses:
+            analysis = self.analyses.get(anid)
+            if analysis:
+                affected_claims.update(analysis.claims_covered)
+        # Claims with explicit threshold constraints on this parameter
+        constrained_claims = {
+            cid for cid, c in self.claims.items()
+            if pid in c.parameter_constraints
+        }
+        affected_claims.update(constrained_claims)
+        # Predictions depending on affected claims (direct + downstream)
+        affected_predictions: set[PredictionId] = set()
+        for cid in affected_claims:
+            affected_predictions.update(self.predictions_depending_on_claim(cid))
+        # Also predictions directly linked to stale analyses
+        for pred_id, pred in self.predictions.items():
+            if pred.analysis in stale_analyses:
+                affected_predictions.add(pred_id)
+        return {
+            "stale_analyses": stale_analyses,
+            "constrained_claims": constrained_claims,
+            "affected_claims": affected_claims,
+            "affected_predictions": affected_predictions,
         }
 
     # ── Mutations (return new web) ────────────────────────────────
@@ -353,6 +433,218 @@ class EpistemicWeb:
             raise BrokenReferenceError(f"DeadEnd {did} does not exist")
         new = self._copy()
         new.dead_ends[did].status = new_status
+        return new
+
+    def transition_claim(self, cid: ClaimId, new_status: ClaimStatus) -> EpistemicWeb:
+        """Change a claim's status (ACTIVE → REVISED → RETRACTED)."""
+        if cid not in self.claims:
+            raise BrokenReferenceError(f"Claim {cid} does not exist")
+        new = self._copy()
+        new.claims[cid].status = new_status
+        return new
+
+    # ── Update mutations — re-links bidirectional relationships ───
+
+    def update_claim(self, new_claim: Claim) -> EpistemicWeb:
+        """Replace a claim's fields, maintaining all bidirectional links.
+
+        The new_claim must have the same ID as the existing claim.
+        Diffs old vs new link sets — removes stale backlinks, adds new ones.
+        Validates new refs exist and no cycle is introduced.
+        """
+        if new_claim.id not in self.claims:
+            raise BrokenReferenceError(f"Claim {new_claim.id} does not exist")
+        old = self.claims[new_claim.id]
+        self._check_refs_exist(new_claim.assumptions, self.assumptions, "assumption")
+        self._check_refs_exist(new_claim.depends_on, self.claims, "claim")
+        self._check_refs_exist(new_claim.analyses, self.analyses, "analysis")
+        self._check_refs_exist(set(new_claim.parameter_constraints.keys()), self.parameters, "parameter")
+        self._check_no_cycle_with(new_claim)
+
+        new = self._copy()
+        new.claims[new_claim.id] = copy.deepcopy(new_claim)
+
+        # Diff assumption.used_in_claims
+        for aid in old.assumptions - new_claim.assumptions:
+            new.assumptions[aid].used_in_claims.discard(new_claim.id)
+        for aid in new_claim.assumptions - old.assumptions:
+            new.assumptions[aid].used_in_claims.add(new_claim.id)
+
+        # Diff analysis.claims_covered
+        for anid in old.analyses - new_claim.analyses:
+            new.analyses[anid].claims_covered.discard(new_claim.id)
+        for anid in new_claim.analyses - old.analyses:
+            new.analyses[anid].claims_covered.add(new_claim.id)
+
+        return new
+
+    def update_assumption(self, new_assumption: Assumption) -> EpistemicWeb:
+        """Replace an assumption's fields.
+
+        used_in_claims and tested_by are maintained by claims/predictions,
+        not by the assumption itself — they stay as-is. Only depends_on
+        chain changes need validation.
+        """
+        if new_assumption.id not in self.assumptions:
+            raise BrokenReferenceError(f"Assumption {new_assumption.id} does not exist")
+        old = self.assumptions[new_assumption.id]
+        self._check_refs_exist(new_assumption.depends_on, self.assumptions, "assumption")
+        self._check_no_assumption_cycle_with(new_assumption)
+
+        new = self._copy()
+        # Preserve backlinks that are owned by other entities
+        updated = copy.deepcopy(new_assumption)
+        updated.used_in_claims = copy.deepcopy(old.used_in_claims)
+        updated.tested_by = copy.deepcopy(old.tested_by)
+        new.assumptions[new_assumption.id] = updated
+        return new
+
+    def update_prediction(self, new_prediction: Prediction) -> EpistemicWeb:
+        """Replace a prediction's fields, maintaining all bidirectional links."""
+        if new_prediction.id not in self.predictions:
+            raise BrokenReferenceError(f"Prediction {new_prediction.id} does not exist")
+        old = self.predictions[new_prediction.id]
+        self._check_refs_exist(new_prediction.claim_ids, self.claims, "claim")
+        self._check_refs_exist(new_prediction.tests_assumptions, self.assumptions, "assumption")
+        self._check_refs_exist(new_prediction.conditional_on, self.assumptions, "assumption")
+        if new_prediction.analysis and new_prediction.analysis not in self.analyses:
+            raise BrokenReferenceError(f"Analysis {new_prediction.analysis} does not exist")
+        if new_prediction.independence_group and new_prediction.independence_group not in self.independence_groups:
+            raise BrokenReferenceError(f"Independence group {new_prediction.independence_group} does not exist")
+
+        new = self._copy()
+        new.predictions[new_prediction.id] = copy.deepcopy(new_prediction)
+
+        # Diff assumption.tested_by
+        for aid in old.tests_assumptions - new_prediction.tests_assumptions:
+            new.assumptions[aid].tested_by.discard(new_prediction.id)
+        for aid in new_prediction.tests_assumptions - old.tests_assumptions:
+            new.assumptions[aid].tested_by.add(new_prediction.id)
+
+        # Diff independence_group.member_predictions
+        if old.independence_group != new_prediction.independence_group:
+            if old.independence_group and old.independence_group in new.independence_groups:
+                new.independence_groups[old.independence_group].member_predictions.discard(new_prediction.id)
+            if new_prediction.independence_group and new_prediction.independence_group in new.independence_groups:
+                new.independence_groups[new_prediction.independence_group].member_predictions.add(new_prediction.id)
+
+        return new
+
+    def update_parameter(self, new_parameter: Parameter) -> EpistemicWeb:
+        """Replace a parameter's fields (value, unit, uncertainty, etc.).
+
+        used_in_analyses is a backlink maintained by analyses — it is
+        preserved from the old parameter so callers cannot accidentally
+        corrupt the staleness tracking index.
+        """
+        if new_parameter.id not in self.parameters:
+            raise BrokenReferenceError(f"Parameter {new_parameter.id} does not exist")
+        old = self.parameters[new_parameter.id]
+        new = self._copy()
+        updated = copy.deepcopy(new_parameter)
+        updated.used_in_analyses = copy.deepcopy(old.used_in_analyses)
+        new.parameters[new_parameter.id] = updated
+        return new
+
+    # ── Remove mutations — safe deletion with ref checks ──────────
+
+    def remove_prediction(self, pid: PredictionId) -> EpistemicWeb:
+        """Remove a prediction. Tears down all backlinks.
+
+        Predictions are leaves in the graph — nothing else references them
+        by ID — so removal is always safe structurally.
+        """
+        if pid not in self.predictions:
+            raise BrokenReferenceError(f"Prediction {pid} does not exist")
+        pred = self.predictions[pid]
+        new = self._copy()
+        del new.predictions[pid]
+        for aid in pred.tests_assumptions:
+            if aid in new.assumptions:
+                new.assumptions[aid].tested_by.discard(pid)
+        if pred.independence_group and pred.independence_group in new.independence_groups:
+            new.independence_groups[pred.independence_group].member_predictions.discard(pid)
+        return new
+
+    def remove_claim(self, cid: ClaimId) -> EpistemicWeb:
+        """Remove a claim. Raises if any other claim or prediction references it.
+
+        Tear down the claim's own backlinks on assumptions and analyses.
+        Callers must first update or remove all referencing entities.
+        """
+        if cid not in self.claims:
+            raise BrokenReferenceError(f"Claim {cid} does not exist")
+        blocking_claims = [
+            c_id for c_id, c in self.claims.items()
+            if cid in c.depends_on and c_id != cid
+        ]
+        blocking_preds = [
+            p_id for p_id, p in self.predictions.items()
+            if cid in p.claim_ids
+        ]
+        if blocking_claims or blocking_preds:
+            raise BrokenReferenceError(
+                f"Claim {cid} is still referenced by "
+                f"claims {blocking_claims} and predictions {blocking_preds}"
+            )
+        claim = self.claims[cid]
+        new = self._copy()
+        del new.claims[cid]
+        for aid in claim.assumptions:
+            if aid in new.assumptions:
+                new.assumptions[aid].used_in_claims.discard(cid)
+        for anid in claim.analyses:
+            if anid in new.analyses:
+                new.analyses[anid].claims_covered.discard(cid)
+        return new
+
+    def remove_assumption(self, aid: AssumptionId) -> EpistemicWeb:
+        """Remove an assumption. Raises if any claim, prediction, or other
+        assumption references it."""
+        if aid not in self.assumptions:
+            raise BrokenReferenceError(f"Assumption {aid} does not exist")
+        blocking_claims = [
+            c_id for c_id, c in self.claims.items() if aid in c.assumptions
+        ]
+        blocking_preds = [
+            p_id for p_id, p in self.predictions.items()
+            if aid in p.tests_assumptions or aid in p.conditional_on
+        ]
+        blocking_assumptions = [
+            a_id for a_id, a in self.assumptions.items()
+            if aid in a.depends_on and a_id != aid
+        ]
+        if blocking_claims or blocking_preds or blocking_assumptions:
+            raise BrokenReferenceError(
+                f"Assumption {aid} is still referenced by "
+                f"claims {blocking_claims}, predictions {blocking_preds}, "
+                f"assumptions {blocking_assumptions}"
+            )
+        new = self._copy()
+        del new.assumptions[aid]
+        return new
+
+    def remove_parameter(self, pid: ParameterId) -> EpistemicWeb:
+        """Remove a parameter. Raises if any analysis references it.
+
+        Also cleans up dangling parameter_constraints annotations on claims
+        so the web stays consistent.
+        """
+        if pid not in self.parameters:
+            raise BrokenReferenceError(f"Parameter {pid} does not exist")
+        blocking_analyses = [
+            a_id for a_id, a in self.analyses.items()
+            if pid in a.uses_parameters
+        ]
+        if blocking_analyses:
+            raise BrokenReferenceError(
+                f"Parameter {pid} is still used by analyses {blocking_analyses}"
+            )
+        new = self._copy()
+        del new.parameters[pid]
+        # Clean up dangling constraint annotations on claims
+        for claim in new.claims.values():
+            claim.parameter_constraints.pop(pid, None)
         return new
 
     # ── Invariant checks ──────────────────────────────────────────

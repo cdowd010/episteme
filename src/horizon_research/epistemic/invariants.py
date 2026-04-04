@@ -10,7 +10,7 @@ Semantic/coverage invariants live here and are checked on demand.
 """
 from __future__ import annotations
 
-from .types import Finding, Severity
+from .types import ClaimStatus, Finding, Severity
 from .web import EpistemicWeb
 
 
@@ -129,6 +129,34 @@ def validate_assumption_testability(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
+def validate_retracted_claim_citations(web: EpistemicWeb) -> list[Finding]:
+    """CRITICAL: any prediction or claim that still cites a retracted claim."""
+    findings: list[Finding] = []
+    retracted = {
+        cid for cid, c in web.claims.items()
+        if c.status == ClaimStatus.RETRACTED
+    }
+    if not retracted:
+        return findings
+    for pid, pred in web.predictions.items():
+        cited = pred.claim_ids & retracted
+        if cited:
+            findings.append(Finding(
+                Severity.CRITICAL,
+                f"predictions/{pid}",
+                f"Prediction cites retracted claim(s): {sorted(cited)}",
+            ))
+    for cid, claim in web.claims.items():
+        bad_deps = claim.depends_on & retracted
+        if bad_deps:
+            findings.append(Finding(
+                Severity.CRITICAL,
+                f"claims/{cid}",
+                f"Claim depends on retracted claim(s): {sorted(bad_deps)}",
+            ))
+    return findings
+
+
 def validate_implicit_assumption_coverage(web: EpistemicWeb) -> list[Finding]:
     """Flag assumptions that silently underpin predictions but are never tested.
 
@@ -170,7 +198,8 @@ def validate_implicit_assumption_coverage(web: EpistemicWeb) -> list[Finding]:
 def validate_all(web: EpistemicWeb) -> list[Finding]:
     """Run all domain validators."""
     return (
-        validate_tier_constraints(web)
+        validate_retracted_claim_citations(web)
+        + validate_tier_constraints(web)
         + validate_independence_semantics(web)
         + validate_coverage(web)
         + validate_assumption_testability(web)

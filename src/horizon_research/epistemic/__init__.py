@@ -32,6 +32,7 @@ from .types import (
     AnalysisId,
     AssumptionId,
     ClaimId,
+    ClaimStatus,
     ConceptId,
     ConfidenceTier,
     DeadEndId,
@@ -63,7 +64,7 @@ __all__ = [
     "AnalysisId", "IndependenceGroupId", "ParameterId", "ConceptId", "DeadEndId",
     "PairwiseSeparationId",
     "Severity", "Finding", "ConfidenceTier", "EvidenceKind", "MeasurementRegime",
-    "PredictionStatus", "DeadEndStatus",
+    "PredictionStatus", "DeadEndStatus", "ClaimStatus",
     # model
     "Claim", "Assumption", "Prediction", "Theory", "IndependenceGroup",
     "PairwiseSeparation", "Analysis", "Discovery", "DeadEnd", "Concept", "Parameter",

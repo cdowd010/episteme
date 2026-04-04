@@ -16,6 +16,7 @@ from .types import (
     AnalysisId,
     AssumptionId,
     ClaimId,
+    ClaimStatus,
     ConceptId,
     ConfidenceTier,
     DeadEndId,
@@ -38,16 +39,23 @@ class Claim:
 
     depends_on forms a DAG. assumptions and analyses have bidirectional
     links maintained by the EpistemicWeb.
+
+    'parameter_constraints' is an annotation map: {ParameterId: constraint_str}.
+    The constraint string is human-readable ("< 0.05", "> 3.0", "in [0.1, 10]").
+    Horizon does not evaluate constraints — it surfaces them when a referenced
+    parameter changes, so the researcher knows to re-check this claim.
     """
     id: ClaimId
     statement: str
     type: str                                    # "foundational" | "derived"
     scope: str                                   # "global", "domain-specific"
     falsifiability: str
+    status: ClaimStatus = ClaimStatus.ACTIVE
     category: str = "qualitative"                # "numerical" | "qualitative"
     assumptions: set[AssumptionId] = field(default_factory=set)
     depends_on: set[ClaimId] = field(default_factory=set)
     analyses: set[AnalysisId] = field(default_factory=set)
+    parameter_constraints: dict[ParameterId, str] = field(default_factory=dict)
     source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
 
 

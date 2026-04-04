@@ -83,3 +83,9 @@ class DeadEndStatus(Enum):
     ACTIVE = "active"
     RESOLVED = "resolved"
     ARCHIVED = "archived"
+
+
+class ClaimStatus(Enum):
+    ACTIVE = "active"        # normal, in-use
+    REVISED = "revised"      # statement updated; downstream may need re-evaluation
+    RETRACTED = "retracted"  # found to be wrong; predictions citing it are broken
