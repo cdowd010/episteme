@@ -48,13 +48,15 @@ class Finding:
 class ConfidenceTier(Enum):
     """How strongly a prediction is constrained.
 
-    A: Zero free parameters — pure prediction from theory.
-    B: Conditional on stated assumptions beyond the core theory.
-    C: Fit/consistency check — not a novel prediction.
+    FULLY_SPECIFIED: Zero free parameters — pure prediction from theory.
+    CONDITIONAL: Valid only if explicitly stated assumptions hold.
+    FIT_CHECK: Agreement unsurprising — model was fit to this data, or data
+        predates the model (retrodiction). Use evidence_kind to distinguish
+        fit vs. retrodiction sub-cases. Cannot be NOVEL_PREDICTION.
     """
-    A = "A"
-    B = "B"
-    C = "C"
+    FULLY_SPECIFIED = "fully_specified"
+    CONDITIONAL = "conditional"
+    FIT_CHECK = "fit_check"
 
 
 # ── Evidence classification ───────────────────────────────────────

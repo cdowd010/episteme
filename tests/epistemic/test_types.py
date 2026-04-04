@@ -57,12 +57,12 @@ class TestFinding:
 
 class TestConfidenceTier:
     def test_values(self):
-        assert ConfidenceTier.A.value == "A"
-        assert ConfidenceTier.B.value == "B"
-        assert ConfidenceTier.C.value == "C"
+        assert ConfidenceTier.FULLY_SPECIFIED.value == "fully_specified"
+        assert ConfidenceTier.CONDITIONAL.value == "conditional"
+        assert ConfidenceTier.FIT_CHECK.value == "fit_check"
 
     def test_lookup_by_value(self):
-        assert ConfidenceTier("A") is ConfidenceTier.A
+        assert ConfidenceTier("fully_specified") is ConfidenceTier.FULLY_SPECIFIED
 
     def test_member_count(self):
         assert len(ConfidenceTier) == 3

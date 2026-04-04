@@ -126,7 +126,7 @@ class TestPrediction:
         p = Prediction(
             id=PredictionId("P-001"),
             observable="obs",
-            tier=ConfidenceTier.A,
+            tier=ConfidenceTier.FULLY_SPECIFIED,
             status=PredictionStatus.PENDING,
             evidence_kind=EvidenceKind.NOVEL_PREDICTION,
             measurement_regime=MeasurementRegime.UNMEASURED,
@@ -145,7 +145,7 @@ class TestPrediction:
         p = Prediction(
             id=PredictionId("P-002"),
             observable="mass",
-            tier=ConfidenceTier.B,
+            tier=ConfidenceTier.CONDITIONAL,
             status=PredictionStatus.CONFIRMED,
             evidence_kind=EvidenceKind.RETRODICTION,
             measurement_regime=MeasurementRegime.MEASURED,

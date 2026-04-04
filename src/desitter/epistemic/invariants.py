@@ -26,20 +26,20 @@ from .web import EpistemicWeb
 
 
 def validate_tier_constraints(web: EpistemicWeb) -> list[Finding]:
-    """Tier A: 0 free params. Tier B: must state conditional_on."""
+    """FULLY_SPECIFIED: 0 free params. CONDITIONAL: must state conditional_on."""
     findings: list[Finding] = []
     for pid, pred in web.predictions.items():
-        if pred.tier == ConfidenceTier.A and pred.free_params != 0:
+        if pred.tier == ConfidenceTier.FULLY_SPECIFIED and pred.free_params != 0:
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",
-                f"Tier A prediction has {pred.free_params} free params (must be 0)",
+                f"FULLY_SPECIFIED prediction has {pred.free_params} free params (must be 0)",
             ))
-        if pred.tier == ConfidenceTier.B and not pred.conditional_on:
+        if pred.tier == ConfidenceTier.CONDITIONAL and not pred.conditional_on:
             findings.append(Finding(
                 Severity.WARNING,
                 f"predictions/{pid}",
-                "Tier B prediction missing 'conditional_on'",
+                "CONDITIONAL prediction missing 'conditional_on'",
             ))
         if pred.measurement_regime == MeasurementRegime.MEASURED and pred.observed is None:
             findings.append(Finding(
@@ -243,17 +243,17 @@ def validate_foundational_claim_deps(web: EpistemicWeb) -> list[Finding]:
 def validate_evidence_consistency(web: EpistemicWeb) -> list[Finding]:
     """WARNING: flag evidence_kind/tier combinations that are logically inconsistent.
 
-    Tier C is a fit/consistency check by definition — it cannot simultaneously
-    be a novel prediction (which would be Tier A or B).
+    FIT_CHECK is a fit/consistency check by definition — it cannot simultaneously
+    be a novel prediction (which would be FULLY_SPECIFIED or CONDITIONAL).
     """
     findings: list[Finding] = []
     for pid, pred in web.predictions.items():
-        if (pred.tier == ConfidenceTier.C
+        if (pred.tier == ConfidenceTier.FIT_CHECK
                 and pred.evidence_kind == EvidenceKind.NOVEL_PREDICTION):
             findings.append(Finding(
                 Severity.WARNING,
                 f"predictions/{pid}",
-                "Tier C (fit/consistency) prediction marked as NOVEL_PREDICTION — "
+                "FIT_CHECK prediction marked as NOVEL_PREDICTION — "
                 "fit checks are definitionally not novel predictions",
             ))
     return findings

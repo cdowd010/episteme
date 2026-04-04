@@ -20,7 +20,7 @@ class TestDomainValidator:
         """Ensures DomainValidator.validate() returns findings from validate_all."""
         web = EpistemicWeb()
         web = web.register_prediction(
-            make_prediction(1, tier=ConfidenceTier.A, free_params=5)
+            make_prediction(1, tier=ConfidenceTier.FULLY_SPECIFIED, free_params=5)
         )
         validator = DomainValidator()
         findings = validator.validate(web)

@@ -52,7 +52,7 @@ class TestTierConstraints:
     def test_tier_a_with_free_params(self):
         web = EpistemicWeb()
         web = web.register_prediction(
-            make_prediction(1, tier=ConfidenceTier.A, free_params=2)
+            make_prediction(1, tier=ConfidenceTier.FULLY_SPECIFIED, free_params=2)
         )
         findings = validate_tier_constraints(web)
         critical = [f for f in findings if f.severity == Severity.CRITICAL]
@@ -61,7 +61,7 @@ class TestTierConstraints:
     def test_tier_a_zero_params_clean(self):
         web = EpistemicWeb()
         web = web.register_prediction(
-            make_prediction(1, tier=ConfidenceTier.A, free_params=0)
+            make_prediction(1, tier=ConfidenceTier.FULLY_SPECIFIED, free_params=0)
         )
         findings = validate_tier_constraints(web)
         assert not any("free params" in f.message for f in findings)
@@ -69,7 +69,7 @@ class TestTierConstraints:
     def test_tier_b_missing_conditional_on(self):
         web = EpistemicWeb()
         web = web.register_prediction(
-            make_prediction(1, tier=ConfidenceTier.B, conditional_on=set())
+            make_prediction(1, tier=ConfidenceTier.CONDITIONAL, conditional_on=set())
         )
         findings = validate_tier_constraints(web)
         warnings = [f for f in findings if f.severity == Severity.WARNING]
@@ -103,7 +103,7 @@ class TestTierConstraints:
         web = EpistemicWeb()
         web = web.register_assumption(make_assumption(1))
         web = web.register_prediction(
-            make_prediction(1, tier=ConfidenceTier.B, conditional_on={make_assumption_id(1)})
+            make_prediction(1, tier=ConfidenceTier.CONDITIONAL, conditional_on={make_assumption_id(1)})
         )
         findings = validate_tier_constraints(web)
         assert not any("conditional_on" in f.message for f in findings)
@@ -305,7 +305,7 @@ class TestEvidenceConsistency:
         web = web.register_prediction(
             make_prediction(
                 1,
-                tier=ConfidenceTier.C,
+                tier=ConfidenceTier.FIT_CHECK,
                 evidence_kind=EvidenceKind.NOVEL_PREDICTION,
             )
         )
@@ -317,7 +317,7 @@ class TestEvidenceConsistency:
         web = web.register_prediction(
             make_prediction(
                 1,
-                tier=ConfidenceTier.C,
+                tier=ConfidenceTier.FIT_CHECK,
                 evidence_kind=EvidenceKind.FIT_CONSISTENCY,
             )
         )
@@ -329,7 +329,7 @@ class TestEvidenceConsistency:
         web = web.register_prediction(
             make_prediction(
                 1,
-                tier=ConfidenceTier.A,
+                tier=ConfidenceTier.FULLY_SPECIFIED,
                 evidence_kind=EvidenceKind.NOVEL_PREDICTION,
             )
         )
@@ -378,7 +378,7 @@ class TestValidateAll:
         """validate_all aggregates all individual validators."""
         web = EpistemicWeb()
         web = web.register_prediction(
-            make_prediction(1, tier=ConfidenceTier.A, free_params=3)
+            make_prediction(1, tier=ConfidenceTier.FULLY_SPECIFIED, free_params=3)
         )
         findings = validate_all(web)
         assert len(findings) > 0

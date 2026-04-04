@@ -106,7 +106,7 @@ def test_register_backlink_fields_are_owned_by_web() -> None:
         Prediction(
             id=pred_id,
             observable="amplitude",
-            tier=ConfidenceTier.A,
+            tier=ConfidenceTier.FULLY_SPECIFIED,
             status=PredictionStatus.PENDING,
             evidence_kind=EvidenceKind.NOVEL_PREDICTION,
             measurement_regime=MeasurementRegime.UNMEASURED,
