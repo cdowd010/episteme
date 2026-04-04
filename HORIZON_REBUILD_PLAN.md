@@ -9,7 +9,7 @@ rebuild. Written for execution, not theory.*
 
 1. [Goal](#1-goal)
 2. [Why Rebuild Instead of Refactor](#2-why-rebuild-instead-of-refactor)
-3. [Architecture: Control Plane, Gateway, and Principles](#3-architecture-control-plane-gateway-and-principles)
+3. [Architecture: Control Plane, Gateway, and Principles](#3-architecture-control-plane-gateway-and-principles) *(includes 3.8: The Audit Scaffold Principle)*
 4. [The Epistemic Web: Core Data Structure](#4-the-epistemic-web-core-data-structure)
 5. [Phase 1 — Domain Core](#5-phase-1--domain-core)
 6. [Phase 2 — Persistence, Testing, and Packaging](#6-phase-2--persistence-testing-and-packaging)
@@ -32,10 +32,17 @@ rebuild. Written for execution, not theory.*
 
 ## 1. Goal
 
+Horizon is an **audit scaffold for empirical research** — a structured graph
+that tracks the epistemic chain connecting a research outcome back to its
+foundational assumptions. Every link in that chain is documented, sourced,
+and traversable. A researcher or AI agent that has the chain in hand can
+audit the logical correctness of each step with their own domain knowledge.
+The system makes the audit *possible*; the auditor does the reasoning.
+
 AI agents are the primary target user. Horizon ships an MCP server so that
 agents (Claude, Cursor, Copilot, etc.) can register research artifacts,
-validate the epistemic web, check health, and run verification scripts —
-all through a stable, tool-shaped API with no subprocess wrangling.
+query the epistemic web, traverse derivation chains, and surface structural
+gaps — all through a stable, tool-shaped API with no subprocess wrangling.
 
 A standalone CLI is the secondary interface: it exists for human researchers
 who want direct access and for scripting, testing, and debugging the product
@@ -47,17 +54,17 @@ is correct, both interfaces are correct.
 The rebuild starts from the epistemic web — the core data structure — and
 layers outward. Each phase ships something testable.
 
-Horizon should be rebuilt as a **control plane over a research data plane**.
-The epistemic web is the domain kernel, but the product is larger than the
-kernel: the gateway, validators, renderers, health, execution policy, and
-optional governance all belong to the control plane.
+Horizon is a **control plane over a research data plane**. The epistemic web
+is the domain kernel, but the product is larger than the kernel: the gateway,
+validators, renderers, health, and optional governance all belong to the
+control plane.
 
 ---
 
 ## 2. Why Rebuild Instead of Refactor
 
 The existing codebase has proven the *domain model* — claims, predictions,
-assumptions, verification scripts, independence groups, bidirectional
+assumptions, analysiss, independence groups, bidirectional
 invariants, transactional mutations. These ideas are sound and battle-tested.
 
 What's broken is the *wiring*:
@@ -90,9 +97,10 @@ them right from scratch.
 | Gateway as a single mutation/query boundary | Centralizes writes, rollback, provenance, dry-run behavior, and stable external semantics |
 | Transactional mutations (validate-after-write, rollback on failure) | Best architectural idea in current system |
 | Incremental rendering (SHA-256 fingerprints) | Performance |
-| Sandbox execution model | Security |
+| Consumer model for analyses | Correctness — Horizon records results, does not execute code |
 | Domain vocabulary (claims, assumptions, predictions, independence groups) | Correct domain modeling |
 | Bidirectional invariants | Correct epistemic reasoning |
+| Source provenance on all ingested data | Every link in the chain is traceable |
 
 ### What We Eliminate
 
@@ -117,7 +125,7 @@ web.
 ### 3.1 The Right Top-Level Picture
 
 - The **data plane** is the project state and artifacts: canonical registries,
-    generated views, verification scripts, integrity metadata, and optional
+    generated views, analysiss, integrity metadata, and optional
     governance data.
 - The **control plane** is the product code that manages that data plane:
     context building, gateway, validators, renderers, health/status, execution
@@ -141,12 +149,13 @@ it should not be the umbrella package that everything else lives under.
 2. **Gateway** — the single mutation and query boundary exposed to both the
      MCP server and the CLI.
 3. **MCP server** — the primary external API for AI agents. Exposes all
-     gateway operations as typed MCP tools with structured `status`-first
-     envelopes. Not aspirational — ships in Phase 4.
-4. **Read-only services** — validate, render, health, status, export, and
-     other computed read models.
-5. **Execution-policy pipeline** — registered scripts, sandboxing,
-     machine-readable benchmark validation, and meta-verification.
+     gateway operations and traversal tools as typed MCP tools with structured
+     `status`-first envelopes. Not aspirational — ships in Phase 4.
+4. **Read-only services** — validate, render, health, status, export, traversal
+     queries, and other computed read models.
+5. **Results ingestion** — the researcher runs analyses using their own tools
+     and records results via `horizon record` or the `record_result` MCP tool.
+     Horizon is a consumer, not an executor.
 6. **Governance layer** — sessions, boundaries, and close gates as opt-in.
 7. **Outer-shell workspace tooling** — multi-program or repo-management tools
      stay outside the product core.
@@ -157,54 +166,73 @@ were good ideas and should be preserved.
 ### 3.3 The Layer Cake
 
 ```
-┌─────────────────────────────────────────────────┐
-│  MCP Server (primary)  │  CLI (secondary)        │
-│  AI agents call tools  │  Humans and scripts     │
-│  Structured envelopes  │  Human + --json modes   │
-└──────────────────────┬──────────────────────────┘
-                                             │
-┌──────────────────────▼──────────────────────────┐
-│  ProjectContext                                 │
-│  Runtime contract: paths, config, caches, logs  │
-└──────────────────────┬──────────────────────────┘
-                                             │
-┌──────────────────────▼──────────────────────────┐
-│  Control-Plane Services                         │
-│  Gateway | Validate | Render | Health | Status  │
-│  Execution Policy | Governance (opt-in)         │
-└──────────────────────┬──────────────────────────┘
-                                             │
-┌──────────────────────▼──────────────────────────┐
-│  Domain Core                                    │
-│  EpistemicWeb, entities, invariants, lineage    │
-└──────────────────────┬──────────────────────────┘
-                                             │
-┌──────────────────────▼──────────────────────────┐
-│  Ports / Protocols                              │
-│  Repository, renderer, executor, transaction log│
-└──────────────────────┬──────────────────────────┘
-                                             │
-┌──────────────────────▼──────────────────────────┐
-│  Infrastructure Adapters                        │
-│  JSON repository, markdown renderer, sandbox    │
-└──────────────────────┬──────────────────────────┘
-                                             │
-┌──────────────────────▼──────────────────────────┐
-│  Data Plane                                     │
-│  project/data, generated views, verify scripts  │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  Interface Layer — equal peers, no business logic    │
+│  CLI (cli/)          MCP Server (mcp/)               │
+│  Humans + scripts    AI agents via structured tools  │
+└─────────────────────┬────────────────────────────────┘
+                      │  (future: sdk/ Python API)
+┌─────────────────────▼────────────────────────────────┐
+│  Feature Services (features/) — opt-in, flagged      │
+│  goals · discovery · protocols · governance/         │
+│  Registered with CLI + MCP only when flag is true    │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  View Services (views/) — always available           │
+│  health · render · status · metrics                  │
+│  Read-only composed summaries + derived files        │
+│  Depend on core; do not depend on features           │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Core Services (core/) — always available            │
+│  Mutations:  gateway · results                       │
+│  Queries:    validate · check · export               │
+│  Policy:     automation (render-trigger table)       │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Config (config.py) — runtime contract               │
+│  ProjectFeatures · HorizonConfig · ProjectContext    │
+│  load_config() · build_context()                     │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Infrastructure Adapters (adapters/)                 │
+│  json_repository · results_repository                │
+│  transaction_log · markdown_renderer                 │
+└─────────────────────┬────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Epistemic Kernel (epistemic/) — pure Python, no I/O │
+│  model · web · invariants · types · ports            │
+└──────────────────────────────────────────────────────┘
+                      │
+┌─────────────────────▼────────────────────────────────┐
+│  Data Plane — filesystem                             │
+│  project/data/ (entity JSON) · project/views/ (md)  │
+└──────────────────────────────────────────────────────┘
 ```
 
+**Dependency rules (strictly enforced):**
+- `epistemic` → stdlib only. Zero external imports.
+- `adapters` → `epistemic` only.
+- `config` → stdlib only.
+- `core` → `epistemic`, `adapters`, `config`.
+- `views` → `core`, `epistemic`, `config`. Never → `features`.
+- `features` → `core`, `views`, `epistemic`, `config`.
+- `cli`, `mcp` → all layers above. No business logic lives here.
+
 **Principles:**
-- **Dependency Inversion (D)**: Domain defines interfaces; infrastructure
-    implements them. Control-plane services depend on abstractions.
-- **Separation of Concerns**: The domain models truth, the gateway manages
-    mutations, adapters perform I/O, and MCP/CLI speak to their respective
-    consumers.
-- **Low Coupling**: Both MCP and CLI route through the gateway using typed
-    entities and ports, never through global module state.
-- **Single Gateway**: MCP and CLI are different presentations of the same
-    operations. There is no MCP-specific business logic.
+- **Equal interfaces**: MCP and CLI are peers. Neither is primary. Both expose
+    the same services. No MCP-specific or CLI-specific business logic.
+- **Feature isolation**: disabling a feature flag removes its tools/commands
+    entirely — zero dead code paths at runtime.
+- **View/mutation separation**: view services never mutate the epistemic web
+    (render is the one exception: it writes derived files, not canonical data).
+- **Single config module**: `config.py` is the only place that reads
+    `horizon.toml`. All services receive a `ProjectContext` — never the raw file.
 
 ### 3.4 Package Layout
 
@@ -213,68 +241,67 @@ otherwise. The Python import root is `horizon_research`.
 
 ```
 src/
-└── horizon_research/               # Top-level product package and import root
+└── horizon_research/               # Top-level product package
     ├── __init__.py
     ├── __main__.py                 # `python -m horizon_research`
-    ├── config.py                   # User config loading
-    ├── mcp/                        # MCP server adapter (primary external interface)
+    ├── config.py                   # ProjectFeatures, HorizonConfig, ProjectContext,
+    │                               #   ProjectPaths, load_config(), build_context()
+    ├── epistemic/                  # Layer 1: Kernel — pure Python, zero I/O
     │   ├── __init__.py
-    │   ├── server.py               # MCP server entry point, tool registration
-    │   └── tools.py                # Tool handlers — thin wrappers over control plane
-    ├── cli/                        # CLI adapter (secondary external interface)
-    │   ├── __init__.py
-    │   ├── main.py                 # Entry point, arg parsing, dispatch
-    │   └── formatters.py           # Human/JSON output formatting
-    ├── controlplane/               # Product orchestration above the kernel
-    │   ├── __init__.py
-    │   ├── context.py              # ProjectContext builder and path derivation
-    │   ├── automation.py           # Declarative render/stale-trigger contracts
-    │   ├── gateway.py              # Single mutation/query boundary
-    │   ├── validate.py             # Read-only validation orchestration
-    │   ├── render.py               # Generated surfaces (incremental SHA-256 caching)
-    │   ├── check.py                # check-refs, check-stale, sync-prose, verify-prose-sync
-    │   ├── metrics.py              # Repo metrics, correlation-aware tier-A evidence
-    │   ├── health.py               # Health checks (composes validate + render-check + structure)
-    │   ├── status.py               # Read models / summaries (consumes metrics)
-    │   ├── export.py               # Bulk export
-    │   ├── execution/
-    │   │   ├── __init__.py
-    │   │   ├── scripts.py          # Registered script dispatch
-    │   │   ├── policy.py           # Execution policy normalization
-    │   │   └── meta_verify.py      # Adversarial integrity checks
-    │   └── governance/
-    │       ├── __init__.py
-    │       ├── boundary.py         # Session boundary enforcement
-    │       ├── session.py          # Session metadata helpers
-    │       └── close.py            # Close-gate engine (git publish optional)
-    ├── adapters/                   # Infrastructure
+    │   ├── types.py                # Typed IDs, enums, Finding, Severity
+    │   ├── model.py                # Entity dataclasses (Claim, Prediction, ...)
+    │   ├── web.py                  # EpistemicWeb aggregate root
+    │   ├── invariants.py           # Cross-entity validation rules
+    │   └── ports.py                # WebRepository, WebRenderer, TransactionLog protocols
+    ├── adapters/                   # Layer 2: Infrastructure — I/O implementations
     │   ├── __init__.py
     │   ├── json_repository.py      # Implements WebRepository
+    │   ├── results_repository.py   # Implements ResultRecorder (Phase 6)
     │   ├── markdown_renderer.py    # Implements WebRenderer
-    │   ├── sandbox_executor.py     # Implements ScriptExecutor
-    │   └── transaction_log.py      # Query/mutation provenance log
-    └── epistemic/                  # Kernel data structures for epistemic webs
+    │   └── transaction_log.py      # JSONL provenance log
+    ├── core/                       # Layer 3A: Core Services — mutations + queries
+    │   ├── __init__.py
+    │   ├── gateway.py              # Single mutation/query boundary
+    │   ├── validate.py             # Structural validation (read-only)
+    │   ├── check.py                # check_stale, check_refs, sync_prose
+    │   ├── results.py              # record_result (Phase 6)
+    │   ├── export.py               # Bulk JSON/markdown export
+    │   └── automation.py           # Render-trigger policy table
+    ├── views/                      # Layer 3B: View Services — composed summaries
+    │   ├── __init__.py
+    │   ├── health.py               # Composed health report (validate + check)
+    │   ├── render.py               # Incremental markdown generation (SHA-256 cache)
+    │   ├── status.py               # Summary read model
+    │   └── metrics.py              # Evidence statistics (tier A summary)
+    ├── features/                   # Layer 4: Feature Services — opt-in
+    │   ├── __init__.py
+    │   ├── goals.py                # ResearchGoal CRUD (features.goals)
+    │   ├── discovery.py            # Structural gap reporter (features.inference_gap_analysis)
+    │   ├── protocols.py            # Agent documentation registry (features.protocols)
+    │   └── governance/             # Session boundaries + close gates (features.governance)
+    │       ├── __init__.py
+    │       ├── session.py          # Open/close/list sessions; SessionRecord
+    │       ├── boundary.py         # Enforce mutations inside open sessions
+    │       ├── close.py            # Close-gate validation + optional git publish
+    │       └── schedules.py        # AnalysisSchedule, due_analyses computation
+    ├── cli/                        # Layer 5: Interface — CLI (humans + scripts)
+    │   ├── __init__.py
+    │   ├── main.py                 # Click commands; thin wrappers over core/views/features
+    │   └── formatters.py           # Rich tables, JSON fallback
+    └── mcp/                        # Layer 5: Interface — MCP server (AI agents)
         ├── __init__.py
-        ├── types.py                # Enums, typed IDs, findings
-        ├── model.py                # Entity dataclasses
-        ├── web.py                  # EpistemicWeb aggregate root
-        ├── invariants.py           # Cross-entity validation rules
-        └── ports.py                # Repository, renderer, executor, tx log
+        ├── server.py               # FastMCP entry point, feature-gated tool registration
+        └── tools.py                # Tool handlers; thin wrappers over core/views/features
 ```
 
 **Principles:**
-- **Single Responsibility (S)**: `epistemic/` models epistemic truth,
-    `controlplane/` orchestrates product behavior, `adapters/` perform I/O,
-    `mcp/` serves AI agents, `cli/` handles human presentation.
-- **High Cohesion**: Gateway, validate, render, and health sit together as the
-    control-plane layer because they jointly manage the project.
-- **Acyclic Dependencies (ADP)**: `mcp → controlplane → epistemic ← adapters`
-    and `cli → controlplane`. MCP and CLI are peers at the outer shell.
-- **Stable Dependencies (SDP)**: `epistemic/` changes least, `mcp/` and `cli/`
-    change most.
-- **No duplicated logic**: `mcp/tools.py` never re-implements what
-    `controlplane/` already does. Every tool handler is a thin wrapper that
-    calls the same gateway or service function the CLI uses.
+- **Equal interfaces**: `cli/` and `mcp/` are peers. No business logic in either.
+- **Acyclic dependencies**: `epistemic ← adapters ← core ← views ← features ← cli/mcp`
+- **Stable dependencies**: `epistemic/` changes least; `cli/`, `mcp/` change most.
+- **Feature isolation**: disabling a feature flag removes its tools/commands entirely.
+- **No duplicated logic**: every MCP tool handler and CLI command calls the same
+    core/views/features function. If a handler does more than parse + call + format,
+    move the logic up.
 
 ### 3.5 The Gateway We Keep
 
@@ -356,26 +383,38 @@ new plan should preserve that idea explicitly.
 
 ```python
 @dataclass
+class ProjectFeatures:
+        """Opt-in capabilities. Each flag gates a set of MCP tools.
+        
+        Core tools (register, get, list, validate, health, render, export,
+        check_stale, record_result) are always available — no flag needed.
+        Feature tools only register when their flag is true.
+        """
+        goals: bool = False                      # goal tracking MCP tools
+        inference_gap_analysis: bool = False     # structural gap reporter MCP tool
+        governance: bool = False                 # sessions, boundaries, close gates
+        literature_watch: bool = False           # post-Phase 7
+        experiment_ideation: bool = False        # post-Phase 7
+
+        # Note: ProjectSchedules and session counter live in
+        # controlplane/governance/ — they do not exist when governance=False.
+
+
+@dataclass
 class HorizonConfig:
         project_dir: Path = Path("project")
-        governance_enabled: bool = False
-        literature_watch_enabled: bool = False
+        features: ProjectFeatures = field(default_factory=ProjectFeatures)
 
 
 @dataclass
 class ProjectPaths:
         workspace: Path
         project_dir: Path
-        data_dir: Path
-        views_dir: Path
-        knowledge_dir: Path
-        integrity_dir: Path
-        verify_script_dir: Path
-        analysis_script_dir: Path
+        data_dir: Path          # entity JSON files (claims.json, predictions.json, ...)
+        views_dir: Path         # rendered markdown outputs
         cache_dir: Path
         render_cache_file: Path
-        check_refs_cache_file: Path
-        query_transaction_log_file: Path
+        transaction_log_file: Path
 
 
 @dataclass
@@ -390,6 +429,32 @@ patching. No hidden collaborators. It exists so every control-plane service can
 be explicit about what project it is operating on.
 
 ### 3.7 Design Decisions
+
+**Source pointer convention.** Every research content entity carries
+`source: str | None`. The value is free-form but should follow a soft
+prefix convention so renderers can detect the type and validators can
+flag malformed references:
+
+| Prefix | Example |
+|--------|---------|
+| `doi:` | `doi:10.1103/PhysRevLett.128.011801` |
+| `arxiv:` | `arxiv:2201.12840` |
+| `url:` | `url:https://physics.nist.gov/cgi-bin/cuu/Value?alph` |
+| (plain) | `Weinberg, QFT Vol.1, p.123` or `NIST CODATA 2018` |
+| `derived:` | `derived:C-001,C-002` |
+
+`horizon show` renders `doi:` and `arxiv:` sources as clickable links.
+`health_check` can flag sources that look malformed. No strict enforcement
+at the type level — `str | None` is sufficient.
+
+**Cross-repository link maintenance.** `ResearchGoal.linked_predictions`
+lives in `project_config.json`; the epistemic web has no knowledge of goals.
+The link is **maintained manually** — the researcher (or agent) calls
+`horizon goal link G-001 P-007` to associate a prediction with a goal.
+The Gateway validates that every `ResearchGoal.linked_predictions` ID
+exists in the epistemic web at load time, and surfaces broken links as
+health findings. No automatic bidirectional maintenance: goals are
+intentional annotations, not structural invariants.
 
 **Native Python types everywhere.** The domain model uses `dict`, `set`, and
 `list` — not `Mapping`, `frozenset`, or `tuple`. The `EpistemicWeb` and the
@@ -419,13 +484,84 @@ Dependency philosophy:
   needed for CLI-only use.
 - **Adapters (`adapters/`)**: stdlib (`json`, `pathlib`). Adapters stay
   thin and dependency-free.
-- **Compute**: `numpy`, `scipy` as optional extras for verification scripts
+- **Compute**: `numpy`, `scipy` as optional extras for analysiss
   that need them. Never required for core operations.
 
 The dependency tree stays **shallow** — only direct dependencies we've
 consciously chosen, no transitive dependency sprawl. If removing a
 dependency would make the product worse to use, it earns its place. If
 it only saves the developer a few lines of code internally, it doesn't.
+
+### 3.8 The Audit Scaffold Principle
+
+The most important constraint on Horizon's design is what it does **not** do.
+
+**What Horizon does:**
+- Records that Claim C-001 depends on Assumption A-003
+- Maintains that A-003's `tested_by` set is populated when a prediction is registered against it
+- Returns the full derivation chain for Prediction P-007 when queried
+- Surfaces that Parameter P-001 changed after Analysis A-002 last recorded a result
+- Reports that Assumption A-003 has a `falsifiable_consequence` but no predictions testing it
+
+**What Horizon does not do:**
+- Verify that the dependency from C-001 to A-003 is logically sound
+- Assess whether a derivation is correct
+- Judge whether a falsifiable consequence is actually falsifiable
+- Determine whether a parameter value is appropriate for an analysis
+
+This is not a limitation — it is a deliberate design choice. Software that maintains
+referential integrity and tracks structured state is doing something it is genuinely good at.
+Software that assesses logical correctness of a research argument is not — and worse,
+doing it badly gives a researcher false confidence.
+
+**The system is the audit scaffold. The human or AI agent is the auditor.**
+
+Horizon's job is to make auditing *possible*: ensuring every link in the chain has a
+documented source, every assumption is explicitly stated, and every step is traceable.
+A researcher or AI agent that has the full structured chain in hand can assess the logical
+correctness of each link with their own domain knowledge and reasoning.
+
+#### The system surfaces structural facts. It never recommends.
+
+Every output Horizon produces is a structural observation about the state of the graph —
+not a prescription about what to do. The distinction in language matters:
+
+| ❌ Prescriptive (avoid) | ✓ Structural (correct) |
+|---|---|
+| "You should add a prediction for Claim C-001" | "Claim C-001 has no linked predictions" |
+| "This derivation may be incomplete" | "Prediction P-007 has no `derivation` prose" |
+| "Consider testing Assumption A-003" | "Assumption A-003 has `falsifiable_consequence` but empty `tested_by`" |
+| "Analysis A-002 may be stale" | "Parameter P-001 changed after Analysis A-002's last recorded result" |
+
+The consumer — researcher or agent — decides what to do with those observations.
+Horizon does not.
+
+#### The traversal API is the primary value proposition.
+
+Rather than doing the reasoning, Horizon exposes navigation primitives that enable reasoning:
+
+- `get_prediction_chain(prediction_id)` — structured chain: Theory → Claims → Assumptions → Analysis → Results
+- `get_assumption_coverage(claim_id)` — assumptions in the lineage with empty `tested_by`
+- `get_structural_gaps()` — entities with missing documentation (no `source`, no `derivation`, no linked analysis)
+- `get_stale_analyses()` — analyses whose `uses_parameters` values changed since last result was recorded
+
+An AI agent calling these gets structured data it can reason over independently, with
+domain knowledge Horizon does not have. A human researcher sees the same data in readable form.
+The reasoning happens *outside* the system; the structure that makes reasoning *possible*
+lives inside it.
+
+#### The test for any new feature.
+
+When a new feature is proposed, the audit scaffold principle provides the filter:
+
+- Does this feature expose a **structural fact** about the web? Build it.
+- Does this feature make a **logical judgment** about the web's content? Stop at surfacing
+  the structural pattern and let the consumer reason.
+
+The inference gap scanner (Phase 5) passes this test when framed as a structural navigator:
+it reports graph states — claims with no linked predictions, assumptions with falsifiable
+consequences but no tests, predictions with no derivation prose. It does not suggest what
+new predictions to add or assess whether a derivation is logically sound.
 
 ---
 
@@ -436,11 +572,15 @@ it only saves the developer a few lines of code internally, it doesn't.
 Research is a **directed graph with typed nodes and typed edges**:
 
 - **Nodes** are epistemic artifacts: claims, assumptions, predictions,
-  hypotheses, discoveries, scripts, independence groups, parameters, concepts,
-  failures
+  theories, discoveries, analyses, independence groups, parameters, concepts,
+  dead ends
 - **Edges** are typed relationships with **bidirectional invariants**: if
   claim C-024 depends on assumption A-007, then A-007 must list C-024 in
   `used_in_claims`
+
+This graph is the audit scaffold. Every node is a documented step in the
+chain from foundational assumptions to observed outcomes. Every edge is a
+traceable link that a reviewer can follow.
 
 This is not a chain (linear). It's not a tree (single parent). It's a
 **web** — a directed graph with multiple node types, multiple edge types, and
@@ -450,23 +590,26 @@ cross-cutting constraints.
 
 | Noun | Role | Key Relationships |
 |------|------|-------------------|
-| **Claim** | Atomic falsifiable assertion | depends_on → Claims, assumptions → Assumptions, verified_by → Scripts |
-| **Assumption** | Premise taken as given | used_in_claims → Claims (bidirectional with claim.assumptions) |
-| **Prediction** | Testable consequence of claims | claim_id → Claim, script → Script, independence_group → IndependenceGroup |
-| **Script** | Verification program | claims_covered → Claims (bidirectional with claim.verified_by) |
+| **Claim** | Atomic falsifiable assertion | depends_on → Claims, assumptions → Assumptions, analyses → Analyses |
+| **Assumption** | Premise taken as given | used_in_claims → Claims (bidirectional with claim.assumptions); tested_by → Predictions (bidirectional with prediction.tests_assumptions) |
+| **Prediction** | Testable consequence of claims | claim_ids → Claims, tests_assumptions → Assumptions (bidirectional with Assumption.tested_by), analysis → Analysis, independence_group → IndependenceGroup |
+| **Analysis** | Researcher-run analytical work; Horizon records its results | claims_covered → Claims (bidirectional with claim.analyses); uses_parameters → Parameters (bidirectional with parameter.used_in_analyses) |
 | **Independence Group** | Predictions sharing derivation | member_predictions → Predictions (bidirectional with prediction.independence_group) |
-| **Hypothesis** | Higher-level theoretical path | related_claims → Claims, related_predictions → Predictions |
+| **Theory** | Higher-level explanatory framework | related_claims → Claims, related_predictions → Predictions |
 | **Discovery** | Significant research finding | references (free-form) |
-| **Failure** | Known problem or dead end | related_predictions, related_claims (advisory) |
-| **Parameter** | Physical/mathematical constant | referenced by scripts at runtime |
+| **DeadEnd** | Known dead end or abandoned direction; valuable negative result | related_predictions, related_claims (advisory) |
+| **Parameter** | Physical/mathematical constant referenced by analyses | used_in_analyses → Analyses (bidirectional with analysis.uses_parameters) |
 | **Concept** | Defined vocabulary term | standalone |
+| **Research Goal** | Why the research is being done; what counts as success | type (primary/secondary/opportunistic), success_criteria, linked_predictions → Predictions |
 
 ### 4.3 The Invariants
 
 These are the hard rules that define a consistent epistemic web:
 
 1. **Bidirectional link integrity**: If A references B, B must back-reference A
-   (claim↔assumption, claim↔script, prediction↔independence_group)
+   (claim↔assumption, claim↔analysis, prediction↔independence_group,
+   prediction↔assumption via tests_assumptions↔tested_by,
+   analysis↔parameter via uses_parameters↔used_in_analyses)
 2. **Referential integrity**: Every referenced ID must exist
 3. **Acyclicity**: Claim `depends_on` graph must be a DAG — no circular reasoning
 4. **Tier constraints**: Tier A predictions must have 0 free parameters;
@@ -474,7 +617,7 @@ These are the hard rules that define a consistent epistemic web:
    values
 5. **Independence semantics**: Predictions in the same group share derivation;
    every pair of groups must document their separation basis
-6. **Coverage**: Numerical claims should have verification scripts;
+6. **Coverage**: Numerical claims should have analysiss;
    empirical [E]-type assumptions need falsifiable consequences
 
 ### 4.4 Domain-General by Design
@@ -494,6 +637,7 @@ it.
 | **Claim** | Any falsifiable assertion. Physics: "E8 predicts W mass." Medicine: "Drug X reduces mortality." ML: "Attention suffices for sequences." |
 | **Assumption** | A premise taken as given. Exists in every empirical field. |
 | **Prediction** | A testable consequence. Not physics-specific — every empirical discipline makes predictions. |
+| **Research Goal** | *Why* the research is being done and what counts as success. Separate from the epistemic web (which models *what* is known). Goals have typed success criteria and statuses so the system can recognize partial success — "we didn't prove X but G-003 was achieved en route." |
 | **Independence Group** | Evidence clusters that share derivation. Applies to medicine (correlated endpoints), ML (correlated benchmarks), social science (non-independent samples). |
 | **Confidence Tier (A/B/C)** | How strongly constrained the prediction is. A = zero free parameters. B = conditional. C = fit/consistency. This hierarchy applies to any quantitative discipline. |
 | **Measurement Regime** | Whether evidence exists: measured, bound_only, unmeasured. Medicine uses "observed/censored." ML uses "evaluated/not_evaluated." The abstraction is the same: is evidence available? |
@@ -519,7 +663,7 @@ uses general terms; researchers should map their domain language:
 
 | Horizon | Physics | Medicine | Machine Learning | Social Science |
 |---------|---------|----------|-----------------|----------------|
-| Claim | Theoretical prediction | Hypothesis | Architecture claim | Theory |
+| Claim | Theoretical prediction | Theory | Architecture claim | Theory |
 | Assumption | Physical/mathematical premise | Study assumption | Training assumption | Methodological assumption |
 | Prediction | Observable quantity | Primary endpoint | Benchmark score | Measured outcome |
 | Tier A | Zero free params | Pre-registered primary | Zero-shot eval | Pre-registered |
@@ -583,19 +727,20 @@ from typing import NewType
 
 
 # ── Typed identifiers ─────────────────────────────────────────────
-# NewType gives nominal typing: ClaimId and ScriptId are both str at
+# NewType gives nominal typing: ClaimId and AnalysisId are both str at
 # runtime, but the type checker treats them as distinct types.
 
 ClaimId = NewType("ClaimId", str)
 AssumptionId = NewType("AssumptionId", str)
 PredictionId = NewType("PredictionId", str)
-HypothesisId = NewType("HypothesisId", str)
+TheoryId = NewType("TheoryId", str)
 DiscoveryId = NewType("DiscoveryId", str)
-ScriptId = NewType("ScriptId", str)
+AnalysisId = NewType("AnalysisId", str)
 IndependenceGroupId = NewType("IndependenceGroupId", str)
 ParameterId = NewType("ParameterId", str)
 ConceptId = NewType("ConceptId", str)
-FailureId = NewType("FailureId", str)
+DeadEndId = NewType("DeadEndId", str)
+GoalId = NewType("GoalId", str)
 
 
 # ── Severity ──────────────────────────────────────────────────────
@@ -649,7 +794,7 @@ class PredictionStatus(Enum):
     NOT_YET_TESTABLE = "NOT_YET_TESTABLE"
 
 
-class FailureStatus(Enum):
+class DeadEndStatus(Enum):
     ACTIVE = "active"
     RESOLVED = "resolved"
     ARCHIVED = "archived"
@@ -682,15 +827,15 @@ from typing import Any
 
 from .types import (
     AssumptionId, ClaimId, ConfidenceTier, DiscoveryId, EvidenceKind,
-    FailureId, FailureStatus, HypothesisId, IndependenceGroupId,
-    MeasurementRegime, ParameterId, PredictionId, PredictionStatus, ScriptId,
+    DeadEndId, DeadEndStatus, TheoryId, IndependenceGroupId,
+    MeasurementRegime, ParameterId, PredictionId, PredictionStatus, AnalysisId,
 )
 
 
 @dataclass
 class Claim:
     """An atomic, falsifiable assertion.
-    depends_on forms a DAG. assumptions and verified_by have bidirectional
+    depends_on forms a DAG. assumptions and analyses have bidirectional
     links maintained by the EpistemicWeb.
     """
     id: ClaimId
@@ -701,7 +846,8 @@ class Claim:
     category: str = "qualitative"                # "numerical" | "qualitative"
     assumptions: set[AssumptionId] = field(default_factory=set)
     depends_on: set[ClaimId] = field(default_factory=set)
-    verified_by: set[ScriptId] = field(default_factory=set)
+    analyses: set[AnalysisId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
 
 
 @dataclass
@@ -713,12 +859,25 @@ class Assumption:
     scope: str
     used_in_claims: set[ClaimId] = field(default_factory=set)
     falsifiable_consequence: str | None = None
+    tested_by: set[PredictionId] = field(default_factory=set)  # bidirectional with Prediction.tests_assumptions
+    source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
     notes: str | None = None
 
 
 @dataclass
 class Prediction:
-    """A testable consequence of one or more claims."""
+    """A testable consequence of one or more claims.
+
+    'claim_ids' is the set of claims that jointly imply this prediction —
+    the logical derivation chain. Most non-trivial predictions require
+    multiple claims together.
+
+    'tests_assumptions' is the set of assumptions this prediction was
+    explicitly designed to test. Bidirectional with Assumption.tested_by.
+
+    'derivation' is the prose explanation of why claim_ids → this
+    prediction. Distinct from 'specification' (the formula being tested).
+    """
     id: PredictionId
     observable: str
     tier: ConfidenceTier
@@ -726,9 +885,11 @@ class Prediction:
     evidence_kind: EvidenceKind
     measurement_regime: MeasurementRegime
     predicted: Any                               # the predicted value/outcome
-    specification: str | None = None             # human-readable formula/relationship being tested
-    claim_id: ClaimId | None = None
-    script: ScriptId | None = None
+    specification: str | None = None             # formula/relationship being tested (the "what")
+    derivation: str | None = None                # why claim_ids jointly imply this prediction (the "why")
+    claim_ids: set[ClaimId] = field(default_factory=set)
+    tests_assumptions: set[AssumptionId] = field(default_factory=set)
+    analysis: AnalysisId | None = None
     independence_group: IndependenceGroupId | None = None
     correlation_tags: set[str] = field(default_factory=set)
     observed: Any = None
@@ -737,6 +898,7 @@ class Prediction:
     conditional_on: str | None = None
     falsifier: str | None = None
     benchmark_source: str | None = None
+    source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
     notes: str | None = None
 
 
@@ -763,26 +925,42 @@ class PairwiseSeparation:
 
 
 @dataclass
-class Script:
-    """A verification program that checks whether predictions hold."""
-    id: ScriptId
-    command: str
+class Analysis:
+    """A piece of analytical work whose results feed back into the epistemic web.
+
+    Horizon does not run analyses. 'path' and 'command' are provenance
+    pointers — the researcher runs the analysis in their own environment
+    and records the result via `horizon record`. The git SHA captured at
+    record time, combined with path, gives a complete immutable provenance
+    chain: path + SHA + recorded value.
+
+    'uses_parameters' enables staleness detection: when a Parameter changes,
+    health_check can identify which analyses (and therefore which predictions)
+    need to be re-run. Bidirectional with Parameter.used_in_analyses.
+    """
+    id: AnalysisId
+    command: str | None = None                   # how to invoke it (documentation)
+    path: str | None = None                      # path to the file, relative to workspace root
     claims_covered: set[ClaimId] = field(default_factory=set)
-    machine_readable_output: bool = False
-    requires_network: bool = False
-    requires_sandbox: bool = True
+    uses_parameters: set[ParameterId] = field(default_factory=set)
     notes: str | None = None
 
 
 @dataclass
-class Hypothesis:
-    """A higher-level theoretical path being explored."""
-    id: HypothesisId
+class Theory:
+    """A higher-level explanatory framework being explored.
+
+    A theory motivates and organises claims. Claims are the atomic
+    assertions the theory rests on; predictions are what the theory
+    predicts that could be tested.
+    """
+    id: TheoryId
     title: str
     status: str
     summary: str | None = None
     related_claims: set[ClaimId] = field(default_factory=set)
     related_predictions: set[PredictionId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, citation
 
 
 @dataclass
@@ -798,16 +976,21 @@ class Discovery:
 
 
 @dataclass
-class Failure:
-    """A known problem or dead end."""
-    id: FailureId
+class DeadEnd:
+    """A known dead end or abandoned direction.
+
+    Records what was tried and why it didn't work. Valuable negative
+    results that constrain the hypothesis space.
+    """
+    id: DeadEndId
     title: str
     description: str
-    status: FailureStatus
+    status: DeadEndStatus
     session_opened: int
     session_resolved: int | None = None
     related_predictions: set[PredictionId] = field(default_factory=set)
     related_claims: set[ClaimId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, or analysis reference
 
 
 @dataclass
@@ -820,15 +1003,20 @@ class Concept:
     aliases: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     references: list[str] = field(default_factory=list)
+    source: str | None = None                    # primary source for this definition
 
 
 @dataclass
 class Parameter:
-    """A physical or mathematical constant referenced by verification scripts.
+    """A physical or mathematical constant referenced by analyses.
 
-    Parameters live in project/data/parameters.json and are read by
-    scripts at runtime. The sandbox executor makes them available as
-    structured input so scripts don't hard-code constants.
+    Parameters live in project/data/parameters.json and are available
+    to the researcher when running analyses. They keep constants out of
+    scripts and in a single version-controlled location.
+
+    'used_in_analyses' is the bidirectional backlink to Analysis.uses_parameters.
+    The EpistemicWeb maintains this automatically when analyses are registered.
+    Enables staleness detection in health_check.
     """
     id: ParameterId
     name: str
@@ -836,6 +1024,30 @@ class Parameter:
     unit: str | None = None             # SI or domain unit, human-readable
     uncertainty: Any = None             # absolute uncertainty, same type as value
     source: str | None = None           # citation or derivation note
+    used_in_analyses: set[AnalysisId] = field(default_factory=set)
+    notes: str | None = None
+
+
+# ── Project-level entity (lives in project_config.json, NOT the epistemic web) ──
+
+@dataclass
+class ResearchGoal:
+    """A researcher-stated intention that motivates the epistemic work.
+
+    ResearchGoals live in project_config.json and are managed by the
+    GoalRepository — not the EpistemicWeb. They answer the "why" layer:
+    what is this project trying to achieve, and how will we know if it
+    succeeded?
+
+    Goals are linked to predictions so the system can surface which
+    epistemic work is evidence for each goal.
+    """
+    id: GoalId
+    statement: str
+    type: str                                # "primary" | "secondary" | "opportunistic"
+    success_criteria: list[str] = field(default_factory=list)
+    status: str = "active"                   # "active" | "achieved" | "abandoned"
+    linked_predictions: set[PredictionId] = field(default_factory=set)
     notes: str | None = None
 ```
 
@@ -871,12 +1083,12 @@ import copy
 from dataclasses import dataclass, field
 
 from .model import (
-    Assumption, Claim, Concept, Discovery, Failure, Hypothesis,
+    Assumption, Claim, Concept, Discovery, Failure, Theory,
     IndependenceGroup, PairwiseSeparation, Parameter, Prediction, Script,
 )
 from .types import (
-    AssumptionId, ClaimId, ConceptId, DiscoveryId, FailureId, Finding,
-    HypothesisId, IndependenceGroupId, ParameterId, PredictionId, ScriptId, Severity,
+    AssumptionId, ClaimId, ConceptId, DiscoveryId, DeadEndId, Finding,
+    TheoryId, IndependenceGroupId, ParameterId, PredictionId, AnalysisId, Severity,
 )
 
 
@@ -890,14 +1102,14 @@ class EpistemicWeb:
     claims: dict[ClaimId, Claim] = field(default_factory=dict)
     assumptions: dict[AssumptionId, Assumption] = field(default_factory=dict)
     predictions: dict[PredictionId, Prediction] = field(default_factory=dict)
-    hypotheses: dict[HypothesisId, Hypothesis] = field(default_factory=dict)
+    hypotheses: dict[TheoryId, Theory] = field(default_factory=dict)
     discoveries: dict[DiscoveryId, Discovery] = field(default_factory=dict)
-    scripts: dict[ScriptId, Script] = field(default_factory=dict)
+    scripts: dict[AnalysisId, Script] = field(default_factory=dict)
     independence_groups: dict[IndependenceGroupId, IndependenceGroup] = field(
         default_factory=dict
     )
     pairwise_separations: list[PairwiseSeparation] = field(default_factory=list)
-    failures: dict[FailureId, Failure] = field(default_factory=dict)
+    failures: dict[DeadEndId, Failure] = field(default_factory=dict)
     concepts: dict[ConceptId, Concept] = field(default_factory=dict)
     parameters: dict[ParameterId, Parameter] = field(default_factory=dict)
 
@@ -950,7 +1162,7 @@ class EpistemicWeb:
             raise DuplicateIdError(f"Claim {claim.id} already exists")
         self._check_refs_exist(claim.assumptions, self.assumptions, "assumption")
         self._check_refs_exist(claim.depends_on, self.claims, "claim")
-        self._check_refs_exist(claim.verified_by, self.scripts, "script")
+        self._check_refs_exist(claim.analyses, self.scripts, "script")
         self._check_no_cycle_with(claim)
 
         new = self._copy()
@@ -964,7 +1176,7 @@ class EpistemicWeb:
             new.assumptions[aid].used_in_claims.add(claim.id)
 
         # Maintain bidirectional: script.claims_covered
-        for sid in claim.verified_by:
+        for sid in claim.analyses:
             new.scripts[sid].claims_covered.add(claim.id)
 
         return new
@@ -978,16 +1190,14 @@ class EpistemicWeb:
         return new
 
     def register_prediction(self, prediction: Prediction) -> EpistemicWeb:
-        """Add a prediction. Enforces: refs exist, bidirectional group link."""
+        """Add a prediction. Enforces: refs exist, bidirectional links updated."""
         if prediction.id in self.predictions:
             raise DuplicateIdError(f"Prediction {prediction.id} already exists")
-        if prediction.claim_id and prediction.claim_id not in self.claims:
+        self._check_refs_exist(prediction.claim_ids, self.claims, "claim")
+        self._check_refs_exist(prediction.tests_assumptions, self.assumptions, "assumption")
+        if prediction.analysis and prediction.analysis not in self.analyses:
             raise BrokenReferenceError(
-                f"Claim {prediction.claim_id} does not exist"
-            )
-        if prediction.script and prediction.script not in self.scripts:
-            raise BrokenReferenceError(
-                f"Script {prediction.script} does not exist"
+                f"Analysis {prediction.analysis} does not exist"
             )
         if prediction.independence_group:
             if prediction.independence_group not in self.independence_groups:
@@ -996,7 +1206,11 @@ class EpistemicWeb:
                 )
 
         new = self._copy()
-        new.predictions[prediction.id] = prediction
+        new.predictions[prediction.id] = copy.deepcopy(prediction)
+
+        # Maintain bidirectional: assumption.tested_by
+        for aid in prediction.tests_assumptions:
+            new.assumptions[aid].tested_by.add(prediction.id)
 
         # Maintain bidirectional: group.member_predictions
         if prediction.independence_group:
@@ -1006,17 +1220,17 @@ class EpistemicWeb:
 
         return new
 
-    def register_script(self, script: Script) -> EpistemicWeb:
-        """Add a verification script."""
+    def register_analysis(self, script: Script) -> EpistemicWeb:
+        """Add a analysis."""
         if script.id in self.scripts:
             raise DuplicateIdError(f"Script {script.id} already exists")
         new = self._copy()
         new.scripts[script.id] = script
         return new
 
-    def register_hypothesis(self, hypothesis: Hypothesis) -> EpistemicWeb:
+    def register_theory(self, hypothesis: Theory) -> EpistemicWeb:
         if hypothesis.id in self.hypotheses:
-            raise DuplicateIdError(f"Hypothesis {hypothesis.id} already exists")
+            raise DuplicateIdError(f"Theory {hypothesis.id} already exists")
         new = self._copy()
         new.hypotheses[hypothesis.id] = hypothesis
         return new
@@ -1035,7 +1249,7 @@ class EpistemicWeb:
         new.discoveries[discovery.id] = discovery
         return new
 
-    def register_failure(self, failure: Failure) -> EpistemicWeb:
+    def register_dead_end(self, failure: Failure) -> EpistemicWeb:
         if failure.id in self.failures:
             raise DuplicateIdError(f"Failure {failure.id} already exists")
         new = self._copy()
@@ -1069,8 +1283,8 @@ class EpistemicWeb:
         new.predictions[pid].status = new_status
         return new
 
-    def transition_failure(
-        self, fid: FailureId, new_status: FailureStatus,
+    def transition_dead_end(
+        self, fid: DeadEndId, new_status: DeadEndStatus,
         session_resolved: int | None = None,
     ) -> EpistemicWeb:
         """Change a failure's status, with side effects."""
@@ -1078,9 +1292,9 @@ class EpistemicWeb:
             raise BrokenReferenceError(f"Failure {fid} does not exist")
         new = self._copy()
         new.failures[fid].status = new_status
-        if new_status == FailureStatus.RESOLVED and session_resolved is not None:
+        if new_status == DeadEndStatus.RESOLVED and session_resolved is not None:
             new.failures[fid].session_resolved = session_resolved
-        elif new_status == FailureStatus.ACTIVE:
+        elif new_status == DeadEndStatus.ACTIVE:
             new.failures[fid].session_resolved = None
         return new
 
@@ -1244,11 +1458,11 @@ def validate_coverage(web: EpistemicWeb) -> list[Finding]:
     findings: list[Finding] = []
 
     for cid, claim in web.claims.items():
-        if claim.category == "numerical" and not claim.verified_by:
+        if claim.category == "numerical" and not claim.analyses:
             findings.append(Finding(
                 Severity.INFO,
                 f"claims/{cid}",
-                "Numerical claim lacks verification script",
+                "Numerical claim lacks analysis",
             ))
 
     for aid, assumption in web.assumptions.items():
@@ -1340,8 +1554,8 @@ class ExecutionResult:
     stderr: str
 
 
-class ScriptExecutor(Protocol):
-    """Execute a verification script in a controlled environment."""
+class ResultRecorder(Protocol):
+    """Execute a analysis in a controlled environment."""
     def execute(
         self, script_id: str, command: str, **policy: object
     ) -> ExecutionResult: ...
@@ -1361,7 +1575,7 @@ class ScriptExecutor(Protocol):
 | 1.2 | `epistemic/model.py` — All entity dataclasses, including `Parameter` | Construction, field defaults; verify `Parameter` round-trips value/unit/uncertainty |
 | 1.3 | `epistemic/web.py` — EpistemicWeb with register methods | Happy path: register each entity type |
 | 1.4 | `epistemic/web.py` — Rejection cases | Duplicate ID, broken reference, cycle detection |
-| 1.5 | `epistemic/web.py` — Bidirectional links | Register claim → assumption.used_in_claims auto-updated |
+| 1.5 | `epistemic/web.py` — Bidirectional links | claim→assumption.used_in_claims; claim→analysis.claims_covered; prediction→assumption.tested_by; analysis→parameter.used_in_analyses |
 | 1.6 | `epistemic/web.py` — Lineage queries | claim_lineage, assumption_lineage on multi-level graphs |
 | 1.7 | `epistemic/invariants.py` — All validators | Build webs with known violations, assert findings |
 | 1.8 | `epistemic/ports.py` — Protocol definitions | No tests (type definitions only) |
@@ -1396,7 +1610,7 @@ assert ClaimId("C-001") in web.assumptions[AssumptionId("A-001")].used_in_claims
 
 - [ ] All entity types constructable with native Python types
 - [ ] Every register method enforces referential integrity
-- [ ] Bidirectional links maintained on register for all three pairs
+- [ ] Bidirectional links maintained on register for all five pairs
 - [ ] Cycle detection on claim.depends_on works
 - [ ] All invariant validators return correct findings
 - [ ] Zero imports from outside stdlib
@@ -1475,7 +1689,7 @@ class JsonFileRepository:
                 category=v.get("category", "qualitative"),
                 assumptions={AssumptionId(a) for a in v.get("assumptions", [])},
                 depends_on={ClaimId(d) for d in v.get("depends_on", [])},
-                verified_by={ScriptId(s) for s in v.get("verified_by", [])},
+                analyses={AnalysisId(s) for s in v.get("analyses", [])},
             )
             for k, v in raw.get("claims", {}).items()
         }
@@ -1535,7 +1749,7 @@ dev = ["pytest>=8.3,<9", "pytest-cov>=6,<7", "ruff>=0.11,<0.12"]
 Core package depends only on `click` (CLI framework) and `rich` (terminal
 output). These two libraries directly improve the user experience — every
 `horizon` command benefits from better argument parsing and beautiful output.
-Compute libraries are opt-in for verification scripts that need them.
+Compute libraries are opt-in for analysiss that need them.
 
 Use `horizon_research` as the public and internal package root. The stable
 contract is the `horizon_research` import root plus the `horizon` console
@@ -1562,7 +1776,43 @@ Packaging contracts should be tested as code, not left implicit in prose:
 - editable-install smoke tests happen in Phase 2; wheel and sdist smoke tests
     become mandatory by the Phase 4 exit criteria
 
-### 6.4 Phase 2 Deliverables
+### 6.4 Public Python API
+
+`horizon_research` is a normal importable package, not just a CLI tool.
+Programmers who want to integrate Horizon into notebooks, pipelines, or
+custom agents should be able to do so without going through the CLI or MCP:
+
+```python
+from horizon_research.controlplane.context import build_project_context
+from horizon_research.controlplane.gateway import Gateway
+from horizon_research.adapters.json_repository import JsonRepository
+
+ctx = build_project_context(Path("/path/to/workspace"))
+repo = JsonRepository(ctx.paths.data_dir)
+gateway = Gateway(ctx, repo, ...)
+
+result = gateway.register("claim", {"id": "C-001", "statement": "...", ...})
+assert result.status == "ok"
+```
+
+The public surface is the `controlplane` layer (Gateway, context builders,
+read-only service functions) plus the `epistemic` types and model. Adapters
+are public but considered infrastructure — programmers using the package
+should code to the ports (`WebRepository`, `ResultRecorder`) not the adapters.
+
+Document this in the quickstart guide (Phase 5) and `__init__.py` re-exports.
+The `horizon_research/__init__.py` should re-export the most common entry
+points so users don't have to memorize subpackage paths:
+
+```python
+# horizon_research/__init__.py
+from .controlplane.context import build_project_context as build_context
+from .controlplane.gateway import Gateway
+from .epistemic.model import Claim, Prediction, Assumption
+from .epistemic.types import ClaimId, PredictionId
+```
+
+### 6.5 Phase 2 Deliverables
 
 | Step | What | Tests |
 |------|------|-------|
@@ -1572,6 +1822,7 @@ Packaging contracts should be tested as code, not left implicit in prose:
 | 2.4 | `pyproject.toml` + `src/horizon_research/` package — installable product boundary | `pip install -e .`, console-script smoke, `python -m horizon_research` |
 | 2.5 | Contract tests for packaging, config, and workflow surfaces | Parse `pyproject.toml`, default paths, coverage settings, workflow artifact contract |
 | 2.6 | Schema versioning — add `_schema_version` top-level key to every JSON data file | Loader asserts version presence; migration registry maps `(from, to, transform_fn)` per resource type |
+| 2.7 | `adapters/project_config_repository.py` — owns the full `project_config.json` file: goals, features (`ProjectFeatures`), schedules (`ProjectSchedules`), session counter | Round-trip for all blocks; partial updates don't clobber other blocks |
 
 ### Phase 2 Exit Criteria
 
@@ -1581,6 +1832,9 @@ Packaging contracts should be tested as code, not left implicit in prose:
 - [ ] Public console scripts and `python -m horizon_research` are stable
 - [ ] Packaging/config/workflow contracts are locked by tests
 - [ ] Every JSON data file carries `_schema_version`; migration registry exists even if empty
+- [ ] `ProjectConfigRepository` can load and save all blocks of `project_config.json` (goals, features, schedules, session counter)
+- [ ] `project_config.json` features block is parsed into `ProjectFeatures`
+- [ ] `project_config.json` schedules block is parsed into `ProjectSchedules`; partial-write doesn't corrupt other blocks
 
 ---
 
@@ -1793,7 +2047,7 @@ requires a migration.
 | 3.4 | `controlplane/validate.py` — validation orchestration | Compare findings with current system on characterization fixtures |
 | 3.5 | `controlplane/automation.py` — declarative render + stale-trigger contracts | Normalize automation graph; unknown renderer fails fast |
 | 3.6 | `controlplane/render.py` — generated surfaces with incremental SHA-256 cache | Snapshot tests for claims, predictions, assumptions, discoveries; cache hit/miss tests |
-| 3.7 | `controlplane/check.py` — check-refs, check-stale, sync-prose, verify-prose-sync | Link scanner, staleness rules, AUTO marker sync |
+| 3.7 | `controlplane/check.py` — check-refs, check-stale, sync-prose, verify-prose-sync | Link scanner, staleness rules (uses `Analysis.uses_parameters` ↔ `Parameter.used_in_analyses`), AUTO marker sync |
 | 3.8 | `controlplane/metrics.py` — repo metrics and tier-A evidence counting | Correlation-aware group counting, stressed/active failure summaries |
 | 3.9 | `controlplane/status.py`, `health.py`, `export.py` | Read-model and health tests |
 | 3.10 | Transaction / provenance log adapter | Append, rollback, and dry-run behavior tests |
@@ -1812,6 +2066,8 @@ requires a migration.
 - [ ] Render outputs and stale triggers come from declarative automation config
 - [ ] Markdown output matches current Horizon behavior for the same data
 - [ ] Every gateway write records `_last_modified` and `_modified_by` provenance
+- [ ] `check_stale` uses `Analysis.uses_parameters` to identify stale predictions after parameter changes
+- [ ] Gateway validates that `ResearchGoal.linked_predictions` IDs exist in the epistemic web on load
 
 ---
 
@@ -1894,7 +2150,13 @@ structured tool calls with no subprocess or file manipulation needed.
 | `check_refs` | `check.run_check_refs(context, ...)` | Read (+ cache) |
 | `export` | `export.run_export(context, ...)` | Read |
 | `init` | `init.run_init(context, ...)` | Write |
-| `run_script` | `execution.run_script(context, ...)` | Execute |
+| `record_result` | `execution.record_result(context, ...)` | Execute |
+| `get_protocol` | `protocols.get_protocol(name)` | Read |
+| `get_goal` | `goals.get_goal(context, id)` | Read |
+| `list_goals` | `goals.list_goals(context)` | Read |
+| `add_goal` | `goals.add_goal(context, payload, dry_run)` | Write |
+| `achieve_goal` | `goals.achieve_goal(context, id, dry_run)` | Write |
+| `get_structural_gaps` | `discovery.get_structural_gaps(web)` | Read (feature-gated) — returns `StructuralGap` list; no reasoning, no suggestions |
 
 **MCP server entry point** (`mcp/server.py`):
 
@@ -1966,7 +2228,7 @@ the MCP server returns).
 | `transition` | `gateway.transition(...)` | Write |
 | `register` | `gateway.register(...)` | Write |
 | `query` | `gateway.query(...)` | Read |
-| `run-script` | `execution.run_script(...)` | Execute |
+| `run-script` | `execution.record_result(...)` | Execute |
 | `check-stale` | `check.run_check_stale(context)` | Read |
 | `check-refs` | `check.run_check_refs(...)` | Read (+ cache) |
 | `sync-prose` | `check.run_sync_prose(...)` | Write |
@@ -1998,10 +2260,50 @@ Nothing else. CLI never re-implements control-plane logic.
 
 ```python
 @dataclass
+class ProjectFeatures:
+    """Opt-in capabilities. Each flag gates a set of MCP tools and CLI commands.
+
+    The MCP server only registers tools for enabled features. A project with
+    all flags False still has the full epistemic web, gateway, validate,
+    health, and status — the core product.
+    """
+    governance: bool = False
+    literature_watch: bool = False
+    inference_gap_analysis: bool = False  # structural scan; AI mode in backlog
+    adversarial_audit_schedule: bool = False
+    experiment_ideation: bool = False        # post-Phase 7; flag exists now
+
+
+@dataclass
+class AnalysisSchedule:
+    """Controls how often a scheduled analysis runs relative to session count.
+
+    'every_sessions' is the cadence. 'last_run_session' is updated automatically
+    after each run so the system knows when to surface the next due notification.
+    """
+    every_sessions: int = 5     # run every N sessions
+    last_run_session: int = 0   # updated after each run
+
+
+@dataclass
+class ProjectSchedules:
+    """Per-analysis run cadence. Stored in project_config.json under 'schedules'.
+
+    Each entry maps a feature to its AnalysisSchedule. Only features with
+    their flag enabled are checked. Missing entries use the dataclass default.
+    """
+    inference_gap_analysis: AnalysisSchedule = field(
+        default_factory=lambda: AnalysisSchedule(every_sessions=5)
+    )
+    adversarial_audit: AnalysisSchedule = field(
+        default_factory=lambda: AnalysisSchedule(every_sessions=10)
+    )
+
+
+@dataclass
 class HorizonConfig:
     project_dir: Path = Path("project")
-    governance_enabled: bool = False
-    literature_watch_enabled: bool = False
+    features: ProjectFeatures = field(default_factory=ProjectFeatures)
 
 
 def load_config(workspace: Path) -> HorizonConfig:
@@ -2009,17 +2311,65 @@ def load_config(workspace: Path) -> HorizonConfig:
     toml_path = workspace / "horizon.toml"
     if toml_path.exists():
         raw = tomllib.loads(toml_path.read_text())
+        feat = raw.get("features", {})
         return HorizonConfig(
             project_dir=Path(raw.get("project_dir", "project")),
-            governance_enabled=raw.get("governance", {}).get("enabled", False),
-            literature_watch_enabled=raw.get("literature_watch", {}).get("enabled", False),
+            features=ProjectFeatures(
+                governance=feat.get("governance", False),
+                literature_watch=feat.get("literature_watch", False),
+                inference_gap_analysis=feat.get("inference_gap_analysis", False),
+                adversarial_audit_schedule=feat.get("adversarial_audit_schedule", False),
+                experiment_ideation=feat.get("experiment_ideation", False),
+            ),
         )
     return HorizonConfig()
 ```
 
+`ProjectSchedules` is loaded separately from `project_config.json` (not
+`horizon.toml`) because schedule state (`last_run_session`) is mutable
+runtime data that changes as research progresses. Tool configuration
+(`horizon.toml`) is environment-stable; research state (`project_config.json`)
+evolves with the project.
+
 ### 8.5 `horizon init`
 
-Create a new project directory with empty registries:
+`horizon init` is the platform onboarding experience, not just a scaffolding
+command. It runs interactively, asks two questions, and leaves the project
+ready for an AI agent to use immediately.
+
+**Interactive session:**
+
+```
+$ horizon init
+
+Welcome to Horizon Research OS.
+
+? Project name: quantum-gravity-study
+? What are you trying to achieve?
+  Derive the fine structure constant from first principles
+? Add success criteria? (press enter to skip)
+  > α within 0.1% of measured value
+  > derivation uses no fitted parameters
+  > done
+? Enable any optional features?
+  [ ] Governance — session boundary enforcement + close gate
+  [x] Literature watch — monitor new papers
+  [x] Prediction path discovery — scan web for untested prediction paths (every 5 sessions)
+  [ ] Adversarial audit schedule — periodic deep audit reminders (every 10 sessions)
+  [ ] Experiment ideation — suggest falsification experiments (post-Phase 7)
+
+✓ Initialized project workspace
+✓ Created project/data/project_config.json
+✓ MCP server registered (.mcp.json)
+✓ Agent instructions generated (.horizon/agents.md)
+✓ Updated CLAUDE.md, AGENTS.md, .cursorrules,
+  .github/copilot-instructions.md, .windsurfrules
+✓ Created horizon.toml
+
+Horizon is ready. Your AI agent can now call health_check() to begin.
+```
+
+**What it creates:**
 
 ```
 <project_dir>/
@@ -2027,15 +2377,16 @@ Create a new project directory with empty registries:
 │   ├── claims.json
 │   ├── assumptions.json
 │   ├── predictions.json
-│   ├── hypotheses.json
+│   ├── theories.json
 │   ├── discoveries.json
-│   ├── scripts.json
+│   ├── analyses.json
 │   ├── independence_groups.json
-│   ├── failures.json
+│   ├── dead_ends.json
 │   ├── concepts.json
-│   └── parameters.json
-├── views/                  (generated markdown goes here)
-├── knowledge/              (generated + hand-maintained)
+│   ├── parameters.json
+│   └── project_config.json   ← research goals + feature flags
+├── views/
+├── knowledge/
 ├── logs/
 │   └── query_transactions.jsonl
 ├── src/
@@ -2044,21 +2395,121 @@ Create a new project directory with empty registries:
 ├── integrity/
 │   ├── reference_values.json
 │   └── tolerance_bounds.json
-├── .cache/                 (managed by the control plane)
-└── README.md
+└── .cache/
+
+.horizon/
+└── agents.md               ← generated, owned by Horizon, never hand-edited
+
+horizon.toml                ← tool config (project_dir, MCP server settings)
+.mcp.json                   ← MCP server registration for IDE/agent tooling
+CLAUDE.md                   ← @.horizon/agents.md import (one line added)
+AGENTS.md                   ← @.horizon/agents.md import (OpenAI Codex compat)
+.github/copilot-instructions.md  ← static generated copy
+.cursorrules                     ← static generated copy
+.windsurfrules                   ← static generated copy
 ```
 
-Options:
-- `--with-governance` — adds session types, boundary rules, close config
-  (Phase 7)
-- `--with-agent` — adds template agent adapter files: `SYSTEM_BRIEFING.md`,
-  `CLAUDE.md` / `.cursorrules` / `copilot-instructions.md`,
-  `read_policy.json`, `execution_policy.json`. These are clean starting-point
-  templates, not the battle-hardened instance files from this repo. Users
-  customize from here.
+**Agent bootstrap design:**
 
-Idempotent: safe to run on an existing project (fills in missing pieces,
-never overwrites existing files).
+`.horizon/agents.md` is generated and owned entirely by Horizon. It is the
+single source of agent instructions — thin by design (under 30 lines), telling
+the agent to call `health_check()` and `project_status()` at session start and
+listing which protocols to fetch based on the `load_protocols` field in the
+health response.
+
+Tools that support import syntax (`CLAUDE.md`, `AGENTS.md`) get a one-line
+`@.horizon/agents.md` reference inside a `<!-- horizon:start/end -->` block.
+Tools that don't (`copilot-instructions.md`, `.cursorrules`, `.windsurfrules`)
+get a static generated copy of the same content. User content outside the
+delimiter block is never touched.
+
+`horizon init --refresh` regenerates `.horizon/agents.md` and the static
+copies after a Horizon version upgrade without touching user content.
+
+**`project/data/project_config.json`:**
+
+Research configuration separate from tool configuration (`horizon.toml`).
+Holds the active research goals, feature flags, and project description.
+Mutable via gateway tools — not just a file users hand-edit.
+
+```json
+{
+  "_schema_version": "project_config/v1",
+  "name": "quantum-gravity-study",
+  "description": "Derive the fine structure constant from first principles",
+  "session_counter": 7,
+  "goals": {
+    "G-001": {
+      "statement": "Derive α from first principles",
+      "type": "primary",
+      "success_criteria": [
+        "α within 0.1% of measured value",
+        "derivation uses no fitted parameters"
+      ],
+      "status": "active",
+      "linked_predictions": []
+    }
+  },
+  "features": {
+    "governance": false,
+    "literature_watch": true,
+    "inference_gap_analysis": true,
+    "adversarial_audit_schedule": false,
+    "experiment_ideation": false
+  },
+  "schedules": {
+    "inference_gap_analysis": { "every_sessions": 5, "last_run_session": 5 },
+    "adversarial_audit":         { "every_sessions": 10, "last_run_session": 0 }
+  }
+}
+```
+
+**Session counter:** `session_counter` is incremented in `project_config.json`
+on each session boundary. When `features.governance = false`, a session is
+defined as a calendar day with at least one registered mutation — the counter
+increments the first time a write goes through the gateway in a new calendar
+day. When `features.governance = true`, a session maps directly to an explicit
+`horizon session open` call. Either way the counter is a single integer in
+`project_config.json` and the `ProjectConfigRepository` owns its increment.
+
+**Schedule evaluation:** `health_check()` compares `session_counter` against
+each schedule's `last_run_session + every_sessions`. Analyses that are due are
+returned in a `due_analyses` list in the health response. The agent decides
+whether to act — Horizon never forces an analysis to run.
+
+**Protocol system:**
+
+The MCP server exposes a `get_protocol(name)` tool that returns agent guidance
+text on demand. `health_check()` response includes a `load_protocols` list —
+the names of protocols the agent should fetch given the current session
+context. This replaces loading all policy documents into context at session
+start with lazy, context-aware fetching.
+
+Protocol names map to files in `.horizon/protocols/` (generated by Horizon,
+not hand-edited). Standard protocols:
+- `research_policy` — claim/prediction/assumption framework, epistemic tags,
+  confidence tiers
+- `code_integrity` — anti-pattern registry, analysis checklist
+- `adversarial_audit` — adversarial posture framework, per-script analysis
+  steps, impact mapping
+
+**Feature-gated tool surface:**
+
+The MCP server reads `project_config.json` at startup and only registers
+tools for enabled features. A project with `governance: false` never sees
+`open_session` or `run_close_gate`. A project with `experiment_ideation: false`
+never sees `suggest_experiments`. This keeps the tool surface minimal for
+simple projects.
+
+**Options:**
+
+- `--refresh` — regenerate `.horizon/agents.md` and static tool copies only;
+  never touches project data or user content
+- `--tools <list>` — generate adapter files for specific tools only
+  (e.g., `--tools claude,cursor`)
+
+Idempotent: safe to run on an existing project. Fills in missing pieces,
+never overwrites existing files or user content outside delimiter blocks.
 
 ### 8.6 `horizon health` / `horizon doctor`
 
@@ -2074,12 +2525,29 @@ and `doctor` (for human muscle memory, analogous to `brew doctor` or
 5. Schema validation pass/fail
 6. Verification coverage gaps
 7. Staleness: predictions not recomputed since parameter changes
-8. Coverage: claims without verification scripts, hypotheses without
+8. Coverage: claims without analysiss, hypotheses without
    supporting predictions, empirical assumptions without falsifiable consequences
 
 Clear, readable output with severity levels. Available as both an MCP tool
 and a CLI command. This is the "linter for research" — valuable even to
 researchers who don't use sessions, governance, or agents.
+
+Health response includes two scheduling fields:
+
+```json
+{
+  "status": "CLEAN",
+  "load_protocols": ["research_policy"],
+  "due_analyses": ["inference_gap_analysis"],
+  "findings": []
+}
+```
+
+`due_analyses` lists any scheduled analyses where
+`session_counter >= last_run_session + every_sessions`. The agent fetches
+this on every session start and decides whether to run them — Horizon never
+forces execution. After a successful run, the tool updates `last_run_session`
+in `project_config.json` to the current `session_counter`.
 
 ### 8.7 Phase 4 Deliverables
 
@@ -2096,6 +2564,12 @@ researchers who don't use sessions, governance, or agents.
 | 4.9 | `horizon export --format=json` | Exports all data as valid JSON |
 | 4.10 | `horizon version` | Prints version, Python version, workspace path |
 | 4.11 | Backward compat | Current Horizon repo works with new system |
+| 4.12 | `project_config.json` loaded at MCP/CLI startup; `ProjectFeatures` gates registered tools | Server with governance=false never exposes session tools |
+| 4.13 | `get_protocol` MCP tool — returns agent guidance by protocol name | Tool returns correct content for each registered protocol |
+| 4.14 | `health_check` response includes `load_protocols` field listing recommended protocols | Verify field present in all health responses |
+| 4.15 | `horizon init --with-agent` generates `.horizon/agents.md` + per-tool adapter files | Generated files present; CLAUDE.md uses @import; static copies for Cursor/Copilot/Windsurf |
+| 4.16 | `horizon init --refresh` regenerates agent files without touching project data | Existing `project_config.json` and epistemic data untouched |
+| 4.17 | `controlplane/goals.py` — CRUD for `ResearchGoal` via `ProjectConfigRepository` | Add/get/list/achieve; round-trip through project_config.json |
 
 ### Release Checkpoint: First Internal Product Alpha
 
@@ -2131,12 +2605,22 @@ horizon health
 - [ ] `horizon health` / `horizon doctor` reports health accurately (CLI + MCP)
 - [ ] Both human and JSON CLI output modes work
 - [ ] Config is optional (defaults work without horizon.toml)
+- [ ] `project_config.json` drives feature-gated tool registration; unlisted features have no exposed tools
+- [ ] `get_protocol` MCP tool returns agent guidance for all registered protocols
+- [ ] `health_check` includes `load_protocols` recommendation field
+- [ ] `horizon init --with-agent` generates agent bootstrap files for all supported tools
+- [ ] `horizon init --refresh` is idempotent and non-destructive
+- [ ] `horizon init` creates initial `project_config.json` with one ResearchGoal from interactive prompt
+- [ ] `controlplane/goals.py` CRUD is fully wired and tested
 
 ---
 
 ## 9. Phase 5 — Human-First UX
 
-**Goal:** Usable by a researcher who doesn't want to write JSON.
+**Goal:** Usable by a researcher who doesn't want to write JSON. The audit
+scaffold becomes navigable: a researcher or AI agent can traverse the web,
+identify structurally incomplete areas, and audit the chain from any outcome
+back to its assumptions.
 
 ### 9.1 Deliverables
 
@@ -2148,21 +2632,29 @@ horizon health
 | 4 | `horizon check` | Alias for `validate --quick`. Short, memorable. |
 | 5 | `horizon status` | Readable summary with health counts. |
 | 6 | `horizon log [id]` | Mutation history from transaction log (requires Phase 3 provenance). |
-| 7 | Quickstart guide | Install, init, add hypothesis, add prediction, validate, render. |
+| 7 | Quickstart guide | Install, init, add theory, add claim, add prediction, record result, inspect. |
 | 8 | Shell completions | Generated from the argument parser for bash, zsh, and fish. Resource ID tab-completion by reading local data files. |
+| 9 | `horizon goal add\|list\|achieve` | Interactive goal management. `add` prompts for statement, type, and success criteria. `list` shows goal status with linked prediction count. `achieve` transitions status and notes which criteria were met. |
+| 10 | `horizon config set\|get` | Read/write top-level fields in `project_config.json` (project name, description, feature flags) without editing JSON directly. |
+| 11 | `horizon status` shows goal progress | Status panel includes active goals, achieved goals, and which predictions are linked to each active goal. |
+| 12 | `controlplane/discovery.py` — structural gap reporter | Given a web, returns a list of `StructuralGap` — structural observations about incomplete documentation, coverage, or testability. Pure read. No suggestions, no writes, no external deps. |
+| 13 | `horizon inspect` CLI command | Reports structural gaps in a readable table. `--json` for piping to an agent. Each gap identifies the entity, the structural property that is incomplete, and the IDs needed to navigate there. |
+| 14 | Session counter — increments in `project_config.json` on first write per calendar day (governance=false) or per `session open` (governance=true) | Counter advances correctly in both modes |
+| 15 | `health_check` returns `due_analyses` list | Correct analyses surfaced when `session_counter >= last_run_session + every_sessions` |
+| 16 | `horizon config set features.inference_gap_analysis true` enables `get_structural_gaps` MCP tool at next server start | Feature flag round-trip through project_config.json |
 
 For `horizon add prediction`, also prompt for:
 - The `specification` — the mathematical relationship or empirical claim being
-  tested (human-readable, separate from the verification script). This field
-  already exists on the `Prediction` entity from Phase 1. The interactive
-  prompt makes it easy to fill in.
+  tested (human-readable, separate from the analysis). This field
+  already exists on the `Prediction` entity from Phase 1.
+- The `derivation` — the prose explanation of why the linked claims jointly imply
+  this prediction. This is the "why" that an auditor needs to follow the chain.
 - The expected value with units
 
-The specification is the **formula contract** — it lives on the prediction so
-that Phase 6 verification layers can check whether the script is testing the
-right thing, not just whether it tests honestly. A reviewer (human or agent)
-can compare the specification against the script's logic without reading the
-full implementation.
+The specification is the **formula contract** and the derivation is the
+**reasoning chain** — together they give a reviewer (human or AI agent) everything
+needed to audit whether this prediction actually follows from its claims, without
+having to re-derive it from first principles.
 
 ### 9.2 What This Phase is NOT
 
@@ -2170,6 +2662,9 @@ full implementation.
   coexist with power commands (`register`, `get`, `set`, `query`).
 - No `horizon dashboard`. `status` is enough.
 - No static HTML rendering. Markdown is fine for now.
+- `horizon inspect` reports structural facts about the web. It does not
+  suggest new predictions, assess logical correctness, or recommend actions.
+  It gives the researcher or agent the map; they do the walking.
 
 ### Release Checkpoint: First External Human-Usable Alpha
 
@@ -2177,372 +2672,130 @@ full implementation.
 
 - [ ] A researcher can use the tool without writing JSON
 - [ ] Interactive add works for all core entity types
-- [ ] `horizon add prediction` collects the mathematical relationship (formula contract)
+- [ ] `horizon add prediction` collects specification and derivation prose
 - [ ] `horizon show` displays entity with relationships
 - [ ] `horizon log` shows per-resource mutation history from provenance data
 - [ ] Shell completions generated for bash, zsh, and fish
 - [ ] Quickstart guide is written and tested
+- [ ] A researcher can add, list, and achieve research goals without editing JSON
+- [ ] `horizon status` shows goal progress with linked prediction counts
+- [ ] `horizon config set/get` reads and writes `project_config.json` safely
+- [ ] Feature flags can be toggled via `horizon config set features.governance true`
+- [ ] `controlplane/discovery.py` structural gap reporter returns `StructuralGap` list from a web
+- [ ] `horizon inspect` shows structural gaps in a readable table; `--json` works
+- [ ] Each `StructuralGap` identifies entity ID, gap type, and navigable context — no prescriptions
+- [ ] Session counter increments correctly in both governance and no-governance modes
+- [ ] `health_check` surfaces `due_analyses` based on schedule state
+- [ ] After an inspect run, `last_run_session` is updated in `project_config.json`
 
 ---
 
-## 10. Phase 6 — Execution Pipeline
+## 10. Phase 6 — Results Ingestion
 
-**Goal:** Verification scripts run in a sandboxed environment with rigorous
-integrity checking that catches **both false positives (scripts that claim
-success when they shouldn't) and false negatives (scripts that don't
-accurately test what they claim to test)**.
+**Goal:** Horizon consumes results from analyses the researcher runs in
+their own environment. No sandboxing, no execution, no subprocess management.
+Horizon records what happened, links it to the epistemic web, and updates
+prediction status.
 
-This is the hardest problem in the product. A verification system that can
-be fooled — by accident or by subtle bugs — is worse than no verification
-system, because it creates false confidence. The execution pipeline must
-treat every script as **guilty until proven honest**.
+This is the MLflow/W&B model: you instrument your work with a line or two,
+and Horizon records the outcome. The computation lives in your tools —
+SageMath, Python, R, Jupyter, whatever you trust. Horizon stays focused
+on the epistemic layer.
 
-### 10.1 The Verification Problem
+### 10.1 Why Consumer, Not Executor
 
-The core question: **How do you know a script accurately represents what
-it's supposed to verify?**
+Running code introduces problems orthogonal to Horizon's core value:
 
-There are two failure modes:
+- **Environment management**: dependencies, virtual environments, GPU access,
+  OS-specific behaviour — researchers already solve this with their own tooling
+- **Security**: sandboxing untrusted code is a hard problem with a long tail
+  of failure modes; it is a product in itself
+- **Trust**: if Horizon runs the analysis, it owns the result. If the researcher
+  runs it, they own the result — which is the correct epistemic relationship
 
-1. **False positive (Type I trust failure):** Script reports PASS, but the
-   prediction is actually wrong. Causes: unconditional success prints,
-   hardcoded results, caught exceptions that silently pass, tolerance set
-   too loose, compensating errors that cancel out.
+The analyses Horizon tracks are not Horizon's analyses. They belong to the
+researcher. Horizon records what they found.
 
-2. **False negative (Type II trust failure):** Script reports FAIL (or tests
-   the wrong thing entirely), but the prediction is actually correct. Causes:
-   script tests a different relationship than the specification claims,
-   sign error in formula, wrong units, stale reference values, overly tight
-   tolerance.
+### 10.2 The Recording Model
 
-Both failure modes are dangerous. False positives create false confidence
-in wrong results. False negatives waste research effort investigating
-"failures" that aren't real, or worse, cause researchers to abandon correct
-predictions.
+Three equivalent ways to record a result:
 
-### 10.2 The Specification Contract
-
-Every prediction carries a `specification` field — a human-readable
-description of the mathematical relationship or empirical claim being tested.
-This is the **ground truth** for what the verification script should compute.
-
-```
-Prediction P-007:
-  observable: "W boson mass"
-  specification: "M_W = (g² × v) / 2, using SM parameters"
-  predicted: 80.379 GeV
-  script: SCR-007
+**CLI:**
+```bash
+horizon record P-007 --value 80.379 --status pass --notes "within 0.1% tolerance"
+horizon record P-007 --status fail --notes "derivation has sign error in step 3"
 ```
 
-The specification is not executable code. It is the **what** — the
-relationship the script is supposed to implement. The script is the **how**.
-When these diverge, the verification is broken regardless of whether the
-script reports PASS or FAIL.
-
-The specification ships on the `Prediction` entity from Phase 1.
-`horizon add prediction` (Phase 5) prompts for it interactively. But the
-specification is useful from Phase 6 onward for automated analysis:
-
-- **L1 static analysis** can check whether the script references the same
-  variables and constants named in the specification
-- **Sensitivity analysis** can verify that perturbing specification inputs
-  produces the expected directional changes in output
-- **Human/agent review** can compare specification against script logic
-
-### 10.3 Three-Layer Architecture
-
+**MCP tool (agent workflow):**
 ```
-┌──────────────────────────────────────────────┐
-│  Script Registry + Dispatch                  │
-│  "Which script, what command, what policy?"  │
-└────────────────────┬─────────────────────────┘
-                     ↓
-┌──────────────────────────────────────────────┐
-│  Execution Runner — Policy Enforcement       │
-│  "Is this allowed? Build the sandbox."       │
-└────────────────────┬─────────────────────────┘
-                     ↓
-┌──────────────────────────────────────────────┐
-│  Sandbox Runner — Runtime Container          │
-│  "Execute in restricted environment."        │
-└──────────────────────────────────────────────┘
+tool: record_result
+args: { prediction_id: "P-007", value: 80.379, status: "pass", notes: "..." }
 ```
 
-### 10.4 Sandbox Executor (implements ScriptExecutor port)
-
+**SDK shim (inline instrumentation):**
 ```python
-class SandboxExecutor:
-    """Implements ScriptExecutor port with deny-by-default sandboxing."""
+# Add two lines to any existing script — your code is otherwise unchanged
+from horizon_research import record
 
-    def __init__(self, workspace: Path, sandbox_runner: Path) -> None:
-        self._workspace = workspace
-        self._sandbox_runner = sandbox_runner
-
-    def execute(
-        self, script_id: str, command: str, **policy
-    ) -> ExecutionResult:
-        # Build sandboxed command based on policy
-        # Execute in subprocess
-        # Parse and return result
-        ...
+result = derive_fine_structure_constant()
+record(prediction="P-007", value=result, status="pass")
 ```
 
-Each script declares an **execution context** that controls the sandbox:
+The SDK shim is optional and thin — it calls the same gateway endpoint as
+the CLI and MCP tool. No new dependencies, no magic.
 
-```python
-DEFAULT_EXECUTION_CONTEXT = {
-    "requires_network": False,
-    "requires_sandbox": False,
-    "write_paths": [],
-    "python_environment": "workspace",
-    "allow_subprocess": False,
-}
-```
+### 10.3 What Gets Recorded
 
-The sandbox runner is a deny-by-default Python-level wrapper:
-1. **Scrub environment** — clear env vars except PATH/LANG/TERM, set temp HOME
-2. **Apply resource limits** — no core dumps, 3-min CPU cap, 20 MB file size,
-   64 open files
-3. **Install write guard** — monkey-patch `builtins.open`, `Path.write_text`,
-   `os.rename`, etc. to block writes outside allowed roots
-4. **Install network guard** (unless allowed) — replace `socket.socket`,
-   `http.client`, `urllib.request`
-5. **Install subprocess guard** (unless allowed) — replace `subprocess.run`,
-   `os.system`, `os.popen`
-6. **Execute script** via `runpy.run_path` inside the controlled environment
-
-On macOS, an outer `sandbox-exec` kernel-level sandbox can wrap the whole
-thing for defense-in-depth. Both layers are deny-by-default.
-
-Command normalization includes path-traversal protection — the target script
-must resolve inside the workspace.
-
-### 10.5 Verification Layers
-
-Seven layers, each catching a different class of failure. Ordered from
-cheapest to most expensive.
-
-**L1 — Static AST Analysis (false positive detection)**
-
-Catches scripts that claim success without doing real work:
-
-- **Unconditional success detection**: Walk the AST for `print()` calls
-  containing success keywords ("CONFIRMED", "PASS", "✓") that are NOT inside
-  an `if` block gates. A script that prints "CONFIRMED" on every code path
-  regardless of computation is fraudulent.
-- **Hardcoded result detection**: Identify functions that return a constant
-  value regardless of input. A script that `return 80.379` without computing
-  anything is not a verification.
-- **Dead branch detection**: Identify `if` branches that can never execute
-  (e.g., `if False:`, unreachable code after `return`).
-- **Input coverage**: Does the script actually import/read the parameters
-  and constants referenced in its specification? A script that never loads
-  the inputs it claims to test is suspect.
-
-**L2 — Runtime Execution (basic sanity)**
-
-- Script exits with code 0 (PASS) or non-zero (FAIL)
-- Stdout/stderr captured and parsed
-- Timeout enforcement
-- Resource limit enforcement
-
-**L3 — Sabotage Injection (false positive detection)**
-
-Catches scripts that always report success regardless of input values:
-
-- **Constant corruption**: For each registered constant, inject a known-wrong
-  value. A genuine verification script should detect the corruption and FAIL.
-  A script that still reports PASS is not actually checking.
-- **Multi-constant sabotage**: Corrupt two constants simultaneously to catch
-  compensating errors (e.g., M_W ×2 AND g ×2 might preserve a ratio).
-- **Sign flip sabotage**: Negate key constants. Many formulas are symmetric
-  under sign changes — this catches scripts that only check magnitudes.
-
-**L4 — Sensitivity Analysis (false negative detection, NEW)**
-
-Catches scripts whose output doesn't respond correctly to input changes:
-
-- **Input perturbation**: For each input parameter, apply small perturbations
-  (±1%, ±5%, ±10%). Verify the output changes in the expected direction and
-  approximate magnitude. A script that produces identical output regardless
-  of input perturbation is not computing a real function of those inputs.
-- **Monotonicity checks**: For relationships where the specification implies
-  a directional dependency (e.g., "mass increases with coupling"), verify
-  that increasing the input increases the output.
-- **Boundary probing**: Set values at the exact tolerance boundary. Verify
-  the script's PASS/FAIL threshold matches the declared tolerance. A script
-  that passes at 2× tolerance is too loose. A script that fails at 0.5×
-  tolerance is too tight.
-- **Zero-input test**: Where meaningful, run with zeroed or degenerate
-  inputs. Verify the script produces a sensible degenerate output (zero,
-  infinity, error) — not the same result as with real inputs.
-
-Sensitivity analysis requires a **perturbation registry** per script:
-which inputs to perturb, by how much, and what directional change to expect.
-This lives in project metadata alongside the sabotage registry.
-
-**L5 — Reference Value Cross-Check**
-
-- Compare computed values against independently maintained reference values
-- Track historical outputs — detect unexpected changes when inputs haven't
-  changed
-- Detect scripts that suddenly agree with new reference values without code
-  changes (possible silent data corruption)
-
-**L6 — Tolerance Audit**
-
-- Verify declared tolerances are scientifically justified
-- Flag predictions where rel_tol > 10% (suspiciously loose)
-- Flag predictions where rel_tol < machine epsilon (impossibly tight)
-- Compare tolerance against the actual spread of computed vs. observed values
-
-**L7 — Dual-Implementation Verification (optional, for critical predictions)**
-
-The strongest guarantee: two independent implementations of the same
-verification, written by different authors (or an author and an AI agent):
-
-- Register a second script for the same prediction
-- Run both independently
-- Compare outputs — they must agree within the declared tolerance
-- Disagreement triggers mandatory human review
-
-This is expensive and should be reserved for Tier A predictions and
-high-stakes results. The system should make it easy to register dual
-implementations but never require them.
+`record_result` writes to the transaction log and optionally transitions the
+prediction status:
 
 ```python
 @dataclass
-class DualVerificationResult:
+class AnalysisResult:
     prediction_id: PredictionId
-    primary_script: ScriptId
-    secondary_script: ScriptId
-    primary_result: ExecutionResult
-    secondary_result: ExecutionResult
-    agreement: bool                    # both within tolerance of each other
-    divergence: float | None           # how far apart, if numeric
+    analysis_id: AnalysisId | None      # which analysis produced this
+    value: Any                           # the computed/observed value
+    status: str                          # "pass" | "fail" | "inconclusive"
+    uncertainty: Any = None              # absolute uncertainty on value, same type as value
+    git_sha: str | None = None           # auto-captured by `horizon record` if workspace is a git repo
+    parameter_snapshot: dict | None = None  # values of Analysis.uses_parameters at record time
+    source: str | None = None            # explicit source pointer if not a git-tracked analysis
+    notes: str | None = None
+    recorded_at: str = ""                # ISO timestamp, set by gateway
 ```
 
-### 10.6 The Verification Report
+The gateway records the result to the transaction log and transitions the
+prediction status: `pass` maps to `CONFIRMED`, `fail` maps to `REFUTED`
+(unless `--no-transition` is passed). The standard `GatewayResult` envelope
+is always returned.
 
-Each script run produces a structured **verification report** that
-aggregates findings across all applicable layers:
-
-```python
-@dataclass
-class VerificationReport:
-    script_id: ScriptId
-    prediction_id: PredictionId | None
-    layers_run: list[str]              # ["L1", "L2", "L3", "L4", ...]
-    findings: list[Finding]
-    trust_level: str                   # "verified", "partial", "unverified", "suspect"
-    false_positive_risk: str           # "low", "medium", "high"
-    false_negative_risk: str           # "low", "medium", "high"
-    details: dict                      # per-layer results
-```
-
-`trust_level` summarizes the overall confidence:
-- **verified**: Passed all applicable layers including sensitivity analysis
-- **partial**: Passed L1-L3 but sensitivity analysis not yet configured
-- **unverified**: Only L1-L2 run (no sabotage registry configured)
-- **suspect**: Failed one or more layers
-
-`false_positive_risk` and `false_negative_risk` are independent assessments.
-A script can have low false-positive risk (sabotage injection works) but
-high false-negative risk (no sensitivity analysis configured, specification
-missing).
-
-### 10.7 Benchmark Validation
-
-Scripts with `machine_readable_output: true` produce structured data following
-the `verification_benchmark_v1` contract:
-
-```json
-{
-  "schema": "verification_benchmark_v1",
-  "predictions": {
-    "P-007": {
-      "predicted": 80.379,
-      "computed": 80.377,
-      "tolerance": {
-        "rel_tol": 0.001,
-        "abs_tol": 1e-9
-      },
-      "status": "PASS"
-    }
-  }
-}
-```
-
-The execution layer validates each prediction's computed value against its
-declared tolerance, **independently of the script's self-reported pass/fail**.
-This cross-check prevents scripts that claim PASS but actually deviate beyond
-tolerance. Numeric comparison uses `math.isclose` with per-prediction
-`rel_tol` / `abs_tol`. Percent deviation is computed relative to the observed
-value.
-
-### 10.8 Caching
-
-Runtime results are cached using **semantic AST fingerprints** — the AST is
-hashed rather than source text, so comment-only edits reuse expensive L2-L7
-results. The cache key includes:
-
-- AST hash of the script
-- Hash of all input parameters/constants the script reads
-- Hash of the perturbation and sabotage registries
-
-If any of these change, cached results are invalidated.
-
-### 10.9 What Lives Where
-
-Product code (generic, ships with `horizon-research`):
-- Sandbox executor, guards, and policy enforcement
-- L1 AST analysis engine
-- L2 runtime execution
-- L3 sabotage injection framework
-- L4 sensitivity analysis framework
-- L5 reference value comparison
-- L6 tolerance audit
-- L7 dual-implementation comparison
-- Benchmark validation
-- Verification report generation
-- Caching
-
-Project metadata (per-project, lives in `project/integrity/`):
-- Sabotage registry (which constants to corrupt, per script)
-- Perturbation registry (which inputs to perturb, expected directions)
-- Reference values
-- Tolerance bounds
-
-### 10.10 Phase 6 Deliverables
+### 10.4 Phase 6 Deliverables
 
 | Step | What | Tests |
 |------|------|-------|
-| 6.1 | `sandbox_executor.py` — implements ScriptExecutor | Integration with test scripts |
-| 6.2 | Sandbox runner — write guard, network guard, subprocess guard | Security tests |
-| 6.3 | Execution policy — context normalization | Policy parsing and validation |
-| 6.4 | `horizon run-script <id>` | End-to-end script execution |
-| 6.5 | L1 static analysis — unconditional success, hardcoded results, input coverage | AST analysis on known-good and known-bad fixtures |
-| 6.6 | L3 sabotage injection — constant corruption, multi-constant, sign flip | Sabotage on scripts that don't actually verify |
-| 6.7 | L4 sensitivity analysis — perturbation, monotonicity, boundary probing | Scripts with known input→output relationships |
-| 6.8 | L5-L6 reference values and tolerance audit | Cross-check and tolerance bound tests |
-| 6.9 | L7 dual-implementation verification | Agreement/disagreement detection |
-| 6.10 | Benchmark validation — predicted vs. computed vs. tolerance | Tolerance violation detection |
-| 6.11 | Verification report generation | Structured report with trust levels and risk assessment |
-| 6.12 | Limitation tests for known blind spots | Honest-but-wrong verifier fixtures, documented non-goals |
+| 6.1 | `controlplane/results.py` — `record_result(context, prediction_id, value, status, uncertainty, notes, dry_run)` | Records to `data/results.json`; transitions prediction status correctly |
+| 6.2 | `adapters/results_repository.py` — load/save `AnalysisResult` list from `data/results.json` | Round-trip; multiple results per prediction preserved in order |
+| 6.3 | `horizon record <prediction_id>` CLI command | `--value`, `--uncertainty`, `--status`, `--notes`, `--no-transition`, `--json` flags work |
+| 6.4 | `record_result` MCP tool | Returns correct `GatewayResult` envelope |
+| 6.5 | `horizon_research.record()` SDK shim | Callable from any Python script; delegates to gateway |
+| 6.6 | `controlplane/export.py` — `export_json`, `export_markdown` | Exports include recorded results alongside predictions |
+| 6.7 | `horizon results <prediction_id>` — show result history | Loads from `data/results.json`; shows value, uncertainty, status, git_sha, timestamp |
+| 6.8 | Git SHA auto-capture in `horizon record` | Captured from `git rev-parse HEAD`; warns if analysis `path` has uncommitted changes |
+| 6.9 | `parameter_snapshot` auto-capture in `record_result` | Reads current values of `Analysis.uses_parameters` from web at record time; stored in `AnalysisResult.parameter_snapshot`; round-trips through JSON |
 
 ### Phase 6 Exit Criteria
 
-- [ ] Scripts execute in sandboxed environment
-- [ ] Deny-by-default: no network, no writes outside allowed paths
-- [ ] L1 catches unconditional success prints and hardcoded results
-- [ ] L3 sabotage injection detects scripts that don't actually verify
-- [ ] L4 sensitivity analysis detects scripts whose output doesn't respond to input changes
-- [ ] L4 boundary probing verifies tolerance thresholds match declarations
-- [ ] L7 dual-implementation detects disagreement between independent verifiers
-- [ ] Benchmark validation catches tolerance violations independently of script self-report
-- [ ] Verification reports clearly communicate false-positive and false-negative risk
-- [ ] Every verification layer has explicit limitation tests for known blind spots
-- [ ] Perturbation and sabotage registries live in project metadata, not product code
+- [ ] A researcher can record a result with one CLI command
+- [ ] An agent can record a result with one MCP tool call
+- [ ] A Python script can report a result with one SDK line
+- [ ] `AnalysisResult` persists to `data/results.json`, not just the transaction log
+- [ ] Uncertainty is recorded alongside value for numerical results
+- [ ] Prediction status transitions automatically on record (unless suppressed)
+- [ ] Result history is visible via `horizon results <id>`
+- [ ] Export includes recorded results
+- [ ] `horizon record` warns when analysis file has uncommitted changes at record time
+- [ ] `parameter_snapshot` captures values of all parameters used by the linked analysis at record time
+
 
 ---
 
@@ -2652,6 +2905,18 @@ Everything below is real and valuable but not on the critical path.
   for multi-user scalability; big migration, needs conscious design
 - Multi-user merge / conflict resolution
 - `horizon challenge` — adversarial analysis of claims
+- **Experiment ideation** (`experiment_ideation` feature flag — infrastructure exists,
+  capability deferred): agent-driven suggestion of testable experiments derived from
+  active claims and open hypotheses. Exposes `suggest_experiments` MCP tool when
+  `features.experiment_ideation = true`.
+- **AI-assisted chain audit**: an AI agent calls `get_prediction_chain`,
+  `get_structural_gaps`, and `get_assumption_coverage` via MCP, then reasons
+  over the structured output with its own domain knowledge. No Horizon-internal
+  LLM integration needed — the traversal API is the interface; the agent provides
+  the reasoning. The structural gap reporter (Phase 5) is the foundation.
+- **Persisted structural gaps**: promote `StructuralGap` to a tracked entity so
+  a researcher can mark gaps as reviewed, dismissed, or acted on. Ephemeral
+  gap reporting (Phase 5) ships first.
 
 ### Aspirational (Someday, Maybe)
 
@@ -2677,7 +2942,7 @@ Everything below is real and valuable but not on the critical path.
 | **S — Single Responsibility** | Each module has exactly one reason to change | `web.py` (graph rules), `controlplane/gateway.py` (transaction boundary), `json_repository.py` (serialization), `main.py` (parsing) |
 | **O — Open/Closed** | New validators = new functions, not modifications. New entity types = new classes. | `invariants.py`, `model.py` |
 | **L — Liskov Substitution** | `InMemoryRepository` and `JsonFileRepository` interchangeable | `ports.py`, all adapters |
-| **I — Interface Segregation** | `WebRepository` has only `load()` and `save()`. `ScriptExecutor` is separate. | `ports.py` |
+| **I — Interface Segregation** | `WebRepository` has only `load()` and `save()`. `ResultRecorder` is separate. | `ports.py` |
 | **D — Dependency Inversion** | Domain defines protocols. Adapters implement them. The control plane depends on abstractions. | `ports.py`, `controlplane/gateway.py` |
 | **Low Coupling** | Kernel code has zero imports from adapters, CLI, or MCP | Package DAG: `horizon_research.mcp → horizon_research.controlplane → horizon_research.epistemic ← horizon_research.adapters`; `horizon_research.cli → horizon_research.controlplane` |
 | **High Cohesion** | `epistemic/` = kernel reasoning. `controlplane/` = product orchestration. `adapters/` = I/O. `cli/` = UI. | Package layout |
@@ -2688,7 +2953,7 @@ Everything below is real and valuable but not on the critical path.
 | **YAGNI** | No plugin system, no event bus, no database, no web server, no generic graph engine. Dependencies earn their place by improving end-user experience, not developer convenience. | Explicit in Phase 1-7 scope limits |
 | **Separation of Concerns** | Structural invariants (mutation-time) vs semantic validation (on-demand) vs persistence vs rendering vs UI | Layer architecture |
 | **Convention over Configuration** | Default `project/` layout and minimal `horizon.toml`; declarative automation graph only for the places that truly vary | `controlplane/context.py`, `controlplane/automation.py` |
-| **Principle of Least Privilege** | Execution defaults to no network, no subprocess, no writes outside declared roots; CI defaults to read-only permissions except release jobs | `execution/policy.py`, `adapters/sandbox_executor.py`, CI/CD rollout |
+| **Principle of Least Privilege** | Execution defaults to no network, no subprocess, no writes outside declared roots; CI defaults to read-only permissions except release jobs | ``, `adapters/results.py`, CI/CD rollout |
 | **Law of Demeter** | Entities hold IDs, not objects. Traverse through `EpistemicWeb` methods. | `model.py`, `web.py` |
 | **Composition over Inheritance** | No entity inherits from another. Protocols for interfaces, not abstract base classes. | `model.py`, `ports.py` |
 | **Encapsulation** | All invariant enforcement inside `EpistemicWeb`. External code uses methods, not direct mutation. | `web.py` |
@@ -2923,7 +3188,7 @@ state — JSON, rendered markdown, and prose surfaces all agree.
 
 1. **CLI**: parse → command=`"run-script"`, script_id=`"SCR-001"`
 2. **Context**: build `ProjectContext`
-3. **Script dispatch**: load `scripts.json`, look up `"SCR-001"`, read
+3. **Script dispatch**: load `analyses.json`, look up `"SCR-001"`, read
    command and execution context
 4. **Command normalization**: parse command string, validate target script
    resolves inside workspace (path-traversal protection), bind `python` to
@@ -2967,7 +3232,7 @@ state — JSON, rendered markdown, and prose surfaces all agree.
 | Rollback tests | Product fixture | `src/horizon_research/controlplane/gateway.py` |
 | CLI integration tests | Repo fixture or subprocess | `src/horizon_research/cli/main.py` |
 | Config loading tests | Temp dirs | `src/horizon_research/controlplane/context.py` |
-| Limitation/gap tests | Synthetic fixtures | `src/horizon_research/controlplane/execution/meta_verify.py`, benchmark validators |
+| Limitation/gap tests | Synthetic fixtures | `src/horizon_research/controlplane/execution/`, benchmark validators |
 | Characterization tests | Repo fixture | Old system + new system comparison |
 
 ### 18.3 The Key Property
@@ -3015,10 +3280,10 @@ Is it displaying project state or health summaries?
     → src/horizon_research/controlplane/status.py or src/horizon_research/controlplane/health.py
 
 Is it executing scripts or enforcing sandbox policy?
-    → src/horizon_research/controlplane/execution/scripts.py (dispatch) or src/horizon_research/adapters/sandbox_executor.py
+    → src/horizon_research/controlplane/ (dispatch) or src/horizon_research/adapters/results.py
 
 Is it adversarial integrity checking of scripts?
-    → src/horizon_research/controlplane/execution/meta_verify.py
+    → src/horizon_research/controlplane/execution/
 
 Is it archiving/activating research programs?
   → program_manager (outer shell — NOT in the product core)

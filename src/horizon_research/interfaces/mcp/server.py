@@ -18,7 +18,7 @@ except ImportError as exc:
 
 from pathlib import Path
 
-from ..controlplane.context import build_context, load_config
+from ...config import build_context, load_config
 from .tools import register_tools
 
 

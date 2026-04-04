@@ -5,7 +5,6 @@ protocols, never against concrete classes.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol
 
 from .types import Finding
@@ -53,22 +52,4 @@ class TransactionLog(Protocol):
 
     def append(self, operation: str, identifier: str) -> str:
         """Record an operation and return its transaction ID."""
-        ...
-
-
-@dataclass
-class ExecutionResult:
-    """Result of running a verification script."""
-    exit_code: int
-    stdout: str
-    stderr: str
-
-
-class ScriptExecutor(Protocol):
-    """Execute a verification script in a controlled environment."""
-
-    def execute(
-        self, script_id: str, command: str, **policy: object
-    ) -> ExecutionResult:
-        """Run the script and return its exit code, stdout, and stderr."""
         ...

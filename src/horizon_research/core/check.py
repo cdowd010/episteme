@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from ..epistemic.ports import WebRepository
 from ..epistemic.types import Finding
-from .context import ProjectContext
+from ..config import ProjectContext
 
 
 def check_refs(

@@ -7,5 +7,5 @@ Dependency: requires the `fastmcp` optional extra.
 Install: pip install "horizon-research[mcp]"
 
 All tool handlers are thin wrappers. Business logic lives in
-controlplane/gateway.py, never here.
+core/gateway.py, never here.
 """

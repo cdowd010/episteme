@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 
 from ...epistemic.ports import WebRepository, WebValidator
 from ...epistemic.types import Finding, Severity
-from ..context import ProjectContext
-from ..health import run_health_check
+from ...config import ProjectContext
+from ...views.health import run_health_check
 from .session import SessionRecord, close_session
 
 

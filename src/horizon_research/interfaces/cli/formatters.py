@@ -16,9 +16,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from ..controlplane.gateway import GatewayResult
-from ..controlplane.health import HealthReport
-from ..controlplane.status import ProjectStatus
+from ...core.gateway import GatewayResult
+from ...views.health import HealthReport
+from ...views.status import ProjectStatus
 
 console = Console()
 error_console = Console(stderr=True)
@@ -68,7 +68,7 @@ def print_health_report(report: HealthReport, *, as_json: bool = False) -> None:
 def print_status(status: ProjectStatus, *, as_json: bool = False) -> None:
     """Print a ProjectStatus dashboard in human or JSON mode."""
     if as_json:
-        from ..controlplane.status import format_status_dict
+        from ...views.status import format_status_dict
         print(json.dumps(format_status_dict(status), indent=2))
         return
     m = status.metrics

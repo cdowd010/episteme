@@ -10,19 +10,21 @@ from typing import NewType
 
 
 # ── Typed identifiers ─────────────────────────────────────────────
-# NewType gives nominal typing: ClaimId and ScriptId are both str at
+# NewType gives nominal typing: ClaimId and AnalysisId are both str at
 # runtime, but the type checker treats them as distinct types.
 
 ClaimId = NewType("ClaimId", str)
 AssumptionId = NewType("AssumptionId", str)
 PredictionId = NewType("PredictionId", str)
-HypothesisId = NewType("HypothesisId", str)
+TheoryId = NewType("TheoryId", str)
 DiscoveryId = NewType("DiscoveryId", str)
-ScriptId = NewType("ScriptId", str)
+AnalysisId = NewType("AnalysisId", str)
 IndependenceGroupId = NewType("IndependenceGroupId", str)
 ParameterId = NewType("ParameterId", str)
 ConceptId = NewType("ConceptId", str)
-FailureId = NewType("FailureId", str)
+DeadEndId = NewType("DeadEndId", str)
+# GoalId lives in features/goals.py — research goals are a feature layer,
+# not part of the epistemic kernel.
 
 
 # ── Severity ──────────────────────────────────────────────────────
@@ -77,7 +79,7 @@ class PredictionStatus(Enum):
     NOT_YET_TESTABLE = "NOT_YET_TESTABLE"
 
 
-class FailureStatus(Enum):
+class DeadEndStatus(Enum):
     ACTIVE = "active"
     RESOLVED = "resolved"
     ARCHIVED = "archived"

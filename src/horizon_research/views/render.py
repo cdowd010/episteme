@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..epistemic.ports import WebRenderer
 from ..epistemic.web import EpistemicWeb
-from .context import ProjectContext
+from ..config import ProjectContext
 
 
 def compute_fingerprint(web: EpistemicWeb) -> str:

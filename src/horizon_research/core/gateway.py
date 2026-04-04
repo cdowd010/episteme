@@ -30,7 +30,7 @@ from ..epistemic.ports import (
     WebValidator,
 )
 from ..epistemic.types import Finding
-from .context import ProjectContext
+from ..config import ProjectContext
 
 
 # Maps plural/hyphenated CLI forms to canonical resource keys.
@@ -42,18 +42,20 @@ GATEWAY_RESOURCE_ALIASES: dict[str, str] = {
     "assumptions": "assumption",
     "prediction": "prediction",
     "predictions": "prediction",
-    "script": "script",
-    "scripts": "script",
+    "analysis": "analysis",
+    "analyses": "analysis",
     "independence-group": "independence_group",
     "independence_group": "independence_group",
     "independence-groups": "independence_group",
     "independence_groups": "independence_group",
-    "hypothesis": "hypothesis",
-    "hypotheses": "hypothesis",
+    "theory": "theory",
+    "theories": "theory",
     "discovery": "discovery",
     "discoveries": "discovery",
-    "failure": "failure",
-    "failures": "failure",
+    "dead-end": "dead_end",
+    "dead_end": "dead_end",
+    "dead-ends": "dead_end",
+    "dead_ends": "dead_end",
     "concept": "concept",
     "concepts": "concept",
     "parameter": "parameter",

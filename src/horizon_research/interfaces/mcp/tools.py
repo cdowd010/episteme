@@ -12,15 +12,14 @@ Tool naming convention: <verb>_<resource> or <verb>_<noun>
 """
 from __future__ import annotations
 
-from ..adapters.json_repository import JsonRepository
-from ..adapters.markdown_renderer import MarkdownRenderer
-from ..adapters.sandbox_executor import SandboxExecutor
-from ..adapters.transaction_log import JsonTransactionLog
-from ..controlplane.context import ProjectContext
-from ..controlplane.gateway import Gateway
-from ..controlplane.health import run_health_check
-from ..controlplane.status import get_status
-from ..controlplane.validate import DomainValidator
+from ...adapters.json_repository import JsonRepository
+from ...adapters.markdown_renderer import MarkdownRenderer
+from ...adapters.transaction_log import JsonTransactionLog
+from ...config import ProjectContext
+from ...core.gateway import Gateway
+from ...views.health import run_health_check
+from ...views.status import get_status
+from ...core.validate import DomainValidator
 
 
 def _build_gateway(context: ProjectContext) -> Gateway:
@@ -29,7 +28,7 @@ def _build_gateway(context: ProjectContext) -> Gateway:
     validator = DomainValidator()
     renderer = MarkdownRenderer()
     tx_log = JsonTransactionLog(context.paths.query_transaction_log_file)
-    from ..epistemic.ports import ProseSync  # imported for type only
+    from ...epistemic.ports import ProseSync  # imported for type only
     # prose_sync placeholder — implement in Phase 3
     prose_sync = _NullProseSync()
     return Gateway(context, repo, validator, renderer, prose_sync, tx_log)
@@ -88,7 +87,7 @@ def register_tools(server, context: ProjectContext) -> None:
         """Run all domain validators and return findings."""
         repo = JsonRepository(context.paths.data_dir)
         validator = DomainValidator()
-        from ..controlplane.validate import validate_project
+        from ...core.validate import validate_project
         findings = validate_project(context, repo)
         return {
             "status": "CLEAN" if not any(
@@ -120,7 +119,7 @@ def register_tools(server, context: ProjectContext) -> None:
     def project_status() -> dict:
         """Return a high-level project status snapshot."""
         repo = JsonRepository(context.paths.data_dir)
-        from ..controlplane.status import format_status_dict
+        from ...views.status import format_status_dict
         status = get_status(context, repo)
         return {"status": "ok", "data": format_status_dict(status)}
 

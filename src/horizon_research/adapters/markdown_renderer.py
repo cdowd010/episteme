@@ -2,7 +2,7 @@
 
 Generates human-readable markdown surfaces from the epistemic web.
 All rendering is pure transformation: web → {path: content}. No disk I/O.
-The caller (controlplane/render.py) decides what to write where.
+The caller (views/render.py) decides what to write where.
 
 Implements the WebRenderer protocol from epistemic/ports.py.
 """

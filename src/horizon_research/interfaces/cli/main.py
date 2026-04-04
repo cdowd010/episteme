@@ -23,7 +23,7 @@ from pathlib import Path
 
 import click
 
-from ..controlplane.context import build_context, load_config
+from ...config import build_context, load_config
 from .formatters import print_gateway_result, print_health_report, print_status
 
 

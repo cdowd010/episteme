@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ..epistemic.ports import WebRepository
-from .context import ProjectContext
+from ..config import ProjectContext
 from .metrics import WebMetrics, compute_metrics
 
 

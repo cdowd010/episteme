@@ -83,15 +83,15 @@ def validate_independence_semantics(web: EpistemicWeb) -> list[Finding]:
 
 
 def validate_coverage(web: EpistemicWeb) -> list[Finding]:
-    """Check for verification gaps."""
+    """Check for analysis and prediction coverage gaps."""
     findings: list[Finding] = []
 
     for cid, claim in web.claims.items():
-        if claim.category == "numerical" and not claim.verified_by:
+        if claim.category == "numerical" and not claim.analyses:
             findings.append(Finding(
                 Severity.INFO,
                 f"claims/{cid}",
-                "Numerical claim lacks verification script",
+                "Numerical claim has no linked analyses",
             ))
 
     for aid, assumption in web.assumptions.items():
@@ -116,10 +116,24 @@ def validate_coverage(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
+def validate_assumption_testability(web: EpistemicWeb) -> list[Finding]:
+    """Assumptions with a falsifiable consequence should have predictions testing them."""
+    findings: list[Finding] = []
+    for aid, assumption in web.assumptions.items():
+        if assumption.falsifiable_consequence and not assumption.tested_by:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"assumptions/{aid}",
+                "Assumption has falsifiable_consequence but no predictions in tested_by",
+            ))
+    return findings
+
+
 def validate_all(web: EpistemicWeb) -> list[Finding]:
     """Run all domain validators."""
     return (
         validate_tier_constraints(web)
         + validate_independence_semantics(web)
         + validate_coverage(web)
+        + validate_assumption_testability(web)
     )

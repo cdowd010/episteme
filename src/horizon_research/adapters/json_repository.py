@@ -2,9 +2,9 @@
 
 Loads and saves the epistemic web as a collection of JSON files under
 project/data/. Each entity type has its own file:
-  claims.json, assumptions.json, predictions.json, scripts.json,
-  independence_groups.json, hypotheses.json, discoveries.json,
-  failures.json, concepts.json, parameters.json
+  claims.json, assumptions.json, predictions.json, analyses.json,
+  independence_groups.json, theories.json, discoveries.json,
+  dead_ends.json, concepts.json, parameters.json
 
 Implements the WebRepository protocol from epistemic/ports.py.
 """

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from ..epistemic.ports import WebRepository
 from ..epistemic.web import EpistemicWeb
-from .context import ProjectContext
+from ..config import ProjectContext
 
 
 def export_json(

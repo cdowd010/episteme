@@ -12,33 +12,33 @@ import copy
 from dataclasses import dataclass, field
 
 from .model import (
+    Analysis,
     Assumption,
     Claim,
     Concept,
+    DeadEnd,
     Discovery,
-    Failure,
-    Hypothesis,
     IndependenceGroup,
     PairwiseSeparation,
     Parameter,
     Prediction,
-    Script,
+    Theory,
 )
 from .types import (
+    AnalysisId,
     AssumptionId,
     ClaimId,
     ConceptId,
+    DeadEndId,
+    DeadEndStatus,
     DiscoveryId,
-    FailureId,
-    FailureStatus,
     Finding,
-    HypothesisId,
     IndependenceGroupId,
     ParameterId,
     PredictionId,
     PredictionStatus,
-    ScriptId,
     Severity,
+    TheoryId,
 )
 
 
@@ -52,14 +52,14 @@ class EpistemicWeb:
     claims: dict[ClaimId, Claim] = field(default_factory=dict)
     assumptions: dict[AssumptionId, Assumption] = field(default_factory=dict)
     predictions: dict[PredictionId, Prediction] = field(default_factory=dict)
-    hypotheses: dict[HypothesisId, Hypothesis] = field(default_factory=dict)
+    theories: dict[TheoryId, Theory] = field(default_factory=dict)
     discoveries: dict[DiscoveryId, Discovery] = field(default_factory=dict)
-    scripts: dict[ScriptId, Script] = field(default_factory=dict)
+    analyses: dict[AnalysisId, Analysis] = field(default_factory=dict)
     independence_groups: dict[IndependenceGroupId, IndependenceGroup] = field(
         default_factory=dict
     )
     pairwise_separations: list[PairwiseSeparation] = field(default_factory=list)
-    failures: dict[FailureId, Failure] = field(default_factory=dict)
+    dead_ends: dict[DeadEndId, DeadEnd] = field(default_factory=dict)
     concepts: dict[ConceptId, Concept] = field(default_factory=dict)
     parameters: dict[ParameterId, Parameter] = field(default_factory=dict)
 
@@ -112,7 +112,7 @@ class EpistemicWeb:
             raise DuplicateIdError(f"Claim {claim.id} already exists")
         self._check_refs_exist(claim.assumptions, self.assumptions, "assumption")
         self._check_refs_exist(claim.depends_on, self.claims, "claim")
-        self._check_refs_exist(claim.verified_by, self.scripts, "script")
+        self._check_refs_exist(claim.analyses, self.analyses, "analysis")
         self._check_no_cycle_with(claim)
 
         new = self._copy()
@@ -125,9 +125,9 @@ class EpistemicWeb:
         for aid in claim.assumptions:
             new.assumptions[aid].used_in_claims.add(claim.id)
 
-        # Maintain bidirectional: script.claims_covered
-        for sid in claim.verified_by:
-            new.scripts[sid].claims_covered.add(claim.id)
+        # Maintain bidirectional: analysis.claims_covered
+        for anid in claim.analyses:
+            new.analyses[anid].claims_covered.add(claim.id)
 
         return new
 
@@ -140,16 +140,14 @@ class EpistemicWeb:
         return new
 
     def register_prediction(self, prediction: Prediction) -> EpistemicWeb:
-        """Add a prediction. Enforces: refs exist, bidirectional group link."""
+        """Add a prediction. Enforces: refs exist, bidirectional links updated."""
         if prediction.id in self.predictions:
             raise DuplicateIdError(f"Prediction {prediction.id} already exists")
-        if prediction.claim_id and prediction.claim_id not in self.claims:
+        self._check_refs_exist(prediction.claim_ids, self.claims, "claim")
+        self._check_refs_exist(prediction.tests_assumptions, self.assumptions, "assumption")
+        if prediction.analysis and prediction.analysis not in self.analyses:
             raise BrokenReferenceError(
-                f"Claim {prediction.claim_id} does not exist"
-            )
-        if prediction.script and prediction.script not in self.scripts:
-            raise BrokenReferenceError(
-                f"Script {prediction.script} does not exist"
+                f"Analysis {prediction.analysis} does not exist"
             )
         if prediction.independence_group:
             if prediction.independence_group not in self.independence_groups:
@@ -158,7 +156,11 @@ class EpistemicWeb:
                 )
 
         new = self._copy()
-        new.predictions[prediction.id] = prediction
+        new.predictions[prediction.id] = copy.deepcopy(prediction)
+
+        # Maintain bidirectional: assumption.tested_by
+        for aid in prediction.tests_assumptions:
+            new.assumptions[aid].tested_by.add(prediction.id)
 
         # Maintain bidirectional: group.member_predictions
         if prediction.independence_group:
@@ -168,20 +170,27 @@ class EpistemicWeb:
 
         return new
 
-    def register_script(self, script: Script) -> EpistemicWeb:
-        """Add a verification script."""
-        if script.id in self.scripts:
-            raise DuplicateIdError(f"Script {script.id} already exists")
+    def register_analysis(self, analysis: Analysis) -> EpistemicWeb:
+        """Add an analysis reference. Maintains bidirectional uses_parameters link."""
+        if analysis.id in self.analyses:
+            raise DuplicateIdError(f"Analysis {analysis.id} already exists")
+        self._check_refs_exist(analysis.uses_parameters, self.parameters, "parameter")
+
         new = self._copy()
-        new.scripts[script.id] = script
+        new.analyses[analysis.id] = copy.deepcopy(analysis)
+
+        # Maintain bidirectional: parameter.used_in_analyses
+        for pid in analysis.uses_parameters:
+            new.parameters[pid].used_in_analyses.add(analysis.id)
+
         return new
 
-    def register_hypothesis(self, hypothesis: Hypothesis) -> EpistemicWeb:
-        """Add a hypothesis."""
-        if hypothesis.id in self.hypotheses:
-            raise DuplicateIdError(f"Hypothesis {hypothesis.id} already exists")
+    def register_theory(self, theory: Theory) -> EpistemicWeb:
+        """Add a theory."""
+        if theory.id in self.theories:
+            raise DuplicateIdError(f"Theory {theory.id} already exists")
         new = self._copy()
-        new.hypotheses[hypothesis.id] = hypothesis
+        new.theories[theory.id] = theory
         return new
 
     def register_independence_group(self, group: IndependenceGroup) -> EpistemicWeb:
@@ -200,12 +209,12 @@ class EpistemicWeb:
         new.discoveries[discovery.id] = discovery
         return new
 
-    def register_failure(self, failure: Failure) -> EpistemicWeb:
-        """Add a failure record."""
-        if failure.id in self.failures:
-            raise DuplicateIdError(f"Failure {failure.id} already exists")
+    def register_dead_end(self, dead_end: DeadEnd) -> EpistemicWeb:
+        """Add a dead end record."""
+        if dead_end.id in self.dead_ends:
+            raise DuplicateIdError(f"DeadEnd {dead_end.id} already exists")
         new = self._copy()
-        new.failures[failure.id] = failure
+        new.dead_ends[dead_end.id] = dead_end
         return new
 
     def register_concept(self, concept: Concept) -> EpistemicWeb:
@@ -244,21 +253,21 @@ class EpistemicWeb:
         new.predictions[pid].status = new_status
         return new
 
-    def transition_failure(
+    def transition_dead_end(
         self,
-        fid: FailureId,
-        new_status: FailureStatus,
+        did: DeadEndId,
+        new_status: DeadEndStatus,
         session_resolved: int | None = None,
     ) -> EpistemicWeb:
-        """Change a failure's status, with side effects."""
-        if fid not in self.failures:
-            raise BrokenReferenceError(f"Failure {fid} does not exist")
+        """Change a dead end's status, with side effects."""
+        if did not in self.dead_ends:
+            raise BrokenReferenceError(f"DeadEnd {did} does not exist")
         new = self._copy()
-        new.failures[fid].status = new_status
-        if new_status == FailureStatus.RESOLVED and session_resolved is not None:
-            new.failures[fid].session_resolved = session_resolved
-        elif new_status == FailureStatus.ACTIVE:
-            new.failures[fid].session_resolved = None
+        new.dead_ends[did].status = new_status
+        if new_status == DeadEndStatus.RESOLVED and session_resolved is not None:
+            new.dead_ends[did].session_resolved = session_resolved
+        elif new_status == DeadEndStatus.ACTIVE:
+            new.dead_ends[did].session_resolved = None
         return new
 
     # ── Invariant checks ──────────────────────────────────────────

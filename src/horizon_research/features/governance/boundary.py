@@ -9,7 +9,7 @@ When governance is disabled (the default), all checks pass unconditionally.
 from __future__ import annotations
 
 from ...epistemic.types import Finding, Severity
-from ..context import ProjectContext
+from ...config import ProjectContext
 from .session import get_current_session
 
 

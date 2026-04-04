@@ -11,7 +11,7 @@ from ..epistemic.invariants import validate_all
 from ..epistemic.ports import WebRepository, WebValidator
 from ..epistemic.types import Finding, Severity
 from ..epistemic.web import EpistemicWeb
-from .context import ProjectContext
+from ..config import ProjectContext
 
 
 class DomainValidator:

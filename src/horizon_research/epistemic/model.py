@@ -13,29 +13,31 @@ from datetime import date
 from typing import Any
 
 from .types import (
+    AnalysisId,
     AssumptionId,
     ClaimId,
     ConceptId,
     ConfidenceTier,
+    DeadEndId,
+    DeadEndStatus,
     DiscoveryId,
     EvidenceKind,
-    FailureId,
-    FailureStatus,
-    HypothesisId,
     IndependenceGroupId,
     MeasurementRegime,
     ParameterId,
     PredictionId,
     PredictionStatus,
-    ScriptId,
+    TheoryId,
 )
+# ResearchGoal lives in features/goals.py — it is a project management
+# concept, not an epistemic entity. The epistemic web has no knowledge of goals.
 
 
 @dataclass
 class Claim:
     """An atomic, falsifiable assertion.
 
-    depends_on forms a DAG. assumptions and verified_by have bidirectional
+    depends_on forms a DAG. assumptions and analyses have bidirectional
     links maintained by the EpistemicWeb.
     """
     id: ClaimId
@@ -46,7 +48,8 @@ class Claim:
     category: str = "qualitative"                # "numerical" | "qualitative"
     assumptions: set[AssumptionId] = field(default_factory=set)
     depends_on: set[ClaimId] = field(default_factory=set)
-    verified_by: set[ScriptId] = field(default_factory=set)
+    analyses: set[AnalysisId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
 
 
 @dataclass
@@ -58,12 +61,27 @@ class Assumption:
     scope: str
     used_in_claims: set[ClaimId] = field(default_factory=set)
     falsifiable_consequence: str | None = None
+    tested_by: set[PredictionId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
     notes: str | None = None
 
 
 @dataclass
 class Prediction:
-    """A testable consequence of one or more claims."""
+    """A testable consequence of one or more claims.
+
+    'claim_ids' is the set of claims that jointly imply this prediction —
+    the logical derivation chain. Most non-trivial predictions require
+    multiple claims together. Bidirectional maintenance is one-way only:
+    the web validates all claim_ids exist; no backlink on Claim.
+
+    'tests_assumptions' is the set of assumptions this prediction was
+    explicitly designed to test — i.e., its outcome bears on whether
+    those assumptions hold. Bidirectional with Assumption.tested_by.
+
+    'derivation' is the prose explanation of why claim_ids → this
+    prediction. Distinct from 'specification' (the formula being tested).
+    """
     id: PredictionId
     observable: str
     tier: ConfidenceTier
@@ -71,9 +89,11 @@ class Prediction:
     evidence_kind: EvidenceKind
     measurement_regime: MeasurementRegime
     predicted: Any                               # the predicted value/outcome
-    specification: str | None = None             # human-readable formula/relationship being tested
-    claim_id: ClaimId | None = None
-    script: ScriptId | None = None
+    specification: str | None = None             # formula/relationship being tested (the "what")
+    derivation: str | None = None                # why claim_ids jointly imply this prediction (the "why")
+    claim_ids: set[ClaimId] = field(default_factory=set)
+    tests_assumptions: set[AssumptionId] = field(default_factory=set)
+    analysis: AnalysisId | None = None
     independence_group: IndependenceGroupId | None = None
     correlation_tags: set[str] = field(default_factory=set)
     observed: Any = None
@@ -82,6 +102,7 @@ class Prediction:
     conditional_on: str | None = None
     falsifier: str | None = None
     benchmark_source: str | None = None
+    source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
     notes: str | None = None
 
 
@@ -109,26 +130,45 @@ class PairwiseSeparation:
 
 
 @dataclass
-class Script:
-    """A verification program that checks whether predictions hold."""
-    id: ScriptId
-    command: str
+class Analysis:
+    """A piece of analytical work whose results feed back into the epistemic web.
+
+    Horizon does not run analyses — the researcher runs them using their
+    preferred tools (SageMath, Python, R, Jupyter, etc.) and records the
+    result via `horizon record` or the `record_result` MCP tool.
+
+    'path' and 'command' are provenance pointers: they tell the researcher
+    (or agent) where the code lives and how to run it. Horizon never invokes
+    them. The git SHA at record time is captured on the AnalysisResult, giving
+    a complete immutable provenance chain: path + SHA + recorded value.
+
+    'uses_parameters' enables staleness detection: when a Parameter changes,
+    health_check can identify which analyses (and therefore which predictions)
+    need to be re-run. Bidirectional with Parameter.used_in_analyses.
+    """
+    id: AnalysisId
+    command: str | None = None                   # how to invoke it (documentation)
+    path: str | None = None                      # path to the file, relative to workspace root
     claims_covered: set[ClaimId] = field(default_factory=set)
-    machine_readable_output: bool = False
-    requires_network: bool = False
-    requires_sandbox: bool = True
+    uses_parameters: set[ParameterId] = field(default_factory=set)
     notes: str | None = None
 
 
 @dataclass
-class Hypothesis:
-    """A higher-level theoretical path being explored."""
-    id: HypothesisId
+class Theory:
+    """A higher-level explanatory framework being explored.
+
+    A theory motivates and organises claims. Claims are the atomic
+    assertions the theory rests on; predictions are what the theory
+    predicts that could be tested.
+    """
+    id: TheoryId
     title: str
     status: str
     summary: str | None = None
     related_claims: set[ClaimId] = field(default_factory=set)
     related_predictions: set[PredictionId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, citation
 
 
 @dataclass
@@ -144,16 +184,21 @@ class Discovery:
 
 
 @dataclass
-class Failure:
-    """A known problem or dead end."""
-    id: FailureId
+class DeadEnd:
+    """A known dead end or abandoned direction.
+
+    Records what was tried and why it didn't work. Valuable negative
+    results that constrain the hypothesis space.
+    """
+    id: DeadEndId
     title: str
     description: str
-    status: FailureStatus
+    status: DeadEndStatus
     session_opened: int
     session_resolved: int | None = None
     related_predictions: set[PredictionId] = field(default_factory=set)
     related_claims: set[ClaimId] = field(default_factory=set)
+    source: str | None = None                    # doi:..., arxiv:..., url, or analysis reference
 
 
 @dataclass
@@ -166,15 +211,21 @@ class Concept:
     aliases: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     references: list[str] = field(default_factory=list)
+    source: str | None = None                    # primary source for this definition
 
 
 @dataclass
 class Parameter:
-    """A physical or mathematical constant referenced by verification scripts.
+    """A physical or mathematical constant referenced by analyses.
 
-    Parameters live in project/data/parameters.json and are read by
-    scripts at runtime. The sandbox executor makes them available as
-    structured input so scripts don't hard-code constants.
+    Parameters live in project/data/parameters.json and are available
+    to the researcher when running analyses. They keep constants out of
+    scripts and in a single version-controlled location.
+
+    'used_in_analyses' is the bidirectional backlink to Analysis.uses_parameters.
+    The EpistemicWeb maintains this automatically when analyses are registered.
+    It enables staleness detection: when this parameter changes, health_check
+    surfaces all analyses (and linked predictions) that need to be re-run.
     """
     id: ParameterId
     name: str
@@ -182,4 +233,10 @@ class Parameter:
     unit: str | None = None             # SI or domain unit, human-readable
     uncertainty: Any = None             # absolute uncertainty, same type as value
     source: str | None = None           # citation or derivation note
+    used_in_analyses: set[AnalysisId] = field(default_factory=set)
     notes: str | None = None
+
+
+# ResearchGoal has been moved to features/goals.py.
+# It is a project management concept (not epistemic) and belongs in the
+# goals feature layer alongside the MCP tools that manage it.
