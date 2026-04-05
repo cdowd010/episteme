@@ -17,7 +17,7 @@ Core tool surface:
   health_check        — composed health report
   project_status      — high-level status snapshot
   render_views        — regenerate markdown views
-  check_stale         — identify analyses needing re-run
+    check_stale         — identify analyses needing review after parameter changes
   check_refs          — verify all ID references are intact
   export_web          — bulk export (JSON or markdown)
 """
@@ -145,10 +145,10 @@ def register_tools(server, context: ProjectContext) -> None:
 
     @server.tool()
     def check_stale() -> dict:
-        """Identify analyses that need re-running after parameter changes.
+        """Identify analyses that need review after parameter changes.
 
-        Returns analyses whose uses_parameters set includes a parameter
-        that has changed since the analysis was last run.
+        Returns findings for analyses and dependent predictions in the
+        parameter-change blast radius.
         """
         from ...controlplane.check import check_stale
         findings = check_stale(context)

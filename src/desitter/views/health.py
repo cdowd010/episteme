@@ -1,8 +1,8 @@
 """Health checks for the project.
 
-Composes validation, render-staleness, and structure checks into a single
-health report. Intended as the primary "is everything OK?" command for
-both MCP tools and the CLI.
+Composes domain validation, analysis-staleness checks, and reference
+integrity checks into a single health report. Intended as the primary
+"is everything OK?" command for both MCP tools and the CLI.
 
 Returns a structured report rather than raw findings, so callers can
 make automated pass/fail decisions.
@@ -46,7 +46,7 @@ def run_health_check(
 
     Checks performed:
       1. Domain invariant validation (epistemic/invariants.py)
-      2. Render staleness (views/render.py)
-      3. File structure integrity (controlplane/validate.py)
+            2. Analysis staleness after parameter changes (controlplane/check.py)
+            3. Cross-reference integrity (controlplane/check.py)
     """
     raise NotImplementedError

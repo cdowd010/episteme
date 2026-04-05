@@ -26,7 +26,19 @@ from .web import EpistemicWeb
 
 
 def validate_tier_constraints(web: EpistemicWeb) -> list[Finding]:
-    """FULLY_SPECIFIED: 0 free params. CONDITIONAL: must state conditional_on."""
+    """Tier and measurement constraints across prediction lifecycle.
+
+    Rules:
+      - FULLY_SPECIFIED predictions must have zero free parameters.
+      - CONDITIONAL predictions should state conditional_on assumptions.
+      - For MEASURED / BOUND_ONLY regimes, recorded evidence is required once
+        a prediction has moved into an adjudicated state
+        (CONFIRMED/STRESSED/REFUTED).
+
+    PENDING and NOT_YET_TESTABLE predictions are allowed to omit observed
+    values even when measurement_regime is already set. This supports the
+    common flow of registering a prediction before observations are recorded.
+    """
     findings: list[Finding] = []
     for pid, pred in web.predictions.items():
         if pred.tier == ConfidenceTier.FULLY_SPECIFIED and pred.free_params != 0:
@@ -41,13 +53,28 @@ def validate_tier_constraints(web: EpistemicWeb) -> list[Finding]:
                 f"predictions/{pid}",
                 "CONDITIONAL prediction missing 'conditional_on'",
             ))
-        if pred.measurement_regime == MeasurementRegime.MEASURED and pred.observed is None:
+
+        requires_recorded_evidence = pred.status in {
+            PredictionStatus.CONFIRMED,
+            PredictionStatus.STRESSED,
+            PredictionStatus.REFUTED,
+        }
+
+        if (
+            requires_recorded_evidence
+            and pred.measurement_regime == MeasurementRegime.MEASURED
+            and pred.observed is None
+        ):
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",
                 "measurement_regime=MEASURED requires an observed value",
             ))
-        if pred.measurement_regime == MeasurementRegime.BOUND_ONLY and pred.observed_bound is None:
+        if (
+            requires_recorded_evidence
+            and pred.measurement_regime == MeasurementRegime.BOUND_ONLY
+            and pred.observed_bound is None
+        ):
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",

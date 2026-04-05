@@ -92,12 +92,12 @@ classDef bigText font-size:18px,color:#111111;
     P001 -->|"independence_group"| IG001
     IG001 -.->|"member_predictions"| P001
 
-    style PAR001 fill:#FF0000,stroke:#FFA500
+    style PAR001 fill:#FF0000,stroke:#CC0000
     style A001 fill:#FFB74D,stroke:#E65100
-    style AN001 fill:#64B5F6,stroke:#1565C0
+    style AN001 fill:#2196F3,stroke:#1565C0
     style C001 fill:#66BB6A,stroke:#2E7D32
     style P001 fill:#CE93D8,stroke:#8E24AA
-    style IG001 fill:#B0BEC5,stroke:#546E7A
+    style IG001 fill:#9E9E9E,stroke:#616161
 ```
 
 **Color Legend**
@@ -306,11 +306,11 @@ classDef bigText font-size:18px,color:#111111;
     OBS -->|"confirms"| P001
     P001 --> OUT
 
-    style A001 fill:#FFB74D
-    style PAR001 fill:#FF0000
-    style AN001 fill:#64B5F6
-    style C001 fill:#66BB6A
-    style P001 fill:#CE93D8
+    style A001 fill:#FF9800
+    style PAR001 fill:#D32F2F
+    style AN001 fill:#1976D2
+    style C001 fill:#4CAF50
+    style P001 fill:#9C27B0
     style OBS fill:#FFCDD2,stroke:#C62828
     style OUT fill:#A5D6A7,stroke:#2E7D32,stroke-width:2px
 ```
@@ -890,7 +890,7 @@ classDef bigText font-size:18px,color:#111111;
     C003 -.->|"cited by"| P001
     C001 -->|"validate_retracted_claim_citations fires"| BLOCK
 
-    style C001 fill:#C62828,stroke:#C62828,stroke-width:2px
+    style C001 fill:#FF0000,stroke:#CC0000,stroke-width:2px
     style C002 fill:#66BB6A
     style C003 fill:#66BB6A
     style P001 fill:#CE93D8
@@ -1279,7 +1279,7 @@ classDef bigText font-size:18px,color:#111111;
     style PAR001 fill:#FF0000
     style A001 fill:#FFB74D,stroke:#E65100,stroke-width:2px
     style A002 fill:#FFB74D
-    style T001 fill:#9FA8DA,stroke:#5C6BC0
+    style T001 fill:#5C6BC0,stroke:#3949AB
     style C001 fill:#66BB6A
     style C002 fill:#66BB6A
     style C003 fill:#A5D6A7,stroke:#388E3C,stroke-width:2px
@@ -1366,7 +1366,7 @@ gateway.query("prediction_implicit_assumptions", pid="P-001")
 gateway.query("refutation_impact", pid="P-001")
 # {
 #   "claim_ids":             {"C-001", "C-002", "C-003"},
-#   "claim_ancestors":       set(),                    # ancestors already appear in claim_ids; field excludes direct claim_ids
+#   "claim_ancestors":       {"C-001", "C-002"},    # ancestors of C-003 (C-001 and C-002 are foundational)
 #   "implicit_assumptions":  {"A-001", "A-002"},
 # }
 # If P-001 were refuted, ALL THREE claims and BOTH assumptions would be called into question.
@@ -1635,8 +1635,8 @@ gateway.transition("prediction", "P-001", "STRESSED")
 # After replication and analysis, transition to REFUTED.
 gateway.transition("prediction", "P-001", "REFUTED")
 # → ok | P-001 → REFUTED
-# Validator: tier constraints are satisfied (MEASURED + observed is present).
-# P-001.analysis = "AN-001" preserves provenance for the refutation record.
+# Validator: validate_evidence_consistency checks that REFUTED predictions have an analysis.
+# P-001.analysis = "AN-001" — satisfied.
 ```
 
 **Query the consequences.**
@@ -1645,7 +1645,7 @@ gateway.transition("prediction", "P-001", "REFUTED")
 gateway.query("refutation_impact", pid="P-001")
 # {
 #   "claim_ids":            {"C-001", "C-002"},
-#   "claim_ancestors":      set(),                   # ancestors already appear in claim_ids; field excludes direct claim_ids
+#   "claim_ancestors":      {"C-001"},              # C-002 depends_on C-001
 #   "implicit_assumptions": {"A-001", "A-002"},     # both assumptions are in the chain
 # }
 # The refutation of P-001 calls into question both claims and both assumptions.
@@ -1741,7 +1741,7 @@ classDef bigText font-size:18px,color:#111111;
     style P001 fill:#CE93D8,stroke:#8E24AA
     style OBS fill:#FFCDD2,stroke:#C62828
     style REFUTED fill:#FFCDD2,stroke:#C62828,stroke-width:2px
-    style AFTERMATH fill:#C5CAE9,stroke:#546E7A,stroke-width:2px
+    style AFTERMATH fill:#C5CAE9,stroke:#616161,stroke-width:2px
 ```
 
 ```mermaid

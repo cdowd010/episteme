@@ -1,14 +1,14 @@
     1: """deSitter (desitter) — control plane for research epistemic webs.
        
-       Primary interface:  MCP server (AI agents call tools)
-       Secondary interface: CLI (humans and scripts)
-       Both route through:  controlplane.gateway.Gateway
+       The CLI and MCP server are peer interfaces over the same gateway.
+       Both route through: controlplane.gateway.Gateway.
        
        Layer cake (top to bottom):
-         mcp / cli       — external interfaces
-         controlplane/views/features — layered services above the epistemic kernel
+         interfaces      — CLI and MCP adapters
+         views           — read-only summaries and rendering services
+         controlplane    — orchestration boundary above the epistemic kernel
          epistemic       — domain kernel: EpistemicWeb, entities, invariants, ports
-         adapters        — JSON repo, markdown renderer, sandbox executor, tx log
+         adapters        — JSON repo, markdown renderer, transaction log
        
        Quick start (programmatic):
            from pathlib import Path

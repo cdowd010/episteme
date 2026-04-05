@@ -76,29 +76,57 @@ class TestTierConstraints:
         warnings = [f for f in findings if f.severity == Severity.WARNING]
         assert any("conditional_on" in f.message for f in warnings)
 
-    def test_measured_without_observed(self):
+    def test_confirmed_measured_without_observed(self):
         web = EpistemicWeb()
         web = web.register_prediction(
             make_prediction(
                 1,
                 measurement_regime=MeasurementRegime.MEASURED,
+                status=PredictionStatus.CONFIRMED,
                 observed=None,
             )
         )
         findings = validate_tier_constraints(web)
         assert any("observed value" in f.message for f in findings)
 
-    def test_bound_only_without_bound(self):
+    def test_confirmed_bound_only_without_bound(self):
         web = EpistemicWeb()
         web = web.register_prediction(
             make_prediction(
                 1,
                 measurement_regime=MeasurementRegime.BOUND_ONLY,
+                status=PredictionStatus.CONFIRMED,
                 observed_bound=None,
             )
         )
         findings = validate_tier_constraints(web)
         assert any("observed_bound" in f.message for f in findings)
+
+    def test_pending_measured_without_observed_is_allowed(self):
+        web = EpistemicWeb()
+        web = web.register_prediction(
+            make_prediction(
+                1,
+                measurement_regime=MeasurementRegime.MEASURED,
+                status=PredictionStatus.PENDING,
+                observed=None,
+            )
+        )
+        findings = validate_tier_constraints(web)
+        assert not any("observed value" in f.message for f in findings)
+
+    def test_pending_bound_only_without_bound_is_allowed(self):
+        web = EpistemicWeb()
+        web = web.register_prediction(
+            make_prediction(
+                1,
+                measurement_regime=MeasurementRegime.BOUND_ONLY,
+                status=PredictionStatus.PENDING,
+                observed_bound=None,
+            )
+        )
+        findings = validate_tier_constraints(web)
+        assert not any("observed_bound" in f.message for f in findings)
 
     def test_tier_b_with_conditional_on_clean(self):
         web = EpistemicWeb()

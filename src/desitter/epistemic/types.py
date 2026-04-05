@@ -91,14 +91,20 @@ class EvidenceKind(Enum):
 
 
 class MeasurementRegime(Enum):
-    """What kind of empirical constraint is currently available.
+    """What kind of empirical evidence form applies to this prediction.
 
     MEASURED:
-        A direct quantitative value is available.
+        The relevant evidence is a direct quantitative value.
+        While status is PENDING/NOT_YET_TESTABLE, observed may still be
+        absent; once adjudicated (CONFIRMED/STRESSED/REFUTED), observed
+        should be present.
     BOUND_ONLY:
-        Only an upper/lower bound is known, not a point estimate.
+        The relevant evidence is an upper/lower bound, not a point estimate.
+        While status is PENDING/NOT_YET_TESTABLE, observed_bound may still be
+        absent; once adjudicated (CONFIRMED/STRESSED/REFUTED), observed_bound
+        should be present.
     UNMEASURED:
-        No direct measurement or bound is available yet.
+        No direct measurement path or bound result is currently available.
     """
 
     MEASURED = "measured"

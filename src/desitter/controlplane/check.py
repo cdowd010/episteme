@@ -1,8 +1,8 @@
-"""Cross-cutting reference and prose consistency checks.
+"""Cross-cutting project consistency checks.
 
 Operations:
   check_refs      — verify all ID cross-references in the web are consistent
-  check_stale     — identify views that are out-of-date relative to canonical data
+    check_stale     — identify analyses and dependent predictions made stale by parameter changes
   sync_prose      — update managed prose blocks to match canonical state
   verify_prose_sync — assert that no prose blocks have drifted from canonical state
 
@@ -29,10 +29,11 @@ def check_refs(
 
 
 def check_stale(context: ProjectContext) -> list[Finding]:
-    """Identify generated views that are out-of-date.
+    """Identify analyses that should be reviewed after parameter changes.
 
-    Compares fingerprints of generated files against canonical data.
-    Returns a finding for each stale surface.
+    Reports analyses whose recorded results may be stale because one or more
+    referenced parameters changed after the last recorded run. Findings may
+    also include directly affected predictions in the same blast radius.
     """
     raise NotImplementedError
 

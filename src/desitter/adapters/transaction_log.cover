@@ -1,8 +1,8 @@
     1: """Transaction log: implements TransactionLog.
        
-       Appends a provenance record for every gateway mutation and query.
+       Appends a provenance record for every successful gateway mutation.
        Records are newline-delimited JSON written to
-         project/integrity/query_transaction_log.jsonl
+         project/data/transaction_log.jsonl
        
        Implements the TransactionLog protocol from epistemic/ports.py.
        """

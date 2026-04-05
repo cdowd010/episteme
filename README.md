@@ -59,7 +59,7 @@ Every command accepts `--json` for machine-readable output. Shell scripts, CI pi
 ds-mcp   # start the MCP server
 ```
 
-The [Model Context Protocol](https://modelcontextprotocol.io) lets AI assistants (Claude, Copilot, Cursor, and others) call deSitter tools directly as structured operations — no subprocess, no parsing, no screen-scraping. An agent calls `register_claim`, `health_check`, or `query_web` with typed arguments and receives a structured response. The same gateway that serves the CLI serves the MCP server: there is no divergence in behaviour.
+The [Model Context Protocol](https://modelcontextprotocol.io) lets AI assistants (Claude, Copilot, Cursor, and others) call deSitter tools directly as structured operations — no subprocess, no parsing, no screen-scraping. An agent calls `register_resource`, `health_check`, or `query_web` with typed arguments and receives a structured response. The same gateway that serves the CLI serves the MCP server: there is no divergence in behaviour.
 
 The MCP interface is designed with AI-assisted research in mind. An agent with access to the deSitter tool surface can audit a derivation chain, identify structural gaps, pre-flight a new prediction with `dry_run=True`, and commit it — all within a single session. The epistemic web provides the shared, persistent, invariant-enforced state. The AI provides the reasoning.
 
@@ -164,7 +164,7 @@ src/desitter/
 │   ├── gateway.py          # Single mutation/query boundary + GatewayResult
 │   ├── factory.py          # Wires concrete adapters into Gateway
 │   ├── validate.py
-│   ├── check.py            # check_stale, check_refs
+│   ├── check.py            # analysis staleness, reference integrity, prose sync
 │   ├── export.py
 │   └── automation.py       # Render-trigger policy table
 ├── views/                  # Read-only composed summaries
@@ -193,12 +193,12 @@ pytest --cov
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Epistemic kernel — `EpistemicWeb`, all entities, ten invariants | **Complete** — 295 tests passing |
+| 1 | Epistemic kernel — `EpistemicWeb`, all entities, ten invariants | **Complete** — implemented and validated |
 | 2 | Persistence, config, packaging | **Partial** — config, transaction log, and automation done; JSON repository and renderer stubbed |
 | 3 | Control plane and view services — gateway, validate, health, render | In progress |
 | 4 | Interface layer — MCP server and CLI | Pending |
 | 5 | Human-first UX — Rich output, `ds inspect` | Pending |
-| 6 | Results ingestion — `record_result`, analysis provenance | Pending |
+| 6 | Result recording — latest recorded analysis output and provenance | Pending |
 | 7 | Governance — session tracking, close gates (opt-in) | Pending |
 
 The epistemic kernel (Phase 1) is the foundation the rest is built on. It is complete, fully tested, and stable. Layers above it are being built in the order listed.

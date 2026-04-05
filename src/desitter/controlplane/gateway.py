@@ -9,7 +9,7 @@ Responsibilities:
   - Payload parsing and normalization
   - Resource alias resolution (plural/hyphenated → canonical keys)
   - Dry-run semantics
-  - Transaction orchestration (validate-after-write, rollback on failure)
+    - Transaction orchestration (validate after mutation, persist only on success)
   - Provenance logging via TransactionLog
 
 Not responsible for:
@@ -147,8 +147,9 @@ class Gateway:
     ) -> GatewayResult:
         """Register a new resource entity.
 
-        Validates after write; rolls back on invariant violation.
-        Logs the transaction and returns a GatewayResult.
+        Validates after mutation and before persistence.
+        Persists only on success, logs the transaction, and returns a
+        GatewayResult.
         """
         raise NotImplementedError
 

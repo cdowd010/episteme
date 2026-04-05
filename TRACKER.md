@@ -2,7 +2,7 @@
 
 Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` blocked
 
-Last updated: 2026-04-04 · 337 tests passing
+Last updated: 2026-04-04
 
 ---
 
@@ -26,7 +26,7 @@ Last updated: 2026-04-04 · 337 tests passing
 - [x] Tests: backlink ownership — backlinks stored on correct side of every link pair (3 tests · `test_web_backlink_ownership.py`)
 - [x] Tests: all invariant validators with known violations (31 tests · `test_invariants.py`)
 
-**Exit criteria met:** 294 kernel tests passing. No external deps. Runs in milliseconds.
+**Exit criteria met:** Kernel suite green. No external deps. Runs in milliseconds.
 
 ---
 
@@ -52,13 +52,13 @@ Last updated: 2026-04-04 · 337 tests passing
 ### Gateway (`controlplane/gateway.py`)
 The `Gateway` class and all constants/aliases/boilerplate exist. The 6 core operation methods are stubbed:
 
-- [ ] `register(resource, payload, *, dry_run)` — parse payload → construct entity → call `web.register_*` → validate-after-write → rollback on CRITICAL → log transaction → save
+- [ ] `register(resource, payload, *, dry_run)` — parse payload → construct entity → call `web.register_*` → validate after mutation, persist only on success → log transaction → save
 - [ ] `get(resource, identifier)` — resolve alias → load web → look up entity → serialize to dict
 - [ ] `list(resource, **filters)` — resolve alias → load web → return all entities of type, filtered
-- [ ] `set(resource, identifier, payload, *, dry_run)` — load → deep-copy entity → apply payload fields → call `web.update_*` → validate-after-write → rollback → log → save
-- [ ] `transition(resource, identifier, new_status, *, dry_run)` — load → call `web.transition_*` → validate-after-write → rollback → log → save
+- [ ] `set(resource, identifier, payload, *, dry_run)` — load → deep-copy entity → apply payload fields → call `web.update_*` → validate after mutation, persist only on success → log → save
+- [ ] `transition(resource, identifier, new_status, *, dry_run)` — load → call `web.transition_*` → validate after mutation, persist only on success → log → save
 - [ ] `query(query_type, **params)` — load web → dispatch to `web.<query_method>(**params)` → serialize result
-- [ ] Tests: `register` → validate-after-write → rollback on violation (~6 tests · `test_gateway.py`)
+- [ ] Tests: `register` → validation gate before persistence → rollback on violation (~6 tests · `test_gateway.py`)
 - [ ] Tests: `dry_run` — validate but do not write (~3 tests)
 - [ ] Tests: resource alias resolution covers all canonical + plural + hyphenated forms (~4 tests)
 - [ ] Tests: `get` / `list` return correct serialized payloads (~6 tests)
@@ -111,7 +111,7 @@ The Click command group and command stubs exist in `cli/main.py` (11 handlers ra
 - [ ] `status` command — route to `get_status`; summary panel via Rich
 - [ ] `render` command — route to `render_all`; progress bar on large webs
 - [ ] `export` command — route to `export_json` / `export_markdown`; `--format` flag
-- [ ] `init` command — create `project_config.json` and standard directory layout; idempotent
+- [ ] `init` command — create the standard directory layout for a `desitter.toml`-configured workspace; idempotent
 - [ ] Tests: core CLI commands via CliRunner (~15 tests · `tests/cli/`)
 
 ### MCP Server (`interfaces/mcp/`)
@@ -136,31 +136,27 @@ The Click command group and command stubs exist in `cli/main.py` (11 handlers ra
 - [ ] `ds show <type> [id]` — human-readable view with relationships; `source` rendered as clickable link
 - [ ] `ds log [id]` — mutation history from transaction log, formatted as table
 - [ ] Shell completions (bash, zsh, fish) with resource-ID tab-completion
-- [ ] `ds config set|get` — read/write `project_config.json` without editing JSON directly
+- [ ] `ds config set|get` — read/write `desitter.toml` without editing TOML directly
 - [ ] Quickstart guide: install → init → add theory → add claim → add prediction → record result → render
 
 **Exit criteria:** A researcher unfamiliar with the project can install, init, add a claim, and render views without consulting source code.
 
 ---
 
-## Phase 6 — Results Ingestion
-> Goal: deSitter consumes results from researcher-run analyses. No execution, no sandboxing.
+## Phase 6 — Result Recording
+> Goal: deSitter records the latest result reported for an analysis. No execution, no sandboxing, no separate result-history subsystem unless needed.
 
-- [ ] `epistemic/model.py` — add `AnalysisResult` dataclass: `analysis_id`, `prediction_id`, `value`, `uncertainty`, `status`, `notes`, `git_sha`, `timestamp`, `parameter_snapshot`
-- [ ] `adapters/results_repository.py` — load/save `AnalysisResult` list from `data/results.json`; multiple results per analysis in insertion order
-- [ ] `controlplane/results.py` — `record_result(context, analysis_id, prediction_id, value, uncertainty, status, notes, dry_run)`; persists to `data/results.json`; transitions prediction status; appends to transaction log; captures `parameter_snapshot` at record time
-- [ ] `ds record <analysis_id>` CLI — `--value`, `--uncertainty`, `--status`, `--notes`, `--no-transition`, `--json`
+- [ ] `controlplane/results.py` — `record_result(context, analysis_id, value, git_sha, result_date, dry_run)`; routes to `web.record_analysis_result(...)`; persists through the existing repository; appends to the transaction log
+- [ ] `ds record <analysis_id>` CLI — `--value`, `--git-sha`, `--date`, `--json`
 - [ ] `record_result` MCP tool — returns standard `GatewayResult` envelope
 - [ ] `desitter.record()` SDK shim — one-line instrumentation for any Python script
-- [ ] Git SHA auto-capture — calls `git rev-parse HEAD`; warns if `Analysis.path` file has uncommitted changes
-- [ ] `ds results <analysis_id>` — show result history; value, uncertainty, status, git_sha, source, timestamp
-- [ ] Tests: `record_result` persists and transitions prediction status correctly (~5 tests)
-- [ ] Tests: `--no-transition` suppresses status change (~2 tests)
-- [ ] Tests: `parameter_snapshot` captures correct values at record time (~2 tests)
+- [ ] Git SHA auto-capture — calls `git rev-parse HEAD`; warns if `Analysis.path` points to code with uncommitted changes
+- [ ] `ds results <analysis_id>` — show the currently recorded `last_result`, `last_result_sha`, and `last_result_date`
+- [ ] Tests: `record_result` persists the latest analysis result correctly (~5 tests)
 - [ ] Tests: git SHA captured in repo; warning on uncommitted changes (~2 tests)
-- [ ] Tests: SDK shim delegates to same gateway endpoint as CLI (~2 tests)
+- [ ] Tests: SDK shim delegates to the same record path as CLI (~2 tests)
 
-**Exit criteria:** A researcher can record a result from a script with one line. An agent can record it with one MCP tool call.
+**Exit criteria:** A researcher can record the latest result for an analysis from a script with one line. An agent can do the same with one MCP tool call.
 
 ---
 

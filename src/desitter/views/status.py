@@ -1,7 +1,7 @@
 """Read models and project status summaries.
 
 Computes human-friendly summaries from metrics and the epistemic web.
-Consumed by the CLI `status` command and the MCP `get_status` tool.
+Consumed by the CLI `status` command and the MCP `project_status` tool.
 
 All functions are read-only.
 """
@@ -18,7 +18,7 @@ from .metrics import WebMetrics, compute_metrics
 class ProjectStatus:
     """High-level project status snapshot.
 
-    Suitable for display as a dashboard or for agent consumption.
+    Suitable for display as a dashboard or for structured agent consumption.
     """
     project_name: str
     workspace: str

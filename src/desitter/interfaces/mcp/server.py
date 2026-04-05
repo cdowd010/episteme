@@ -5,7 +5,7 @@ and exposes a run() function as the entry point.
 
 Usage:
     ds-mcp                                # installed console script
-    python -m desitter            # via __main__.py
+    python -m desitter.interfaces.mcp.server
 """
 from __future__ import annotations
 

@@ -29,9 +29,13 @@ class WebMetrics:
     """Full metrics snapshot of an EpistemicWeb."""
     claim_count: int = 0
     assumption_count: int = 0
-    script_count: int = 0
-    hypothesis_count: int = 0
+    analysis_count: int = 0
+    theory_count: int = 0
+    discovery_count: int = 0
+    dead_end_count: int = 0
+    parameter_count: int = 0
     independence_group_count: int = 0
+    pairwise_separation_count: int = 0
     prediction_metrics: PredictionMetrics = field(default_factory=PredictionMetrics)
     uncovered_numerical_claims: list[str] = field(default_factory=list)
     empirical_assumptions_without_consequence: list[str] = field(default_factory=list)

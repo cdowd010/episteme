@@ -142,7 +142,7 @@ def export(ctx: click.Context, fmt: str, output: Path | None) -> None:
 def init(ws_path: Path | None) -> None:
     """Initialise a new deSitter project workspace.
 
-    Creates project_config.json and the standard directory layout.
+    Creates desitter.toml-aware project directories and the standard layout.
     Idempotent — safe to run on an existing workspace.
     """
     raise NotImplementedError

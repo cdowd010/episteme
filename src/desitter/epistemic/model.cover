@@ -165,8 +165,8 @@
        
            'path' and 'command' are provenance pointers: they tell the researcher
            (or agent) where the code lives and how to run it. deSitter never invokes
-           them. The git SHA at record time is captured on the AnalysisResult, giving
-           a complete immutable provenance chain: path + SHA + recorded value.
+           them. The most recently recorded result stores its git SHA directly on the
+           analysis, giving a clear provenance chain: path + SHA + recorded value.
        
            'uses_parameters' enables staleness detection: when a Parameter changes,
            health_check can identify which analyses (and therefore which predictions)

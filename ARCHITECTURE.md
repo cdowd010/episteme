@@ -64,11 +64,11 @@ workspace/
     │   ├── pairwise_separations.json
     │   ├── discoveries.json
     │   ├── dead_ends.json
-    │   └── parameters.json
+    │   ├── parameters.json
+    │   └── transaction_log.jsonl    # append-only mutation provenance log
     ├── views/                     # rendered markdown surfaces
     └── .cache/
-        ├── render.json            # SHA-256 render fingerprint cache
-        └── transaction_log.jsonl  # append-only mutation provenance log
+        └── render.json            # SHA-256 render fingerprint cache
 ```
 
 ---
@@ -142,8 +142,8 @@ The module also defines several enums that classify entity state. The most impor
 - `FIT_CONSISTENCY`: the agreement is with data that was part of the original fitting procedure.
 
 **`MeasurementRegime`** classifies what kind of observational data backs a prediction.
-- `MEASURED`: a direct measurement exists.
-- `BOUND_ONLY`: only an upper or lower bound has been established — no precise measurement.
+- `MEASURED`: the relevant evidence takes the form of a direct quantitative value. The prediction may be registered before that value is recorded.
+- `BOUND_ONLY`: the relevant evidence takes the form of an upper or lower bound rather than a point estimate. The bound may be recorded later.
 - `UNMEASURED`: no observational data exists yet.
 
 **`PredictionStatus`** tracks the lifecycle of a prediction as evidence accumulates:
@@ -225,7 +225,7 @@ Recording an analysis result is done via `web.record_analysis_result(anid, resul
 
 **`PairwiseSeparation`** records the justification for why two `IndependenceGroup` entities are genuinely separate. Its `basis` field is human-readable prose. The validator enforces that every pair of groups has a separation record, so the independence structure can never be partially specified.
 
-**`Theory`** is a higher-level explanatory framework. It organises related claims and predictions but does not add structural dependencies the web enforces — it is a navigational organiser. A `Theory` has a status lifecycle (`ACTIVE`, `DEPRECATED`, `REFUTED`, `SPECULATIVE`) that can be advanced through `transition_theory`.
+**`Theory`** is a higher-level explanatory framework. It organises related claims and predictions but does not add structural dependencies the web enforces — it is a navigational organiser. A `Theory` has a status lifecycle (`ACTIVE`, `REFINED`, `ABANDONED`, `SUPERSEDED`) that can be advanced through `transition_theory`.
 
 **`Discovery`** records a significant finding during research, even when it does not fit neatly into claims or predictions. Research produces surprises; this entity captures them with a date, impact description, and optional links to related claims or predictions.
 
@@ -349,7 +349,7 @@ The distinction between the invariants in this file and the structural enforceme
 
 The ten validators:
 
-**`validate_tier_constraints`** enforces the `ConfidenceTier` rules. A `FULLY_SPECIFIED` prediction with `free_params != 0` is a CRITICAL finding — the prediction's tier is fraudulent. A `CONDITIONAL` prediction missing `conditional_on` is a WARNING. A `MEASURED` prediction with no `observed` value is CRITICAL — the data either exists or the regime is set wrong.
+**`validate_tier_constraints`** enforces the `ConfidenceTier` rules. A `FULLY_SPECIFIED` prediction with `free_params != 0` is a CRITICAL finding — the prediction's tier is fraudulent. A `CONDITIONAL` prediction missing `conditional_on` is a WARNING. For `MEASURED` and `BOUND_ONLY` regimes, the corresponding evidence must be present once the prediction reaches an adjudicated state (`CONFIRMED`, `STRESSED`, or `REFUTED`). Pending predictions may be registered before the observed value or bound is recorded.
 
 **`validate_independence_semantics`** first checks that every prediction in an `IndependenceGroup.member_predictions` set back-references that group via `Prediction.independence_group` (the bidirectional link is enforced at mutation time, but this makes it auditable). It then checks pairwise separation completeness: for every pair of independence groups `(G-a, G-b)`, there must be a `PairwiseSeparation` record. If X groups exist, `X*(X-1)/2` separation records are required. Any missing pair is CRITICAL.
 
@@ -415,10 +415,10 @@ workspace/
     ├── data/                      → context.paths.data_dir
     │   ├── claims.json            → context.paths.claims_json  (etc.)
     │   └── ...
+    │   └── transaction_log.jsonl  → context.paths.transaction_log_file
     ├── views/                     → context.paths.views_dir
     └── .cache/
-        ├── render.json            → context.paths.render_cache_file
-        └── transaction_log.jsonl  → context.paths.transaction_log_file
+        └── render.json            → context.paths.render_cache_file
 ```
 
 Every path is computed once in `build_context()` and never re-derived. No service does `Path(context.workspace) / "project" / "data" / "claims.json"` inline — it reads `context.paths.data_dir`. This keeps filesystem layout knowledge in one place and makes it trivial to point everything at a temporary directory in tests.
@@ -469,7 +469,7 @@ The default serialisation uses `json.dumps(..., default=str)` which handles `dat
 
 ### `TransactionLog`
 
-`JsonTransactionLog` implements the `TransactionLog` protocol. Every mutation that reaches `repo.save()` is recorded as a JSONL (newline-delimited JSON) entry in `project/.cache/transaction_log.jsonl`. Each record contains:
+`JsonTransactionLog` implements the `TransactionLog` protocol. Every mutation that reaches `repo.save()` is recorded as a JSONL (newline-delimited JSON) entry in `project/data/transaction_log.jsonl`. Each record contains:
 
 - A UUID v4 transaction ID
 - The operation type (`register/claim`, `set/prediction`, `transition/theory`, etc.)
@@ -573,7 +573,7 @@ For `register`, `set`, and `transition` operations, the gateway executes the fol
 
 **Step 9: Check render triggers.** `automation.should_render(resource)` is consulted to decide whether the mutation warrants regenerating view surfaces. If it returns `True`, `render_all(context, new_web, renderer)` is called to update any stale markdown views. Only surfaces whose SHA fingerprint has changed are actually rewritten (see the Render Cache section under View Services). This step is a side-effect of the mutation — it does not affect the `GatewayResult`.
 
-**Step 10: Return the result.** `GatewayResult(status="ok", changed=True, tx_id=...)`.
+**Step 10: Return the result.** `GatewayResult(status="ok", changed=True, transaction_id=...)`.
 
 The critical property is that disk state can only change between Step 7 and Step 8. If the process crashes at Step 8, the disk state is still valid (the atomic rename from `JsonRepository.save` is complete) but the transaction is unlogged. This is an acceptable trade-off at research scale.
 
@@ -629,7 +629,7 @@ def should_render(resource: str, triggers=None) -> bool:
 
 Currently every mutation to any entity type triggers a full re-render, but the `surfaces` field makes it possible to later make this more selective — changing a `Parameter` could trigger only the "parameters" and "stale analyses" surfaces rather than the full view suite.
 
-**`check.py`** provides staleness and consistency checks. `check_stale(context)` identifies view surfaces whose SHA-256 fingerprint in the render cache no longer matches the fingerprint that would be computed from the current web state. This is a file-comparison check, not a timestamp comparison: the system computes what the rendered output *would be* today and compares that hash against what was last written. A mismatch means the surface is stale and needs re-rendering. `check_refs(context, repo)` scans the on-disk registry for references to IDs that no longer exist — a cross-check against cases where a manual filesystem edit might have introduced a broken reference outside the normal gateway path.
+**`check.py`** provides staleness and consistency checks. `check_stale(context)` identifies analyses that should be reviewed after parameter changes and surfaces the dependent predictions and claims in that blast radius. It is a domain-level staleness check built on the parameter-to-analysis links in the epistemic web, not a rendered-view fingerprint check. `check_refs(context, repo)` scans the on-disk registry for references to IDs that no longer exist — a cross-check against cases where a manual filesystem edit might have introduced a broken reference outside the normal gateway path.
 
 **`export.py`** provides `export_json` and `export_markdown`: bulk export operations that produce a portable snapshot of the entire web, independent of the project's data directory structure.
 
@@ -645,7 +645,7 @@ View services sit between the control plane and the interface layer. They are re
 
 1. Loads the web via `repo.load()`.
 2. Runs all semantic invariant validators through `validator.validate(web)`.
-3. Runs `check_stale(context)` to detect view surfaces that need re-rendering.
+3. Runs `check_stale(context)` to detect analyses and dependent predictions that should be reviewed after parameter changes.
 4. Runs `check_refs(context, repo)` to detect broken cross-references.
 5. Aggregates all findings into a `HealthReport`.
 
@@ -819,9 +819,9 @@ The architecture is fully specified and the kernel is fully implemented and test
 | `epistemic/web.py` — all mutations, queries, traversals | Complete |
 | `epistemic/invariants.py` — all ten validators | Complete |
 | `epistemic/ports.py` — all protocols | Complete |
-| `adapters/json_repository.py` — load, save, atomic rename | Complete |
+| `adapters/json_repository.py` — repository shell, atomic write helper | Partial — `load()` and `save()` stubbed |
 | `adapters/transaction_log.py` — append, UUID generation | Complete |
-| `adapters/markdown_renderer.py` — render to markdown | Complete |
+| `adapters/markdown_renderer.py` — render surface shell | Partial — per-surface render methods stubbed |
 | `config.py` — load_config, build_context | Complete |
 | `controlplane/factory.py` — build_gateway | Complete |
 | `controlplane/automation.py` — trigger table, should_render | Complete |
@@ -829,15 +829,15 @@ The architecture is fully specified and the kernel is fully implemented and test
 | `epistemic/web.py` — `record_analysis_result` | Complete |
 | `epistemic/invariants.py` — `validate_conditional_assumption_pressure` | Complete |
 | `controlplane/gateway.py` — all six verbs | Stub |
-| `controlplane/validate.py` — validate_project, validate_structure | Stub |
+| `controlplane/validate.py` — DomainValidator complete; orchestration helpers stubbed | Partial |
 | `controlplane/check.py` — check_stale, check_refs | Stub |
 | `controlplane/export.py` — export_json, export_markdown | Stub |
-| `views/health.py` — run_health_check, HealthReport | Stub |
-| `views/status.py` — get_status, ProjectStatus | Stub |
-| `views/metrics.py` — compute_metrics, WebMetrics | Stub |
+| `views/health.py` — HealthReport complete; `run_health_check` stubbed | Partial |
+| `views/status.py` — ProjectStatus complete; `get_status` stubbed | Partial |
+| `views/metrics.py` — metrics dataclasses complete; computations stubbed | Partial |
 | `views/render.py` — render_all, fingerprinting | Stub |
 | `interfaces/cli/main.py` — command tree | Stub |
-| `interfaces/cli/formatters.py` — Rich output | Stub |
+| `interfaces/cli/formatters.py` — Rich output helpers | Partial |
 | `interfaces/mcp/server.py` — create_server, run | Complete |
 | `interfaces/mcp/tools.py` — all tool handlers | Complete (delegates to gateway, which is stub) |
 | `ProseSync` concrete adapter | Not started |
@@ -889,7 +889,7 @@ The last row rule — interfaces cannot import each other — means the CLI cann
 
 **One gateway.** All mutations flow through the `Gateway`. This means a bug fixed in the gateway is fixed for every interface simultaneously. A new resource type requires one entry in the alias table and nothing in any interface. The gateway is the product; the interfaces are presentations.
 
-**Validate-after-write, not before.** The web is mutated in memory first, then validated, then written to disk. This ordering makes the structural invariants (enforced inside the web's methods) and the semantic invariants (checked by the domain validator) compose cleanly. The on-disk state is always the last state that passed full validation.
+**Validate after mutation, before persistence.** The web is mutated in memory first, then validated, then written to disk. This ordering makes the structural invariants (enforced inside the web's methods) and the semantic invariants (checked by the domain validator) compose cleanly. The on-disk state is always the last state that passed full validation.
 
 **Native Python collections.** Entity fields use `dict`, `set`, and `list` rather than immutable variants. The `EpistemicWeb` is the encapsulation boundary, not the type system. This choice keeps entity construction ergonomic in tests and reduces friction in Python's `dataclasses` ecosystem. The trade-off is that a caller who extracts an entity from the web and mutates its fields directly bypasses all invariant enforcement. This is prevented by convention and code review, not by the type system.
 
@@ -928,12 +928,12 @@ controlplane/gateway.py  ::  Gateway.register(resource, payload, dry_run=False)
     │      └─ write to project/data/claims.json.tmp
     │      └─ atomic rename → project/data/claims.json
     │   8. tx_log.append("register/claim", claim_id)
-    │      └─ append to project/.cache/transaction_log.jsonl
+    │      └─ append to project/data/transaction_log.jsonl
     │      └─ return UUID
     │   9. automation.should_render("claim")  →  True
     │      └─ render_all(context, new_web, renderer)
     │         └─ skip surfaces whose SHA fingerprint is unchanged
-    │  10. return GatewayResult(status="ok", changed=True, tx_id=UUID)
+    │  10. return GatewayResult(status="ok", changed=True, transaction_id=UUID)
     ↓
 interfaces/mcp/tools.py  ::  _envelope(result)
     │   serialise GatewayResult to {"status": "ok", "changed": True, ...}
