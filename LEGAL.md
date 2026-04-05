@@ -2,12 +2,12 @@
 
 This file is an operational compliance guide for the repository. It is not legal advice.
 
+Primary author: Chris Dowd
+
 ## 1. Outbound Licensing
 
 - Repo-authored source code is released under the Apache License 2.0 in `LICENSE`.
 - Repo-authored code attribution notices are carried in `NOTICE`.
-- Repo-authored non-code content is released under CC BY 4.0 in `CC-BY-4.0.txt`.
-- Repo-authored non-code content includes prose, JSON data, generated views, and other original research notes unless a file states otherwise.
 - `ATTRIBUTION.md` is a human-readable summary only. It does not replace or modify the underlying licenses.
 
 ## 2. Third-Party Material Is Not Relicensed
@@ -50,11 +50,12 @@ This file is an operational compliance guide for the repository. It is not legal
 | Path | Primary contents | Outbound license or rule |
 | --- | --- | --- |
 | `src/**/*.py` | Repo-authored executable code | Apache License 2.0 (`LICENSE`) with attribution notices in `NOTICE` |
-| `src/integrity/*.json` | Repo-authored integrity configuration and reference data | CC BY 4.0 (`CC-BY-4.0.txt`) |
-| `data/*.json` | Repo-authored structured research data, citation metadata, and watch state | CC BY 4.0; cited third-party works remain under their original terms |
-| `views/*.md` | Generated markdown views rendered from repo-authored data | CC BY 4.0; cited third-party works remain under their original terms |
-| `session/`, `knowledge/`, `logs/`, `protocols/`, `templates/`, `workstreams/`, `archive/` | Repo-authored prose, notes, audits, and drafts | CC BY 4.0 |
-| `readme.md`, `LEGAL.md`, `ATTRIBUTION.md`, `SYSTEM_BRIEFING.md`, `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` | Repo-authored documentation and tool-adapter instructions | CC BY 4.0 |
-| `LICENSE`, `NOTICE`, `CC-BY-4.0.txt` | License and attribution texts | Distributed as their respective legal/attribution texts |
+// ...existing code...
+| `src/integrity/*.json` | Repo-authored integrity configuration and reference data | Apache License 2.0 (`LICENSE`) |
+| `data/*.json` | Repo-authored structured research data, citation metadata, and watch state | Apache License 2.0 (`LICENSE`); cited third-party works remain under their original terms |
+| `views/*.md` | Generated markdown views rendered from repo-authored data | Apache License 2.0 (`LICENSE`); cited third-party works remain under their original terms |
+| `session/`, `knowledge/`, `logs/`, `protocols/`, `templates/`, `workstreams/`, `archive/` | Repo-authored prose, notes, audits, and drafts | Apache License 2.0 (`LICENSE`) |
+| `readme.md`, `LEGAL.md`, `ATTRIBUTION.md`, `SYSTEM_BRIEFING.md`, `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` | Repo-authored documentation and tool-adapter instructions | Apache License 2.0 (`LICENSE`) |
+| `LICENSE`, `NOTICE` | License and attribution texts | Distributed as their respective legal/attribution texts |
 
 If a specific file states a narrower or different rule, that file-specific rule controls for that file.
