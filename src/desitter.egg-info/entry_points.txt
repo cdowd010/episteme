@@ -1,0 +1,3 @@
+[console_scripts]
+ds = desitter.interfaces.cli.main:cli
+ds-mcp = desitter.interfaces.mcp.server:run

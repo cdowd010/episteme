@@ -74,7 +74,12 @@ class EpistemicWeb:
             keyed by ``PairwiseSeparationId``.
         dead_ends: Registry of all dead end records, keyed by ``DeadEndId``.
         parameters: Registry of all parameters, keyed by ``ParameterId``.
+        version: Monotonically increasing integer, incremented by the
+            repository on each successful save. Zero for in-memory webs.
+            Used for optimistic concurrency control when multiple sessions
+            share the same backing store.
     """
+    version: int = 0
     claims: dict[ClaimId, Claim] = field(default_factory=dict)
     assumptions: dict[AssumptionId, Assumption] = field(default_factory=dict)
     predictions: dict[PredictionId, Prediction] = field(default_factory=dict)

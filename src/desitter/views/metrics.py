@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..epistemic.ports import EpistemicWebPort
 from ..epistemic.types import ConfidenceTier, PredictionStatus
-from ..epistemic.web import EpistemicWeb
 
 
 @dataclass
@@ -72,7 +72,7 @@ class WebMetrics:
     empirical_assumptions_without_consequence: list[str] = field(default_factory=list)
 
 
-def compute_metrics(web: EpistemicWeb) -> WebMetrics:
+def compute_metrics(web: EpistemicWebPort) -> WebMetrics:
     """Compute aggregate metrics from the epistemic web.
 
     Pure function — no I/O, no side effects. Counts entities in every
@@ -91,7 +91,7 @@ def compute_metrics(web: EpistemicWeb) -> WebMetrics:
     raise NotImplementedError
 
 
-def tier_a_evidence_summary(web: EpistemicWeb) -> dict[str, object]:
+def tier_a_evidence_summary(web: EpistemicWebPort) -> dict[str, object]:
     """Summarize Tier-A prediction evidence, flagging correlated groups.
 
     Identifies which Tier-A predictions share independence groups and

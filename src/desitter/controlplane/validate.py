@@ -7,11 +7,10 @@ Does NOT write to disk. Does NOT mutate the web.
 """
 from __future__ import annotations
 
-from ..epistemic.invariants import validate_all
-from ..epistemic.ports import WebRepository, WebValidator
-from ..epistemic.types import Finding, Severity
-from ..epistemic.web import EpistemicWeb
 from ..config import ProjectContext
+from ..epistemic.invariants import validate_all
+from ..epistemic.ports import EpistemicWebPort, WebValidator
+from ..epistemic.types import Finding
 
 
 class DomainValidator:
@@ -21,7 +20,7 @@ class DomainValidator:
     full suite of semantic and coverage invariant checks on the web.
     """
 
-    def validate(self, web: EpistemicWeb) -> list[Finding]:
+    def validate(self, web: EpistemicWebPort) -> list[Finding]:
         """Run all epistemic invariants and return findings.
 
         Args:
@@ -35,18 +34,20 @@ class DomainValidator:
 
 
 def validate_project(
-    context: ProjectContext,
-    repo: WebRepository,
+    web: EpistemicWebPort,
     extra_validators: list[WebValidator] | None = None,
 ) -> list[Finding]:
-    """Load the web from storage and run all validators.
+    """Run all validators on an epistemic web.
 
-    Composes domain invariant validation with any additional validators
-    injected by the caller. Returns the combined finding list.
+    Composes domain invariant validation (via DomainValidator) with any
+    additional validators injected by the caller. Returns the combined
+    finding list.
+
+    Responsibility: validation only. Loading the web is the caller's
+    responsibility via a WebRepository adapter.
 
     Args:
-        context: Project paths and runtime configuration.
-        repo: Repository adapter used to load the web.
+        web: The epistemic web to validate.
         extra_validators: Additional validator instances to run after
             the default domain validators. May be ``None``.
 

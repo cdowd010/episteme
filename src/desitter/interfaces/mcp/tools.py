@@ -1,7 +1,11 @@
-"""MCP tool handlers — thin wrappers over the core and view services.
+"""MCP tool handlers — thin wrappers over the client and view services.
 
-Every tool delegates immediately to the Gateway or a read-only service.
+Every tool delegates immediately to ``client.gateway`` or a view function.
 No business logic lives in this file.
+
+Mutation tools (``register_resource``, ``set_resource``,
+``transition_resource``) call ``client.save()`` after a successful
+``"ok"`` result so that each MCP call is automatically persisted.
 
 Result envelopes follow the status-first convention:
   {"status": "ok" | "error" | "CLEAN" | "BLOCKED" | "dry_run", ...}
@@ -13,34 +17,39 @@ Core tool surface:
   set_resource        — update fields on an existing entity
   transition_resource — change status
   query_web           — named read-only queries
-  validate_web        — run all domain validators
-  health_check        — composed health report
-  project_status      — high-level status snapshot
-  render_views        — regenerate markdown views
-    check_stale         — identify analyses needing review after parameter changes
-  check_refs          — verify all ID references are intact
-  export_web          — bulk export (JSON or markdown)
+  validate_web        — run all domain validators         [feature-gated]
+  health_check        — composed health report            [feature-gated]
+  project_status      — high-level status snapshot        [feature-gated]
+  render_views        — regenerate markdown views         [feature-gated]
+  check_stale         — identify stale analyses           [feature-gated]
+  check_refs          — verify all ID references          [feature-gated]
+  export_web          — bulk export (JSON or markdown)    [feature-gated]
 """
 from __future__ import annotations
 
-from ...config import ProjectContext
-from ...controlplane.factory import build_gateway
+from typing import TYPE_CHECKING
+
 from ...views.health import run_health_check
 from ...views.status import get_status
 
+if TYPE_CHECKING:
+    from ...client import DeSitterClient
 
-def register_tools(server, context: ProjectContext) -> None:
+
+def register_tools(server, client: "DeSitterClient") -> None:
     """Register all MCP tool handlers on the FastMCP server instance.
 
-    Constructs a ``Gateway`` from the given context and registers
-    tool functions as closures over it. Each tool follows the MCP
-    envelope convention: ``{"status": ..., "changed": ..., ...}``.
+    Uses closures over ``client`` so that each tool has access to both
+    the gateway (for web operations) and ``client.save()`` (for persistence).
+
+    Mutation tools call ``client.save()`` after every successful ``"ok"``
+    result, making each MCP call a self-contained read-modify-persist unit.
 
     Args:
         server: A ``fastmcp.FastMCP`` server instance.
-        context: Project paths and runtime configuration.
+        client: A fully wired ``DeSitterClient``.
     """
-    gateway = build_gateway(context)
+    gateway = client.gateway
 
     @server.tool()
     def register_resource(resource: str, payload: dict, dry_run: bool = False) -> dict:
@@ -50,9 +59,12 @@ def register_tools(server, context: ProjectContext) -> None:
                   "theory", "discovery", "dead_end", "parameter",
                   "independence_group"
         payload:  entity fields as a dict
-        dry_run:  if True, validate without writing to disk
+        dry_run:  if True, validate without persisting to disk
         """
-        return _envelope(gateway.register(resource, payload, dry_run=dry_run))
+        result = gateway.register(resource, payload, dry_run=dry_run)
+        if result.status == "ok":
+            client.save()
+        return _envelope(result)
 
     @server.tool()
     def get_resource(resource: str, identifier: str) -> dict:
@@ -69,34 +81,38 @@ def register_tools(server, context: ProjectContext) -> None:
         resource: str, identifier: str, payload: dict, dry_run: bool = False
     ) -> dict:
         """Update fields on an existing entity."""
-        return _envelope(gateway.set(resource, identifier, payload, dry_run=dry_run))
+        result = gateway.set(resource, identifier, payload, dry_run=dry_run)
+        if result.status == "ok":
+            client.save()
+        return _envelope(result)
 
     @server.tool()
     def transition_resource(
         resource: str, identifier: str, new_status: str, dry_run: bool = False
     ) -> dict:
         """Transition an entity to a new status (e.g. PENDING → CONFIRMED)."""
-        return _envelope(
-            gateway.transition(resource, identifier, new_status, dry_run=dry_run)
-        )
+        result = gateway.transition(resource, identifier, new_status, dry_run=dry_run)
+        if result.status == "ok":
+            client.save()
+        return _envelope(result)
 
     @server.tool()
     def query_web(query_type: str, **params) -> dict:
         """Run a named read-only query across the epistemic web.
 
-        query_type: "claim_lineage", "assumption_lineage", "prediction_chain", etc.
+        query_type: "claim_lineage", "assumption_lineage",
+                    "prediction_implicit_assumptions", "refutation_impact",
+                    "assumption_support_status", "predictions_depending_on_claim",
+                    "parameter_impact"
         """
         return _envelope(gateway.query(query_type, **params))
 
     @server.tool()
     def validate_web() -> dict:
-        """Run all domain validators and return findings.
-
-        Returns CLEAN or BLOCKED with a list of findings.
-        """
+        """Run all domain validators and return findings."""
         from ...controlplane.validate import validate_project
         try:
-            findings = validate_project(context, gateway.repo)
+            findings = validate_project(gateway.web)
         except NotImplementedError as exc:
             return _feature_gated("validate_web", exc)
         status = "CLEAN" if not any(
@@ -116,8 +132,10 @@ def register_tools(server, context: ProjectContext) -> None:
 
         overall: "HEALTHY" | "WARNINGS" | "CRITICAL"
         """
+        from ...controlplane.validate import DomainValidator
         try:
-            report = run_health_check(context, gateway.repo, gateway.validator)
+            validator = DomainValidator()
+            report = run_health_check(gateway.web, validator)
         except NotImplementedError as exc:
             return _feature_gated("health_check", exc)
         return {
@@ -135,7 +153,7 @@ def register_tools(server, context: ProjectContext) -> None:
         """Return a high-level project status snapshot."""
         from ...views.status import format_status_dict
         try:
-            status = get_status(context, gateway.repo)
+            status = get_status(gateway.web)
             data = format_status_dict(status)
         except NotImplementedError as exc:
             return _feature_gated("project_status", exc)
@@ -148,12 +166,11 @@ def register_tools(server, context: ProjectContext) -> None:
         force: if True, re-render even if nothing has changed.
         """
         from ...views.render import render_all
+        from ...adapters.markdown_renderer import MarkdownRenderer
         try:
-            web = gateway.repo.load()
             written_by_surface = render_all(
-                context,
-                web,
-                gateway.renderer,
+                gateway.web,
+                MarkdownRenderer(),
                 force=force,
             )
         except NotImplementedError as exc:
@@ -167,14 +184,10 @@ def register_tools(server, context: ProjectContext) -> None:
 
     @server.tool()
     def check_stale() -> dict:
-        """Identify analyses that need review after parameter changes.
-
-        Returns findings for analyses and dependent predictions in the
-        parameter-change blast radius.
-        """
+        """Identify analyses that need review after parameter changes."""
         from ...controlplane.check import check_stale
         try:
-            findings = check_stale(context)
+            findings = check_stale(gateway.web)
         except NotImplementedError as exc:
             return _feature_gated("check_stale", exc)
         return {
@@ -190,7 +203,7 @@ def register_tools(server, context: ProjectContext) -> None:
         """Verify all ID cross-references in the epistemic web are intact."""
         from ...controlplane.check import check_refs
         try:
-            findings = check_refs(context, gateway.repo)
+            findings = check_refs(gateway.web)
         except NotImplementedError as exc:
             return _feature_gated("check_refs", exc)
         return {
@@ -206,56 +219,38 @@ def register_tools(server, context: ProjectContext) -> None:
         """Bulk-export the epistemic web.
 
         fmt: "json" or "markdown"
-        output_path: write to this path; if None, return in response data.
+        output_path: write to this path; if None, returns an error (path required).
         """
         from pathlib import Path
         from ...controlplane.export import export_json, export_markdown
-        out = Path(output_path) if output_path else context.paths.project_dir / "export"
+        if not output_path:
+            return _feature_gated("export_web")
+        out = Path(output_path)
         try:
             if fmt == "json":
-                export_json(context, gateway.repo, out if output_path else out.with_suffix(".json"))
+                export_json(gateway.web, out)
             else:
-                export_markdown(context, gateway.repo, out)
+                export_markdown(gateway.web, out)
         except NotImplementedError as exc:
             return _feature_gated("export_web", exc)
         return {"status": "ok", "changed": True, "message": f"Exported as {fmt} to {out}"}
 
 
 def _feature_gated(tool_name: str, exc: NotImplementedError | None = None) -> dict:
-    """Return a stable MCP error envelope for feature-gated tool handlers.
-
-    Args:
-        tool_name: Name of the tool that is not yet implemented.
-        exc: The original ``NotImplementedError``, if any.
-
-    Returns:
-        dict: An error envelope with ``status="error"``.
-    """
+    """Return a stable MCP error envelope for feature-gated tool handlers."""
     detail = str(exc).strip() if exc is not None else ""
     suffix = f" Detail: {detail}" if detail else ""
     return {
         "status": "error",
         "changed": False,
         "message": (
-            f"Tool '{tool_name}' is not available yet (feature-gated). "
-            f"See TRACKER milestones 2 and 3.{suffix}"
+            f"Tool '{tool_name}' is not available yet (feature-gated).{suffix}"
         ),
     }
 
 
 def _envelope(result) -> dict:
-    """Convert a ``GatewayResult`` to a status-first MCP response dict.
-
-    Translates the typed ``GatewayResult`` dataclass into a plain dict
-    suitable for JSON serialization over MCP. Includes optional fields
-    (findings, transaction_id, data) only when they are non-empty.
-
-    Args:
-        result: A ``GatewayResult`` from the gateway.
-
-    Returns:
-        dict: A JSON-serializable response envelope.
-    """
+    """Convert a ``GatewayResult`` to a status-first MCP response dict."""
     out: dict = {
         "status": result.status,
         "changed": result.changed,
@@ -271,3 +266,4 @@ def _envelope(result) -> dict:
     if result.data is not None:
         out["data"] = result.data
     return out
+

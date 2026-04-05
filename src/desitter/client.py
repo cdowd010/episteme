@@ -1,8 +1,11 @@
 """Python client API for deSitter.
 
-This module is a thin wrapper over the Gateway. It changes calling
-conventions and result ergonomics only; all mutations still flow through
-the same gateway, repository, validator, and transaction log.
+``DeSitterClient`` owns persistence (via an optional ``WebRepository``)
+and provides a typed convenience API over ``Gateway``.
+
+- ``connect()``        → in-memory, no persistence
+- ``connect(path)``    → loads from JsonRepository; saves via ``save()``
+- ``with connect(path) as client:`` → saves automatically on context exit
 """
 from __future__ import annotations
 
@@ -10,12 +13,14 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generic, Iterable, Mapping, TypeVar, cast
+from typing import Any, Generic, Iterable, Mapping, TypeVar
 
-from .config import ProjectContext, build_context, load_config
+from .adapters.json_repository import JsonRepository
 from .controlplane.factory import build_gateway
 from .controlplane.gateway import Gateway, GatewayResult
 from .epistemic.codec import deserialize_entity
+from .epistemic.ports import WebRepository
+from .epistemic.web import EpistemicWeb
 from .epistemic.model import (
     Analysis,
     Assumption,
@@ -94,38 +99,57 @@ class DeSitterClientError(Exception):
 
 
 class DeSitterClient:
-    """Thin Python wrapper over the gateway boundary.
+    """Python client that owns persistence and provides a typed gateway API.
 
     Provides typed convenience methods for every resource type so that
     callers can use keyword arguments and receive deserialized domain
-    objects instead of raw dicts. All mutations still flow through the
-    same Gateway, repository, validator, and transaction log.
+    objects instead of raw dicts.
+
+    All mutations flow through ``self._gateway``. Persistence is managed
+    by this class via the optional ``WebRepository``.
+
+    Prefer constructing via ``connect()`` rather than directly.
 
     Attributes:
-        _context: Project runtime context.
-        _gateway: The ``Gateway`` instance backing all operations.
+        _gateway: The ``Gateway`` holding the in-memory epistemic web.
+        _repo:    Optional persistence backend; ``None`` → session-only.
     """
 
-    def __init__(self, context: ProjectContext, gateway: Gateway | None = None) -> None:
+    def __init__(
+        self,
+        gateway: Gateway,
+        *,
+        repo: WebRepository | None = None,
+    ) -> None:
         """Initialize a client.
 
         Args:
-            context: Project runtime context.
-            gateway: Optional pre-built gateway. If ``None``, one is
-                constructed from the context.
+            gateway: A fully constructed ``Gateway`` holding the in-memory web.
+            repo:    Optional persistence backend. If ``None``, ``save()``
+                is a no-op and the web lives only for the session.
         """
-        self._context = context
-        self._gateway = gateway or build_gateway(context)
-
-    @property
-    def context(self) -> ProjectContext:
-        """The runtime context used by this client."""
-        return self._context
+        raise NotImplementedError
 
     @property
     def gateway(self) -> Gateway:
         """The gateway instance backing this client."""
-        return self._gateway
+        raise NotImplementedError
+
+    def save(self) -> None:
+        """Persist the in-memory web through the repository.
+
+        No-op when no ``repo`` was provided at construction time.
+        Calls ``self._repo.save(self._gateway.web)`` when a repo exists.
+        """
+        raise NotImplementedError
+
+    def __enter__(self) -> "DeSitterClient":
+        """Enter the context manager, returning self."""
+        raise NotImplementedError
+
+    def __exit__(self, *args: object) -> None:
+        """Exit the context manager; calls ``save()`` unconditionally."""
+        raise NotImplementedError
 
     def register(
         self,
@@ -147,15 +171,7 @@ class DeSitterClient:
         Raises:
             DeSitterClientError: If the gateway returns a non-success status.
         """
-        return self._handle_resource_result(
-            resource,
-            self._invoke_gateway(
-                self._gateway.register,
-                resource,
-                payload,
-                dry_run=dry_run,
-            ),
-        )
+        raise NotImplementedError
 
     def get(self, resource: str, identifier: str) -> ClientResult[Any]:
         """Retrieve a single resource by ID.
@@ -170,10 +186,7 @@ class DeSitterClient:
         Raises:
             DeSitterClientError: If the entity does not exist.
         """
-        return self._handle_resource_result(
-            resource,
-            self._invoke_gateway(self._gateway.get, resource, identifier),
-        )
+        raise NotImplementedError
 
     def list(self, resource: str, **filters: object) -> ClientResult[list[Any]]:
         """List resources, optionally filtering by keyword arguments.
@@ -188,8 +201,7 @@ class DeSitterClient:
         Raises:
             DeSitterClientError: If the gateway returns a non-success status.
         """
-        result = self._invoke_gateway(self._gateway.list, resource, **filters)
-        return self._handle_resource_list_result(resource, result)
+        raise NotImplementedError
 
     def set(
         self,
@@ -213,16 +225,7 @@ class DeSitterClient:
         Raises:
             DeSitterClientError: If the entity does not exist or validation fails.
         """
-        return self._handle_resource_result(
-            resource,
-            self._invoke_gateway(
-                self._gateway.set,
-                resource,
-                identifier,
-                payload,
-                dry_run=dry_run,
-            ),
-        )
+        raise NotImplementedError
 
     def transition(
         self,
@@ -246,16 +249,7 @@ class DeSitterClient:
         Raises:
             DeSitterClientError: If the transition is invalid.
         """
-        return self._handle_resource_result(
-            resource,
-            self._invoke_gateway(
-                self._gateway.transition,
-                resource,
-                identifier,
-                new_status,
-                dry_run=dry_run,
-            ),
-        )
+        raise NotImplementedError
 
     def query(self, query_type: str, **params: object) -> ClientResult[Any]:
         """Run a named gateway query.
@@ -270,8 +264,7 @@ class DeSitterClient:
         Raises:
             DeSitterClientError: If the query fails.
         """
-        result = self._invoke_gateway(self._gateway.query, query_type, **params)
-        return self._handle_query_result(result)
+        raise NotImplementedError
 
     def register_claim(
         self,
@@ -313,28 +306,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Claim]: The registered claim entity.
         """
-        return cast(
-            ClientResult[Claim],
-            self.register(
-                "claim",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    statement=statement,
-                    type=type,
-                    scope=scope,
-                    falsifiability=falsifiability,
-                    status=status,
-                    category=category,
-                    assumptions=list(assumptions) if assumptions is not None else None,
-                    depends_on=list(depends_on) if depends_on is not None else None,
-                    analyses=list(analyses) if analyses is not None else None,
-                    parameter_constraints=dict(parameter_constraints)
-                    if parameter_constraints is not None else None,
-                    source=source,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_assumption(
         self,
@@ -365,23 +337,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Assumption]: The registered assumption entity.
         """
-        return cast(
-            ClientResult[Assumption],
-            self.register(
-                "assumption",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    statement=statement,
-                    type=type,
-                    scope=scope,
-                    depends_on=list(depends_on) if depends_on is not None else None,
-                    falsifiable_consequence=falsifiable_consequence,
-                    source=source,
-                    notes=notes,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_prediction(
         self,
@@ -440,40 +396,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Prediction]: The registered prediction entity.
         """
-        return cast(
-            ClientResult[Prediction],
-            self.register(
-                "prediction",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    observable=observable,
-                    tier=tier,
-                    status=status,
-                    evidence_kind=evidence_kind,
-                    measurement_regime=measurement_regime,
-                    predicted=predicted,
-                    specification=specification,
-                    derivation=derivation,
-                    claim_ids=list(claim_ids) if claim_ids is not None else None,
-                    tests_assumptions=list(tests_assumptions)
-                    if tests_assumptions is not None else None,
-                    analysis=analysis,
-                    independence_group=independence_group,
-                    correlation_tags=list(correlation_tags)
-                    if correlation_tags is not None else None,
-                    observed=observed,
-                    observed_bound=observed_bound,
-                    free_params=free_params,
-                    conditional_on=list(conditional_on)
-                    if conditional_on is not None else None,
-                    falsifier=falsifier,
-                    benchmark_source=benchmark_source,
-                    source=source,
-                    notes=notes,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_analysis(
         self,
@@ -504,24 +427,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Analysis]: The registered analysis entity.
         """
-        return cast(
-            ClientResult[Analysis],
-            self.register(
-                "analysis",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    command=command,
-                    path=path,
-                    uses_parameters=list(uses_parameters)
-                    if uses_parameters is not None else None,
-                    notes=notes,
-                    last_result=last_result,
-                    last_result_sha=last_result_sha,
-                    last_result_date=last_result_date,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_theory(
         self,
@@ -550,24 +456,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Theory]: The registered theory entity.
         """
-        return cast(
-            ClientResult[Theory],
-            self.register(
-                "theory",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    title=title,
-                    status=status,
-                    summary=summary,
-                    related_claims=list(related_claims)
-                    if related_claims is not None else None,
-                    related_predictions=list(related_predictions)
-                    if related_predictions is not None else None,
-                    source=source,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_discovery(
         self,
@@ -602,27 +491,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Discovery]: The registered discovery entity.
         """
-        return cast(
-            ClientResult[Discovery],
-            self.register(
-                "discovery",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    title=title,
-                    date=date,
-                    summary=summary,
-                    impact=impact,
-                    status=status,
-                    related_claims=list(related_claims)
-                    if related_claims is not None else None,
-                    related_predictions=list(related_predictions)
-                    if related_predictions is not None else None,
-                    references=list(references) if references is not None else None,
-                    source=source,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_dead_end(
         self,
@@ -653,25 +522,7 @@ class DeSitterClient:
         Returns:
             ClientResult[DeadEnd]: The registered dead end entity.
         """
-        return cast(
-            ClientResult[DeadEnd],
-            self.register(
-                "dead_end",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    title=title,
-                    description=description,
-                    status=status,
-                    related_predictions=list(related_predictions)
-                    if related_predictions is not None else None,
-                    related_claims=list(related_claims)
-                    if related_claims is not None else None,
-                    references=list(references) if references is not None else None,
-                    source=source,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_parameter(
         self,
@@ -700,22 +551,7 @@ class DeSitterClient:
         Returns:
             ClientResult[Parameter]: The registered parameter entity.
         """
-        return cast(
-            ClientResult[Parameter],
-            self.register(
-                "parameter",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    name=name,
-                    value=value,
-                    unit=unit,
-                    uncertainty=uncertainty,
-                    source=source,
-                    notes=notes,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_independence_group(
         self,
@@ -742,23 +578,7 @@ class DeSitterClient:
         Returns:
             ClientResult[IndependenceGroup]: The registered group entity.
         """
-        return cast(
-            ClientResult[IndependenceGroup],
-            self.register(
-                "independence_group",
-                dry_run=dry_run,
-                **_without_none(
-                    id=id,
-                    label=label,
-                    claim_lineage=list(claim_lineage)
-                    if claim_lineage is not None else None,
-                    assumption_lineage=list(assumption_lineage)
-                    if assumption_lineage is not None else None,
-                    measurement_regime=measurement_regime,
-                    notes=notes,
-                ),
-            ),
-        )
+        raise NotImplementedError
 
     def register_pairwise_separation(
         self,
@@ -781,97 +601,87 @@ class DeSitterClient:
         Returns:
             ClientResult[PairwiseSeparation]: The registered separation.
         """
-        return cast(
-            ClientResult[PairwiseSeparation],
-            self.register(
-                "pairwise_separation",
-                dry_run=dry_run,
-                id=id,
-                group_a=group_a,
-                group_b=group_b,
-                basis=basis,
-            ),
-        )
+        raise NotImplementedError
 
     def get_claim(self, identifier: str) -> ClientResult[Claim]:
         """Retrieve a claim by ID."""
-        return cast(ClientResult[Claim], self.get("claim", identifier))
+        raise NotImplementedError
 
     def get_assumption(self, identifier: str) -> ClientResult[Assumption]:
         """Retrieve an assumption by ID."""
-        return cast(ClientResult[Assumption], self.get("assumption", identifier))
+        raise NotImplementedError
 
     def get_prediction(self, identifier: str) -> ClientResult[Prediction]:
         """Retrieve a prediction by ID."""
-        return cast(ClientResult[Prediction], self.get("prediction", identifier))
+        raise NotImplementedError
 
     def get_analysis(self, identifier: str) -> ClientResult[Analysis]:
         """Retrieve an analysis by ID."""
-        return cast(ClientResult[Analysis], self.get("analysis", identifier))
+        raise NotImplementedError
 
     def get_theory(self, identifier: str) -> ClientResult[Theory]:
         """Retrieve a theory by ID."""
-        return cast(ClientResult[Theory], self.get("theory", identifier))
+        raise NotImplementedError
 
     def get_discovery(self, identifier: str) -> ClientResult[Discovery]:
         """Retrieve a discovery by ID."""
-        return cast(ClientResult[Discovery], self.get("discovery", identifier))
+        raise NotImplementedError
 
     def get_dead_end(self, identifier: str) -> ClientResult[DeadEnd]:
         """Retrieve a dead end by ID."""
-        return cast(ClientResult[DeadEnd], self.get("dead_end", identifier))
+        raise NotImplementedError
 
     def get_parameter(self, identifier: str) -> ClientResult[Parameter]:
         """Retrieve a parameter by ID."""
-        return cast(ClientResult[Parameter], self.get("parameter", identifier))
+        raise NotImplementedError
 
     def get_independence_group(self, identifier: str) -> ClientResult[IndependenceGroup]:
         """Retrieve an independence group by ID."""
-        return cast(ClientResult[IndependenceGroup], self.get("independence_group", identifier))
+        raise NotImplementedError
 
     def get_pairwise_separation(self, identifier: str) -> ClientResult[PairwiseSeparation]:
         """Retrieve a pairwise separation by ID."""
-        return cast(ClientResult[PairwiseSeparation], self.get("pairwise_separation", identifier))
+        raise NotImplementedError
 
     def list_claims(self, **filters: object) -> ClientResult[list[Claim]]:
         """List all claims, optionally filtered."""
-        return cast(ClientResult[list[Claim]], self.list("claim", **filters))
+        raise NotImplementedError
 
     def list_assumptions(self, **filters: object) -> ClientResult[list[Assumption]]:
         """List all assumptions, optionally filtered."""
-        return cast(ClientResult[list[Assumption]], self.list("assumption", **filters))
+        raise NotImplementedError
 
     def list_predictions(self, **filters: object) -> ClientResult[list[Prediction]]:
         """List all predictions, optionally filtered."""
-        return cast(ClientResult[list[Prediction]], self.list("prediction", **filters))
+        raise NotImplementedError
 
     def list_analyses(self, **filters: object) -> ClientResult[list[Analysis]]:
         """List all analyses, optionally filtered."""
-        return cast(ClientResult[list[Analysis]], self.list("analysis", **filters))
+        raise NotImplementedError
 
     def list_theories(self, **filters: object) -> ClientResult[list[Theory]]:
         """List all theories, optionally filtered."""
-        return cast(ClientResult[list[Theory]], self.list("theory", **filters))
+        raise NotImplementedError
 
     def list_discoveries(self, **filters: object) -> ClientResult[list[Discovery]]:
         """List all discoveries, optionally filtered."""
-        return cast(ClientResult[list[Discovery]], self.list("discovery", **filters))
+        raise NotImplementedError
 
     def list_dead_ends(self, **filters: object) -> ClientResult[list[DeadEnd]]:
         """List all dead ends, optionally filtered."""
-        return cast(ClientResult[list[DeadEnd]], self.list("dead_end", **filters))
+        raise NotImplementedError
 
     def list_parameters(self, **filters: object) -> ClientResult[list[Parameter]]:
         """List all parameters, optionally filtered."""
-        return cast(ClientResult[list[Parameter]], self.list("parameter", **filters))
+        raise NotImplementedError
 
     def list_independence_groups(self, **filters: object) -> ClientResult[list[IndependenceGroup]]:
         """List all independence groups, optionally filtered."""
-        return cast(ClientResult[list[IndependenceGroup]], self.list("independence_group", **filters))
+        raise NotImplementedError
 
     def list_pairwise_separations(self, **filters: object) -> ClientResult[list[PairwiseSeparation]]:
         """List all pairwise separations, optionally filtered."""
-        return cast(ClientResult[list[PairwiseSeparation]], self.list("pairwise_separation", **filters))
+        raise NotImplementedError
 
     def transition_claim(
         self,
@@ -881,10 +691,7 @@ class DeSitterClient:
         dry_run: bool = False,
     ) -> ClientResult[Claim]:
         """Transition a claim to a new status."""
-        return cast(
-            ClientResult[Claim],
-            self.transition("claim", identifier, new_status, dry_run=dry_run),
-        )
+        raise NotImplementedError
 
     def transition_prediction(
         self,
@@ -894,10 +701,7 @@ class DeSitterClient:
         dry_run: bool = False,
     ) -> ClientResult[Prediction]:
         """Transition a prediction to a new status."""
-        return cast(
-            ClientResult[Prediction],
-            self.transition("prediction", identifier, new_status, dry_run=dry_run),
-        )
+        raise NotImplementedError
 
     def transition_theory(
         self,
@@ -907,10 +711,7 @@ class DeSitterClient:
         dry_run: bool = False,
     ) -> ClientResult[Theory]:
         """Transition a theory to a new status."""
-        return cast(
-            ClientResult[Theory],
-            self.transition("theory", identifier, new_status, dry_run=dry_run),
-        )
+        raise NotImplementedError
 
     def transition_discovery(
         self,
@@ -920,10 +721,7 @@ class DeSitterClient:
         dry_run: bool = False,
     ) -> ClientResult[Discovery]:
         """Transition a discovery to a new status."""
-        return cast(
-            ClientResult[Discovery],
-            self.transition("discovery", identifier, new_status, dry_run=dry_run),
-        )
+        raise NotImplementedError
 
     def transition_dead_end(
         self,
@@ -933,19 +731,11 @@ class DeSitterClient:
         dry_run: bool = False,
     ) -> ClientResult[DeadEnd]:
         """Transition a dead end to a new status."""
-        return cast(
-            ClientResult[DeadEnd],
-            self.transition("dead_end", identifier, new_status, dry_run=dry_run),
-        )
+        raise NotImplementedError
 
     def _invoke_gateway(self, func, *args, **kwargs) -> GatewayResult:
         """Call a gateway method, wrapping unexpected errors in DeSitterClientError."""
-        try:
-            return func(*args, **kwargs)
-        except DeSitterClientError:
-            raise
-        except Exception as exc:
-            raise DeSitterClientError("error", str(exc)) from exc
+        raise NotImplementedError
 
     def _handle_resource_result(
         self,
@@ -956,24 +746,7 @@ class DeSitterClient:
 
         Raises DeSitterClientError if the result status is not success.
         """
-        if result.status not in {"ok", "dry_run"}:
-            raise DeSitterClientError(result.status, result.message, result.findings)
-
-        canonical = self._canonical_resource(resource)
-        decoded = None
-        if result.data is not None:
-            resource_payload = result.data.get("resource")
-            if isinstance(resource_payload, dict):
-                decoded = deserialize_entity(canonical, resource_payload)
-
-        return ClientResult(
-            status=result.status,
-            changed=result.changed,
-            message=result.message,
-            findings=result.findings,
-            transaction_id=result.transaction_id,
-            data=decoded,
-        )
+        raise NotImplementedError
 
     def _handle_resource_list_result(
         self,
@@ -984,78 +757,44 @@ class DeSitterClient:
 
         Raises DeSitterClientError if the result status is not success.
         """
-        if result.status not in {"ok", "dry_run"}:
-            raise DeSitterClientError(result.status, result.message, result.findings)
-
-        canonical = self._canonical_resource(resource)
-        items: list[Any] = []
-        if result.data is not None:
-            raw_items = result.data.get("items", [])
-            items = [deserialize_entity(canonical, item) for item in raw_items]
-
-        return ClientResult(
-            status=result.status,
-            changed=result.changed,
-            message=result.message,
-            findings=result.findings,
-            transaction_id=result.transaction_id,
-            data=items,
-        )
+        raise NotImplementedError
 
     def _handle_query_result(self, result: GatewayResult) -> ClientResult[Any]:
         """Convert a gateway query result into a typed ClientResult.
 
         Raises DeSitterClientError if the result status is not success.
         """
-        if result.status not in {"ok", "dry_run"}:
-            raise DeSitterClientError(result.status, result.message, result.findings)
-
-        decoded: Any = None
-        if result.data is not None:
-            decoded = result.data.get("result", result.data)
-
-        return ClientResult(
-            status=result.status,
-            changed=result.changed,
-            message=result.message,
-            findings=result.findings,
-            transaction_id=result.transaction_id,
-            data=decoded,
-        )
+        raise NotImplementedError
 
     def _canonical_resource(self, resource: str) -> str:
         """Resolve a resource alias to its canonical key, falling back to the input."""
-        try:
-            canonical = self._gateway.resolve_resource(resource)
-            return canonical if isinstance(canonical, str) else resource
-        except KeyError:
-            return resource
+        raise NotImplementedError
 
 
-def connect(path: str | Path = ".") -> DeSitterClient:
-    """Build a client from a workspace path containing ``desitter.toml``.
+def connect(path: str | Path | None = None) -> DeSitterClient:
+    """Build a ``DeSitterClient``, optionally backed by a JSON repository.
 
-    This is the primary convenience entry point for creating a client.
-    Loads configuration and builds the full dependency graph automatically.
+    If ``path`` is ``None``, returns a purely in-memory client (no
+    persistence; ``save()`` is a no-op and the web starts empty).
+
+    If ``path`` is provided, loads the epistemic web from a
+    ``JsonRepository`` rooted at *path*, constructs a fully wired
+    gateway, and returns a persistent client.
 
     Args:
-        path: Filesystem path to the project workspace root. Defaults to current directory.
+        path: Path to the project workspace directory containing the
+            ``data/`` folder. ``None`` (default) creates a fresh
+            in-memory session.
 
     Returns:
-        DeSitterClient: A fully wired client ready for use.
+        DeSitterClient: A wired client; persistent when ``path`` is given.
     """
-    workspace = Path(path)
-    context = build_context(workspace, load_config(workspace))
-    return DeSitterClient(context)
+    raise NotImplementedError
 
 
 def _without_none(**payload: object) -> dict[str, object]:
-    """Filter out ``None`` values from keyword arguments."""
-    return {
-        key: value
-        for key, value in payload.items()
-        if value is not None
-    }
+    """Return a copy of *payload* with all ``None`` values removed."""
+    raise NotImplementedError
 
 
 __all__ = [

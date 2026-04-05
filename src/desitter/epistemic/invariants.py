@@ -22,10 +22,10 @@ from .types import (
     PredictionStatus,
     Severity,
 )
-from .web import EpistemicWeb
+from .ports import EpistemicWebPort
 
 
-def validate_tier_constraints(web: EpistemicWeb) -> list[Finding]:
+def validate_tier_constraints(web: EpistemicWebPort) -> list[Finding]:
     """Validate confidence tier and measurement regime constraints across predictions.
 
     Enforces the following rules for each prediction in the web:
@@ -94,7 +94,7 @@ def validate_tier_constraints(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_independence_semantics(web: EpistemicWeb) -> list[Finding]:
+def validate_independence_semantics(web: EpistemicWebPort) -> list[Finding]:
     """Validate independence group membership consistency and separation completeness.
 
     Checks two distinct properties:
@@ -157,7 +157,7 @@ def validate_independence_semantics(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_coverage(web: EpistemicWeb) -> list[Finding]:
+def validate_coverage(web: EpistemicWebPort) -> list[Finding]:
     """Check for analysis and prediction coverage gaps across the web.
 
     Reports advisory findings for structural blind spots:
@@ -204,7 +204,7 @@ def validate_coverage(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_assumption_testability(web: EpistemicWeb) -> list[Finding]:
+def validate_assumption_testability(web: EpistemicWebPort) -> list[Finding]:
     """Flag assumptions with a falsifiable consequence but no testing predictions.
 
     If an assumption declares a ``falsifiable_consequence`` but has an empty
@@ -229,7 +229,7 @@ def validate_assumption_testability(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_retracted_claim_citations(web: EpistemicWeb) -> list[Finding]:
+def validate_retracted_claim_citations(web: EpistemicWebPort) -> list[Finding]:
     """Flag predictions or claims that still cite a retracted claim.
 
     Retracted claims are invalidated assertions that should not be relied
@@ -270,7 +270,7 @@ def validate_retracted_claim_citations(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_implicit_assumption_coverage(web: EpistemicWeb) -> list[Finding]:
+def validate_implicit_assumption_coverage(web: EpistemicWebPort) -> list[Finding]:
     """Flag assumptions that silently underpin predictions but are never tested.
 
     An assumption is 'silently depended on' if it appears in the implicit
@@ -316,7 +316,7 @@ def validate_implicit_assumption_coverage(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_tests_conditional_overlap(web: EpistemicWeb) -> list[Finding]:
+def validate_tests_conditional_overlap(web: EpistemicWebPort) -> list[Finding]:
     """Flag predictions that both test and condition on the same assumption.
 
     ``tests_assumptions`` means 'this outcome bears on whether the assumption
@@ -345,7 +345,7 @@ def validate_tests_conditional_overlap(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_foundational_claim_deps(web: EpistemicWeb) -> list[Finding]:
+def validate_foundational_claim_deps(web: EpistemicWebPort) -> list[Finding]:
     """Flag foundational claims that have dependencies on other claims.
 
     Foundational claims are axioms — by definition they should not depend
@@ -371,7 +371,7 @@ def validate_foundational_claim_deps(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_evidence_consistency(web: EpistemicWeb) -> list[Finding]:
+def validate_evidence_consistency(web: EpistemicWebPort) -> list[Finding]:
     """Flag logically inconsistent evidence_kind/tier combinations.
 
     ``FIT_CHECK`` is a fit/consistency check by definition — it cannot
@@ -398,7 +398,7 @@ def validate_evidence_consistency(web: EpistemicWeb) -> list[Finding]:
     return findings
 
 
-def validate_conditional_assumption_pressure(web: EpistemicWeb) -> list[Finding]:
+def validate_conditional_assumption_pressure(web: EpistemicWebPort) -> list[Finding]:
     """Flag confirmed/stressed predictions conditional on assumptions under pressure.
 
     If prediction P is conditional on assumption A (A in ``P.conditional_on``),
@@ -466,7 +466,7 @@ def validate_conditional_assumption_pressure(web: EpistemicWeb) -> list[Finding]
     return findings
 
 
-def validate_all(web: EpistemicWeb) -> list[Finding]:
+def validate_all(web: EpistemicWebPort) -> list[Finding]:
     """Run all domain invariant validators and return the combined findings.
 
     Executes every semantic/coverage validator in a fixed order and
