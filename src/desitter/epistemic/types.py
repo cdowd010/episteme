@@ -14,15 +14,34 @@ from typing import NewType
 # runtime, but the type checker treats them as distinct types.
 
 ClaimId = NewType("ClaimId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.Claim`."""
+
 AssumptionId = NewType("AssumptionId", str)
+"""Nominal identifier for an :class:`~desitter.epistemic.model.Assumption`."""
+
 PredictionId = NewType("PredictionId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.Prediction`."""
+
 TheoryId = NewType("TheoryId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.Theory`."""
+
 DiscoveryId = NewType("DiscoveryId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.Discovery`."""
+
 AnalysisId = NewType("AnalysisId", str)
+"""Nominal identifier for an :class:`~desitter.epistemic.model.Analysis`."""
+
 IndependenceGroupId = NewType("IndependenceGroupId", str)
+"""Nominal identifier for an :class:`~desitter.epistemic.model.IndependenceGroup`."""
+
 ParameterId = NewType("ParameterId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.Parameter`."""
+
 DeadEndId = NewType("DeadEndId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.DeadEnd`."""
+
 PairwiseSeparationId = NewType("PairwiseSeparationId", str)
+"""Nominal identifier for a :class:`~desitter.epistemic.model.PairwiseSeparation`."""
 
 
 
@@ -48,7 +67,21 @@ class Severity(Enum):
 
 @dataclass
 class Finding:
-    """One validation result."""
+    """A single validation or health-check result.
+
+    Findings are the universal unit of diagnostic output across the entire
+    deSitter system: domain invariant validators, payload schema checks,
+    health reports, and coverage analyses all produce ``Finding`` instances.
+
+    Attributes:
+        severity: The importance level of this finding (INFO, WARNING, or
+            CRITICAL). CRITICAL findings block mutations; WARNING and INFO
+            are advisory.
+        source: A slash-delimited path identifying where the issue was
+            detected, e.g. ``"predictions/P-001"`` or ``"payload/claim"``.
+        message: A human-readable description of what was found and why
+            it matters.
+    """
     severity: Severity
     source: str
     message: str

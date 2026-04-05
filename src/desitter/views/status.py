@@ -18,13 +18,24 @@ from .metrics import WebMetrics, compute_metrics
 class ProjectStatus:
     """High-level project status snapshot.
 
-    Suitable for display as a dashboard or for structured agent consumption.
+    Suitable for display as a CLI dashboard or for structured agent
+    consumption via MCP.
+
+    Attributes:
+        project_name: Display name of the project.
+        workspace: Filesystem path to the project root.
+        metrics: Full ``WebMetrics`` snapshot.
+        health_summary: One of ``"HEALTHY"``, ``"WARNINGS"``, or
+            ``"CRITICAL"``.
+        governance_session: Current governance session number if
+            governance mode is enabled, otherwise ``None``.
+        extra: Arbitrary additional metadata for extensibility.
     """
     project_name: str
     workspace: str
     metrics: WebMetrics
-    health_summary: str              # "HEALTHY" | "WARNINGS" | "CRITICAL"
-    governance_session: int | None   # current session number if governance enabled
+    health_summary: str
+    governance_session: int | None
     extra: dict = field(default_factory=dict)
 
 
@@ -35,11 +46,33 @@ def get_status(
     """Build a full project status snapshot.
 
     Loads the web, computes metrics, runs a lightweight health check,
-    and returns a ProjectStatus.
+    and assembles a ``ProjectStatus``.
+
+    Args:
+        context: Project paths and runtime configuration.
+        repo: Repository adapter used to load the web.
+
+    Returns:
+        ProjectStatus: The assembled project status.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError
 
 
 def format_status_dict(status: ProjectStatus) -> dict:
-    """Serialise a ProjectStatus to a plain dict for MCP/JSON output."""
+    """Serialize a ``ProjectStatus`` to a plain dict for MCP/JSON output.
+
+    Converts all dataclass fields to JSON-serializable primitives.
+
+    Args:
+        status: The project status to serialize.
+
+    Returns:
+        dict: A JSON-serializable representation of the status.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
+    """
     raise NotImplementedError

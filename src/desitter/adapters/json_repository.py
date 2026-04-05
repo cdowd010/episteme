@@ -29,6 +29,7 @@ _RESOURCE_FILES: dict[str, str] = {
     "dead_ends": "dead_ends.json",
     "pairwise_separations": "pairwise_separations.json",
 }
+"""Mapping of collection attribute names to their JSON filenames on disk."""
 
 _LOAD_PLAN: list[tuple[str, str]] = [
     ("parameter", "parameters"),
@@ -42,6 +43,11 @@ _LOAD_PLAN: list[tuple[str, str]] = [
     ("dead_end", "dead_ends"),
     ("pairwise_separation", "pairwise_separations"),
 ]
+"""Ordered loading plan as ``(singular_resource, collection_name)`` tuples.
+
+Order matters: entities that are referenced by later entities must be
+loaded first (e.g. parameters before analyses, assumptions before claims).
+"""
 
 _REGISTER_METHODS: dict[str, str] = {
     "parameter": "register_parameter",
@@ -55,12 +61,23 @@ _REGISTER_METHODS: dict[str, str] = {
     "dead_end": "register_dead_end",
     "pairwise_separation": "add_pairwise_separation",
 }
+"""Mapping of singular resource keys to their EpistemicWeb registration method names."""
 
 
 class JsonRepository:
-    """Loads and saves the epistemic web as JSON files on disk.
+    """JSON-backed implementation of the ``WebRepository`` protocol.
 
-    data_dir: the project/data/ directory containing entity JSON files.
+    Loads and saves the epistemic web as a collection of JSON files under
+    a project data directory. Each entity type has its own file (e.g.
+    ``claims.json``, ``predictions.json``). Files are loaded in dependency
+    order so that referenced entities exist before referencing entities
+    are registered.
+
+    Saves are atomic: data is written to a temporary file first, then
+    renamed into place to avoid partial writes on crash.
+
+    Attributes:
+        _data_dir: The ``project/data/`` directory containing entity JSON files.
     """
 
     def __init__(self, data_dir: Path) -> None:
@@ -72,9 +89,20 @@ class JsonRepository:
         self._data_dir = data_dir
 
     def load(self) -> EpistemicWeb:
-        """Deserialise all entity JSON files and return a fully hydrated EpistemicWeb.
+        """Deserialize all entity JSON files and return a fully hydrated EpistemicWeb.
 
-        Missing files are treated as empty registries (not an error).
+        Loads files in dependency order (parameters first, pairwise separations
+        last) and replays each entity through the web's register methods to
+        reconstruct all bidirectional links. Missing files are treated as
+        empty registries (not an error).
+
+        Returns:
+            EpistemicWeb: A fully hydrated web with all entities and
+                bidirectional links reconstructed from disk.
+
+        Raises:
+            TypeError: If a JSON file contains a non-list top-level structure
+                or a non-object item.
         """
         web = EpistemicWeb()
 
@@ -99,10 +127,15 @@ class JsonRepository:
         return web
 
     def save(self, web: EpistemicWeb) -> None:
-        """Serialise the web to JSON files, one per entity type.
+        """Serialize the web to JSON files, one per entity type.
 
-        Writes atomically (write to temp file, then rename) to avoid
-        partial writes on crash.
+        Creates the data directory if it does not exist. Each file is
+        written atomically (write to a ``.json.tmp`` temp file, then
+        rename) to avoid partial writes on crash. Entities within each
+        file are sorted by ID for deterministic output.
+
+        Args:
+            web: The complete epistemic web to persist.
         """
         self._data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -117,7 +150,12 @@ class JsonRepository:
     def _load_file(self, name: str) -> list[dict]:
         """Read and parse a single entity JSON file.
 
-        Returns an empty list if the file doesn't exist.
+        Args:
+            name: The filename to load (e.g. ``"claims.json"``).
+
+        Returns:
+            list[dict]: The parsed JSON content as a list of dicts.
+                Returns an empty list if the file does not exist.
         """
         path = self._data_dir / name
         if not path.exists():
@@ -125,7 +163,15 @@ class JsonRepository:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def _write_file(self, name: str, data: list[dict]) -> None:
-        """Write entity data to a JSON file atomically."""
+        """Write entity data to a JSON file atomically.
+
+        Writes to a ``.json.tmp`` temporary file first, then renames
+        into place to ensure the final file is always complete.
+
+        Args:
+            name: The target filename (e.g. ``"claims.json"``).
+            data: The serialized entity list to write.
+        """
         path = self._data_dir / name
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(

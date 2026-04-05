@@ -39,15 +39,40 @@ from .types import (
 
 @dataclass
 class Claim:
-    """An atomic, falsifiable assertion.
+    """An atomic, falsifiable assertion in the epistemic web.
 
-    depends_on forms a DAG. assumptions and analyses have bidirectional
-    links maintained by the EpistemicWeb.
+    Claims are the fundamental building blocks of the knowledge graph.
+    They form a directed acyclic graph via ``depends_on``, where derived
+    claims reference the foundational claims they rest upon.
 
-    'parameter_constraints' is an annotation map: {ParameterId: constraint_str}.
-    The constraint string is human-readable ("< 0.05", "> 3.0", "in [0.1, 10]").
-    deSitter does not evaluate constraints — it surfaces them when a referenced
-    parameter changes, so the researcher knows to re-check this claim.
+    The EpistemicWeb maintains bidirectional links between claims and
+    their assumptions (``Assumption.used_in_claims``) and analyses
+    (``Analysis.claims_covered``). These backlinks are updated
+    automatically during registration and updates — callers should
+    never modify them directly.
+
+    Attributes:
+        id: Unique identifier for this claim (e.g. ``"C-001"``).
+        statement: The human-readable text of the assertion.
+        type: Structural role — ``FOUNDATIONAL`` (axiomatic base) or
+            ``DERIVED`` (depends on other claims).
+        scope: Applicability scope, e.g. ``"global"`` or ``"domain-specific"``.
+        falsifiability: Description of what evidence would refute this claim.
+        status: Lifecycle state — ``ACTIVE``, ``REVISED``, or ``RETRACTED``.
+        category: Whether the claim is ``NUMERICAL`` (quantitative) or
+            ``QUALITATIVE`` (conceptual/structural).
+        assumptions: IDs of assumptions this claim depends on. Bidirectional
+            with ``Assumption.used_in_claims``.
+        depends_on: IDs of other claims this claim is derived from. Forms a
+            DAG enforced by the web's cycle-detection logic.
+        analyses: IDs of analyses linked to this claim. Bidirectional with
+            ``Analysis.claims_covered``.
+        parameter_constraints: Annotation map ``{ParameterId: constraint_str}``
+            where the constraint string is human-readable (e.g. ``"< 0.05"``.
+            deSitter does not evaluate these — it surfaces them when a
+            referenced parameter changes.
+        source: Provenance string — DOI, arXiv ID, URL, citation, or
+            ``"derived from ..."``.
     """
     id: ClaimId
     statement: str
@@ -65,12 +90,36 @@ class Claim:
 
 @dataclass
 class Assumption:
-    """A premise taken as given.
+    """A premise taken as given within the epistemic web.
 
-    'depends_on' captures presupposition: "the detector is linear" depends on
-    "the detector is calibrated." This lets assumption_lineage do a full
-    transitive closure through both claim chains AND assumption chains, so
-    no silent dependency is missed.
+    Assumptions underpin claims and may themselves form presupposition
+    chains via ``depends_on``. For example, "the detector is linear"
+    depends on "the detector is calibrated." This chain allows
+    ``assumption_lineage`` to perform a full transitive closure through
+    both claim chains AND assumption chains, ensuring no silent
+    dependency is missed.
+
+    Backlinks ``used_in_claims`` and ``tested_by`` are maintained by
+    claim and prediction registration operations respectively. They
+    are intentionally initialized to empty sets on registration.
+
+    Attributes:
+        id: Unique identifier for this assumption (e.g. ``"A-001"``).
+        statement: The human-readable text of the premise.
+        type: Whether the assumption is ``EMPIRICAL`` (testable) or
+            ``METHODOLOGICAL`` (a modeling/procedural choice).
+        scope: Applicability scope, e.g. ``"global"`` or ``"domain-specific"``.
+        used_in_claims: IDs of claims that reference this assumption.
+            Backlink maintained by claim operations — not set by callers.
+        depends_on: IDs of other assumptions this one presupposes.
+            Forms a DAG enforced by the web's cycle-detection logic.
+        falsifiable_consequence: A description of what evidence would
+            falsify this assumption. Required for empirical assumptions
+            to pass coverage validation.
+        tested_by: IDs of predictions explicitly designed to test this
+            assumption. Backlink maintained by prediction operations.
+        source: Provenance string — DOI, arXiv ID, URL, or citation.
+        notes: Free-form notes for the researcher.
     """
     id: AssumptionId
     statement: str
@@ -88,23 +137,59 @@ class Assumption:
 class Prediction:
     """A testable consequence of one or more claims.
 
-    'claim_ids' is the set of claims that jointly imply this prediction —
-    the logical derivation chain. Most non-trivial predictions require
-    multiple claims together. Bidirectional maintenance is one-way only:
-    the web validates all claim_ids exist; no backlink on Claim.
+    Predictions are the empirical interface between the epistemic web
+    and the real world. Each prediction derives from a set of claims
+    (``claim_ids``), carries a confidence tier and evidence
+    classification, and tracks lifecycle status as evidence accumulates.
 
-    'tests_assumptions' is the set of assumptions this prediction was
-    explicitly designed to test — i.e., its outcome bears on whether
-    those assumptions hold. Bidirectional with Assumption.tested_by.
+    Key semantic distinctions:
 
-    'derivation' is the prose explanation of why claim_ids → this
-    prediction. Distinct from 'specification' (the formula being tested).
+    - ``claim_ids``: The claims that jointly imply this prediction (the
+      logical derivation chain). Most non-trivial predictions require
+      multiple claims. No backlink exists on Claim — the web validates
+      existence only.
+    - ``tests_assumptions``: Assumptions this prediction was explicitly
+      designed to test — its outcome bears on whether those assumptions
+      hold. Bidirectional with ``Assumption.tested_by``.
+    - ``conditional_on``: Assumptions this prediction is conditioned on —
+      it is valid only if these assumptions hold. Unlike
+      ``tests_assumptions``, these are taken as given. A prediction
+      cannot both test and condition on the same assumption.
+    - ``derivation``: Prose explaining *why* ``claim_ids`` imply this
+      prediction (the logical reasoning). Distinct from ``specification``
+      (the formula or relationship being tested).
 
-    'conditional_on' is the set of assumptions this prediction is explicitly
-    conditioned on — i.e., "this prediction holds only if these assumptions
-    hold." Unlike tests_assumptions (which marks assumptions under active
-    test), conditional_on marks assumptions that are taken as given for
-    this prediction to be valid. The web validates all IDs exist.
+    Attributes:
+        id: Unique identifier (e.g. ``"P-001"``).
+        observable: What is being measured or observed.
+        tier: Confidence classification — ``FULLY_SPECIFIED``,
+            ``CONDITIONAL``, or ``FIT_CHECK``.
+        status: Lifecycle state — ``PENDING``, ``CONFIRMED``, ``STRESSED``,
+            ``REFUTED``, or ``NOT_YET_TESTABLE``.
+        evidence_kind: Temporal/methodological classification —
+            ``NOVEL_PREDICTION``, ``RETRODICTION``, or ``FIT_CONSISTENCY``.
+        measurement_regime: Evidence form — ``MEASURED``, ``BOUND_ONLY``,
+            or ``UNMEASURED``.
+        predicted: The predicted value or outcome (type varies).
+        specification: The formula or relationship being tested (the "what").
+        derivation: Why ``claim_ids`` jointly imply this prediction (the "why").
+        claim_ids: IDs of claims forming the derivation chain.
+        tests_assumptions: IDs of assumptions under active test.
+        analysis: Optional analysis ID linked to this prediction.
+        independence_group: Optional group ID. Bidirectional with
+            ``IndependenceGroup.member_predictions``.
+        correlation_tags: Free-form tags marking potential correlations.
+        observed: The observed value, required once adjudicated with
+            ``MEASURED`` regime.
+        observed_bound: The observed bound, required once adjudicated with
+            ``BOUND_ONLY`` regime.
+        free_params: Number of free parameters. Must be 0 for
+            ``FULLY_SPECIFIED`` tier.
+        conditional_on: IDs of assumptions taken as given for validity.
+        falsifier: Description of what evidence would refute this prediction.
+        benchmark_source: Reference to the benchmark data source.
+        source: Provenance string — DOI, arXiv ID, URL, or citation.
+        notes: Free-form notes for the researcher.
     """
     id: PredictionId
     observable: str
@@ -132,9 +217,29 @@ class Prediction:
 
 @dataclass
 class IndependenceGroup:
-    """Predictions sharing a common derivation chain.
+    """A group of predictions sharing a common derivation chain.
 
-    member_predictions is bidirectional with Prediction.independence_group.
+    Independence groups allow the system to reason about which
+    predictions are genuinely independent pieces of evidence versus
+    which share common logical roots. Two groups must be documented
+    as separate via a ``PairwiseSeparation`` record once both contain
+    member predictions.
+
+    ``member_predictions`` is a backlink maintained by prediction
+    registration/update — callers should not set it directly.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"IG-001"``).
+        label: Human-readable name for the group.
+        claim_lineage: IDs of claims in the common derivation chain.
+            Caller-maintained annotation — the kernel validates existence
+            only, not semantic completeness.
+        assumption_lineage: IDs of assumptions in the common chain.
+            Caller-maintained annotation — existence-validated only.
+        member_predictions: IDs of predictions assigned to this group.
+            Backlink maintained by prediction operations.
+        measurement_regime: Optional regime shared by all members.
+        notes: Free-form notes for the researcher.
     """
     id: IndependenceGroupId
     label: str
@@ -147,7 +252,20 @@ class IndependenceGroup:
 
 @dataclass
 class PairwiseSeparation:
-    """Documents why two independence groups are genuinely separate."""
+    """Documents why two independence groups are genuinely separate.
+
+    Required once both referenced groups have at least one member
+    prediction. Without this record, validation will report a
+    CRITICAL finding for the missing separation basis.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"PS-001"``).
+        group_a: ID of the first independence group.
+        group_b: ID of the second independence group. Must differ
+            from ``group_a``.
+        basis: Prose explanation of why the two groups provide
+            genuinely independent evidence.
+    """
     id: PairwiseSeparationId
     group_a: IndependenceGroupId
     group_b: IndependenceGroupId
@@ -160,16 +278,33 @@ class Analysis:
 
     deSitter does not run analyses — the researcher runs them using their
     preferred tools (SageMath, Python, R, Jupyter, etc.) and records the
-    result via `ds record` or the `record_result` MCP tool.
+    result via ``ds record`` or the ``record_result`` MCP tool.
 
-    'path' and 'command' are provenance pointers: they tell the researcher
+    ``path`` and ``command`` are provenance pointers: they tell the researcher
     (or agent) where the code lives and how to run it. deSitter never invokes
     them. The most recently recorded result stores its git SHA directly on the
     analysis, giving a clear provenance chain: path + SHA + recorded value.
 
-    'uses_parameters' enables staleness detection: when a Parameter changes,
-    health_check can identify which analyses (and therefore which predictions)
-    need to be re-run. Bidirectional with Parameter.used_in_analyses.
+    ``uses_parameters`` enables staleness detection: when a Parameter changes,
+    ``health_check`` can identify which analyses (and therefore which
+    predictions) need to be re-run.
+
+    ``claims_covered`` is a backlink maintained by claim operations — it
+    starts empty on registration and is populated when claims reference
+    this analysis.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"AN-001"``).
+        command: Shell command to invoke the analysis (documentation only).
+        path: File path relative to the workspace root.
+        claims_covered: IDs of claims linked to this analysis. Backlink
+            maintained by claim operations — not set by callers.
+        uses_parameters: IDs of parameters this analysis depends on.
+            Bidirectional with ``Parameter.used_in_analyses``.
+        notes: Free-form notes for the researcher.
+        last_result: The recorded output value from the most recent run.
+        last_result_sha: Git SHA of the analysis code at run time.
+        last_result_date: Date when the result was recorded.
     """
     id: AnalysisId
     command: str | None = None                   # how to invoke it (documentation)
@@ -190,7 +325,20 @@ class Theory:
 
     A theory motivates and organises claims. Claims are the atomic
     assertions the theory rests on; predictions are what the theory
-    predicts that could be tested.
+    predicts that could be tested. Theories are leaf entities —
+    nothing else in the web references them by ID.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"T-001"``).
+        title: Human-readable name for the theory.
+        status: Lifecycle state — ``ACTIVE``, ``REFINED``, ``ABANDONED``,
+            or ``SUPERSEDED``.
+        summary: Optional prose description of the theory.
+        related_claims: IDs of claims this theory motivates or rests on.
+            Soft navigational link — scrubbed on claim removal.
+        related_predictions: IDs of predictions this theory generates.
+            Soft navigational link — scrubbed on prediction removal.
+        source: Provenance string — DOI, arXiv ID, URL, or citation.
     """
     id: TheoryId
     title: str
@@ -203,7 +351,27 @@ class Theory:
 
 @dataclass
 class Discovery:
-    """A significant finding during research."""
+    """A significant finding during research.
+
+    Discoveries capture noteworthy results, breakthroughs, or
+    observations that may drive new claims or predictions. They
+    are leaf entities with soft navigational links to claims and
+    predictions that are automatically scrubbed on removal.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"D-001"``).
+        title: Human-readable name for the discovery.
+        date: When the discovery was made or recorded.
+        summary: Prose description of what was found.
+        impact: Description of the discovery's significance.
+        status: Progress state — ``NEW``, ``INTEGRATED``, or ``ARCHIVED``.
+        related_claims: IDs of claims connected to this discovery.
+            Soft navigational link — scrubbed on claim removal.
+        related_predictions: IDs of predictions connected to this discovery.
+            Soft navigational link — scrubbed on prediction removal.
+        references: List of external reference strings (DOIs, URLs, etc.).
+        source: Primary provenance string.
+    """
     id: DiscoveryId
     title: str
     date: date
@@ -220,8 +388,24 @@ class Discovery:
 class DeadEnd:
     """A known dead end or abandoned direction.
 
-    Records what was tried and why it didn't work. Valuable negative
-    results that constrain the hypothesis space.
+    Records what was tried and why it didn't work. Dead ends are
+    valuable negative results that constrain the hypothesis space
+    and prevent future researchers from repeating failed approaches.
+    They are leaf entities with soft navigational links.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"DE-001"``).
+        title: Human-readable name for the dead end.
+        description: Detailed explanation of what was tried and why
+            it failed.
+        status: State — ``ACTIVE`` (unresolved), ``RESOLVED`` (addressed),
+            or ``ARCHIVED`` (historical only).
+        related_predictions: IDs of predictions connected to this dead end.
+            Soft navigational link — scrubbed on prediction removal.
+        related_claims: IDs of claims connected to this dead end.
+            Soft navigational link — scrubbed on claim removal.
+        references: List of external reference strings.
+        source: Provenance string — DOI, arXiv ID, URL, or analysis reference.
     """
     id: DeadEndId
     title: str
@@ -237,14 +421,28 @@ class DeadEnd:
 class Parameter:
     """A physical or mathematical constant referenced by analyses.
 
-    Parameters live in project/data/parameters.json and are available
-    to the researcher when running analyses. They keep constants out of
-    scripts and in a single version-controlled location.
+    Parameters live in ``project/data/parameters.json`` and are
+    available to the researcher when running analyses. They keep
+    constants out of scripts and in a single version-controlled
+    location.
 
-    'used_in_analyses' is the bidirectional backlink to Analysis.uses_parameters.
-    The EpistemicWeb maintains this automatically when analyses are registered.
-    It enables staleness detection: when this parameter changes, health_check
-    surfaces all analyses (and linked predictions) that need to be re-run.
+    ``used_in_analyses`` is a backlink to ``Analysis.uses_parameters``
+    maintained automatically by the EpistemicWeb when analyses are
+    registered. It enables staleness detection: when this parameter
+    changes, ``health_check`` surfaces all analyses (and linked
+    predictions) that need to be re-run.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"PAR-001"``).
+        name: Human-readable name for the parameter.
+        value: The parameter value — numeric, string, or structured.
+        unit: SI or domain unit string (human-readable), or ``None``.
+        uncertainty: Absolute uncertainty, same type as ``value``.
+        source: Citation or derivation note.
+        used_in_analyses: IDs of analyses that depend on this parameter.
+            Backlink maintained by analysis operations — not set by
+            callers.
+        notes: Free-form notes for the researcher.
     """
     id: ParameterId
     name: str

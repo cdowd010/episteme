@@ -26,7 +26,14 @@ from .tools import register_tools
 def create_server(workspace: Path | None = None) -> fastmcp.FastMCP:
     """Build and return a configured FastMCP server instance.
 
-    workspace: path to the project workspace (defaults to cwd).
+    Loads configuration from ``workspace`` (or cwd), constructs a
+    ``ProjectContext``, and registers all MCP tool handlers.
+
+    Args:
+        workspace: Path to the project workspace. Defaults to cwd.
+
+    Returns:
+        fastmcp.FastMCP: A fully configured server ready to run.
     """
     ws = workspace or Path.cwd()
     config = load_config(ws)
@@ -41,7 +48,14 @@ def create_server(workspace: Path | None = None) -> fastmcp.FastMCP:
 
 
 def run(workspace: Path | None = None) -> None:
-    """Create and run the MCP server (blocking)."""
+    """Create and run the MCP server (blocking).
+
+    This is the main entry point for the ``ds-mcp`` console script.
+    Blocks until the server is shut down.
+
+    Args:
+        workspace: Path to the project workspace. Defaults to cwd.
+    """
     server = create_server(workspace)
     server.run()
 

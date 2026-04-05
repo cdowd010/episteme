@@ -38,7 +38,18 @@ from .formatters import print_gateway_result, print_health_report, print_status
 @click.option("--json", "output_json", is_flag=True, help="Output as JSON.")
 @click.pass_context
 def cli(ctx: click.Context, workspace: Path | None, output_json: bool) -> None:
-    """deSitter — epistemic web data system."""
+    """deSitter — epistemic web data system.
+
+    Top-level Click group. Loads configuration from the workspace
+    directory, builds a ``ProjectContext``, and stores it on the Click
+    context for sub-commands to use.
+
+    Args:
+        ctx: Click context passed automatically.
+        workspace: Project workspace directory. Defaults to cwd.
+        output_json: If ``True``, sub-commands emit JSON to stdout
+            instead of Rich-formatted terminal output.
+    """
     ws = workspace or Path.cwd()
     config = load_config(ws)
     context = build_context(ws, config)
@@ -153,7 +164,15 @@ def init(ws_path: Path | None) -> None:
 
 
 def _feature_gated(ctx: click.Context, command_name: str) -> None:
-    """Emit a stable feature-gated error for not-yet-implemented CLI commands."""
+    """Emit a stable feature-gated error for not-yet-implemented CLI commands.
+
+    In JSON mode, prints a JSON error envelope to stdout. In human mode,
+    raises a ``click.ClickException`` with a user-friendly message.
+
+    Args:
+        ctx: Click context (used to check ``output_json`` flag).
+        command_name: Name of the gated command.
+    """
     message = (
         f"Command '{command_name}' is not available yet (feature-gated). "
         "See TRACKER milestones 2 and 3."

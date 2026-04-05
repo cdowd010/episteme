@@ -41,10 +41,27 @@ ENTITY_TYPES: dict[str, type[object]] = {
     "independence_group": IndependenceGroup,
     "pairwise_separation": PairwiseSeparation,
 }
+"""Mapping of canonical resource keys to their dataclass types.
+
+Used by codec functions and the payload validator to resolve resource
+names to model classes.
+"""
 
 
 def get_entity_class(resource: str) -> type[object]:
-    """Return the model class for a canonical resource name."""
+    """Return the model dataclass for a canonical resource name.
+
+    Args:
+        resource: A canonical resource key such as ``"claim"``,
+            ``"prediction"``, or ``"independence_group"``.
+
+    Returns:
+        type[object]: The corresponding dataclass type (e.g.
+            ``Claim``, ``Prediction``).
+
+    Raises:
+        KeyError: If ``resource`` is not a recognized resource key.
+    """
     try:
         return ENTITY_TYPES[resource]
     except KeyError as exc:
@@ -52,13 +69,42 @@ def get_entity_class(resource: str) -> type[object]:
 
 
 def entity_id_type(resource: str) -> object:
-    """Return the NewType constructor for a resource identifier."""
+    """Return the NewType constructor for a resource's identifier field.
+
+    Inspects the ``id`` field's type annotation on the model dataclass
+    for the given resource and returns the NewType callable.
+
+    Args:
+        resource: A canonical resource key (e.g. ``"claim"``).
+
+    Returns:
+        object: The NewType constructor (e.g. ``ClaimId``) that can
+            be called with a string to produce a typed identifier.
+
+    Raises:
+        KeyError: If ``resource`` is not a recognized resource key.
+    """
     entity_cls = get_entity_class(resource)
     return get_type_hints(entity_cls)["id"]
 
 
 def status_enum_type(resource: str) -> type[Enum] | None:
-    """Return the status enum for a resource, if the model defines one."""
+    """Return the status Enum class for a resource, if one is defined.
+
+    Checks whether the model dataclass for the given resource has a
+    ``status`` field annotated with an ``Enum`` subclass.
+
+    Args:
+        resource: A canonical resource key (e.g. ``"prediction"``).
+
+    Returns:
+        type[Enum] | None: The status enum class (e.g.
+            ``PredictionStatus``), or ``None`` if the resource does
+            not have a status field.
+
+    Raises:
+        KeyError: If ``resource`` is not a recognized resource key.
+    """
     entity_cls = get_entity_class(resource)
     annotation = get_type_hints(entity_cls).get("status")
     if isinstance(annotation, type) and issubclass(annotation, Enum):
@@ -67,12 +113,46 @@ def status_enum_type(resource: str) -> type[Enum] | None:
 
 
 def normalize_payload(payload: Mapping[str, object]) -> dict[str, object]:
-    """Convert mixed Python values to JSON-friendly primitives."""
+    """Convert mixed Python values to JSON-friendly primitives.
+
+    Recursively serializes all values in the payload: enums become
+    their ``.value``, dates become ISO strings, sets become sorted
+    lists, and dataclass instances become dicts.
+
+    Args:
+        payload: A mapping of field names to Python values, possibly
+            containing enums, dates, sets, or nested dataclasses.
+
+    Returns:
+        dict[str, object]: A new dictionary with all keys converted
+            to strings and all values serialized to JSON-compatible
+            primitives.
+    """
     return {str(key): serialize_value(value) for key, value in payload.items()}
 
 
 def build_entity(resource: str, payload: Mapping[str, object]) -> object:
-    """Construct a typed domain entity from a primitive payload mapping."""
+    """Construct a typed domain entity from a primitive payload mapping.
+
+    Normalizes the payload, then coerces each field value to the type
+    declared by the entity's dataclass annotations (e.g. strings to
+    enums, lists to sets, ISO date strings to ``date`` objects).
+
+    Args:
+        resource: A canonical resource key (e.g. ``"claim"``).
+        payload: A mapping of field names to primitive values. Fields
+            not present in the payload are omitted from construction
+            and must have defaults on the dataclass.
+
+    Returns:
+        object: A fully constructed dataclass instance of the
+            appropriate entity type.
+
+    Raises:
+        KeyError: If ``resource`` is not a recognized resource key.
+        TypeError: If a field value cannot be coerced to its annotated type.
+        ValueError: If an enum value string does not match any member.
+    """
     entity_cls = get_entity_class(resource)
     type_hints = get_type_hints(entity_cls)
     normalized = normalize_payload(payload)
@@ -87,12 +167,35 @@ def build_entity(resource: str, payload: Mapping[str, object]) -> object:
 
 
 def deserialize_entity(resource: str, payload: Mapping[str, object]) -> object:
-    """Alias for build_entity used when decoding gateway responses."""
+    """Construct a typed domain entity from a serialized payload.
+
+    This is an alias for ``build_entity`` used when decoding gateway
+    responses back into typed domain objects on the client side.
+
+    Args:
+        resource: A canonical resource key (e.g. ``"claim"``).
+        payload: A mapping of field names to primitive values.
+
+    Returns:
+        object: A fully constructed dataclass instance.
+    """
     return build_entity(resource, payload)
 
 
 def serialize_value(value: object) -> object:
-    """Recursively serialize a Python value to JSON-friendly primitives."""
+    """Recursively serialize a Python value to JSON-friendly primitives.
+
+    Handles dataclass instances, enums, dates, sets, lists, tuples,
+    and dicts. Sets are converted to sorted lists for deterministic
+    output. Dict keys are sorted alphabetically.
+
+    Args:
+        value: Any Python value to serialize.
+
+    Returns:
+        object: A JSON-compatible primitive (str, int, float, bool,
+            None, list, or dict).
+    """
     if is_dataclass(value) and not isinstance(value, type):
         return entity_to_dict(value)
 
@@ -120,7 +223,22 @@ def serialize_value(value: object) -> object:
 
 
 def entity_to_dict(entity: object) -> dict[str, object]:
-    """Serialize a domain dataclass to a JSON-friendly dictionary."""
+    """Serialize a domain dataclass instance to a JSON-friendly dictionary.
+
+    Each field on the dataclass is serialized via ``serialize_value``.
+    The result is a flat dictionary suitable for JSON encoding.
+
+    Args:
+        entity: A dataclass instance to serialize. Must be an instance,
+            not a class.
+
+    Returns:
+        dict[str, object]: A mapping of ``{field_name: serialized_value}``
+            for every field on the dataclass.
+
+    Raises:
+        TypeError: If ``entity`` is not a dataclass instance.
+    """
     if not is_dataclass(entity) or isinstance(entity, type):
         raise TypeError(f"Expected dataclass instance, got {type(entity)!r}")
 
@@ -131,6 +249,25 @@ def entity_to_dict(entity: object) -> dict[str, object]:
 
 
 def _coerce_value(value: object, annotation: object) -> object:
+    """Coerce a primitive value to the type declared by a dataclass annotation.
+
+    Handles NewType wrappers, Optional/Union types, sets, lists, dicts,
+    dates, enums, and primitive types. Recursively coerces container
+    contents.
+
+    Args:
+        value: The raw value from a deserialized payload.
+        annotation: The type annotation from the dataclass field.
+
+    Returns:
+        object: The value coerced to the target type.
+
+    Raises:
+        TypeError: If the value's structure is incompatible with the
+            annotation (e.g. a string where an iterable is expected).
+        ValueError: If coercion fails (e.g. an invalid enum member
+            string).
+    """
     if annotation in (Any, object):
         return value
 
@@ -193,4 +330,16 @@ def _coerce_value(value: object, annotation: object) -> object:
 
 
 def _sort_key(value: object) -> str:
+    """Return a string sort key for arbitrary serialized values.
+
+    Used to produce deterministic ordering of set elements and
+    dictionary keys during serialization.
+
+    Args:
+        value: Any serialized value.
+
+    Returns:
+        str: The ``repr()`` of the value, suitable for lexicographic
+            sorting.
+    """
     return repr(value)

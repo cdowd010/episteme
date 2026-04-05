@@ -14,10 +14,13 @@ from dataclasses import dataclass
 
 @dataclass
 class RenderTrigger:
-    """Declares that a resource mutation should trigger a render pass.
+    """Declares that a mutation on a resource should trigger a render pass.
 
-    resource:   The canonical resource key that triggers the render.
-    surfaces:   Which render surfaces to invalidate (None = all).
+    Attributes:
+        resource: The canonical resource key whose mutations trigger rendering
+            (e.g. ``"claim"``, ``"prediction"``).
+        surfaces: Which render surfaces to invalidate. ``None`` means
+            all surfaces are invalidated.
     """
     resource: str
     surfaces: list[str] | None = None
@@ -35,9 +38,19 @@ DEFAULT_RENDER_TRIGGERS: list[RenderTrigger] = [
     RenderTrigger("dead_end"),
     RenderTrigger("parameter"),
 ]
+"""Default trigger table: a write to any of these resources invalidates all view surfaces."""
 
 
 def should_render(resource: str, triggers: list[RenderTrigger] | None = None) -> bool:
-    """Return True if a mutation to resource should trigger a render pass."""
+    """Return ``True`` if a mutation to *resource* should trigger a render pass.
+
+    Args:
+        resource: The canonical resource key to check.
+        triggers: Custom trigger table. If ``None``, uses
+            ``DEFAULT_RENDER_TRIGGERS``.
+
+    Returns:
+        bool: ``True`` if any trigger matches the resource.
+    """
     active = triggers if triggers is not None else DEFAULT_RENDER_TRIGGERS
     return any(t.resource == resource for t in active)

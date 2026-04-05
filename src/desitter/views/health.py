@@ -20,8 +20,13 @@ from ..config import ProjectContext
 class HealthReport:
     """Structured health report for a project.
 
-    overall:  "HEALTHY" | "WARNINGS" | "CRITICAL"
-    findings: All findings from all checks, sorted by severity.
+    Aggregates findings from domain validation, staleness checks, and
+    reference integrity checks into a single pass/fail decision.
+
+    Attributes:
+        overall: One of ``"HEALTHY"``, ``"WARNINGS"``, or ``"CRITICAL"``.
+        findings: All findings from all checks, sorted by severity
+            (CRITICAL first).
     """
     overall: str
     findings: list[Finding] = field(default_factory=list)
@@ -44,9 +49,22 @@ def run_health_check(
 ) -> HealthReport:
     """Run all health checks and return a structured report.
 
-    Checks performed:
-      1. Domain invariant validation (epistemic/invariants.py)
-            2. Analysis staleness after parameter changes (controlplane/check.py)
-            3. Cross-reference integrity (controlplane/check.py)
+    Composes three check categories:
+
+    1. Domain invariant validation (``epistemic/invariants.py``).
+    2. Analysis staleness after parameter changes (``controlplane/check.py``).
+    3. Cross-reference integrity (``controlplane/check.py``).
+
+    Args:
+        context: Project paths and runtime configuration.
+        repo: Repository adapter used to load the web.
+        validator: Domain validator to run invariant checks.
+
+    Returns:
+        HealthReport: A structured report with an overall status and
+            all findings.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError

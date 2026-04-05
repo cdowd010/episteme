@@ -30,7 +30,16 @@ from ...views.status import get_status
 
 
 def register_tools(server, context: ProjectContext) -> None:
-    """Register all MCP tool handlers on the FastMCP server instance."""
+    """Register all MCP tool handlers on the FastMCP server instance.
+
+    Constructs a ``Gateway`` from the given context and registers
+    tool functions as closures over it. Each tool follows the MCP
+    envelope convention: ``{"status": ..., "changed": ..., ...}``.
+
+    Args:
+        server: A ``fastmcp.FastMCP`` server instance.
+        context: Project paths and runtime configuration.
+    """
     gateway = build_gateway(context)
 
     @server.tool()
@@ -213,7 +222,15 @@ def register_tools(server, context: ProjectContext) -> None:
 
 
 def _feature_gated(tool_name: str, exc: NotImplementedError | None = None) -> dict:
-    """Return a stable MCP error envelope for feature-gated tool handlers."""
+    """Return a stable MCP error envelope for feature-gated tool handlers.
+
+    Args:
+        tool_name: Name of the tool that is not yet implemented.
+        exc: The original ``NotImplementedError``, if any.
+
+    Returns:
+        dict: An error envelope with ``status="error"``.
+    """
     detail = str(exc).strip() if exc is not None else ""
     suffix = f" Detail: {detail}" if detail else ""
     return {
@@ -227,7 +244,18 @@ def _feature_gated(tool_name: str, exc: NotImplementedError | None = None) -> di
 
 
 def _envelope(result) -> dict:
-    """Convert a GatewayResult to a status-first MCP response dict."""
+    """Convert a ``GatewayResult`` to a status-first MCP response dict.
+
+    Translates the typed ``GatewayResult`` dataclass into a plain dict
+    suitable for JSON serialization over MCP. Includes optional fields
+    (findings, transaction_id, data) only when they are non-empty.
+
+    Args:
+        result: A ``GatewayResult`` from the gateway.
+
+    Returns:
+        dict: A JSON-serializable response envelope.
+    """
     out: dict = {
         "status": result.status,
         "changed": result.changed,

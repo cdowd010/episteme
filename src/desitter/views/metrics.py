@@ -15,7 +15,18 @@ from ..epistemic.web import EpistemicWeb
 
 @dataclass
 class PredictionMetrics:
-    """Aggregate statistics for predictions."""
+    """Aggregate statistics for predictions.
+
+    Attributes:
+        total: Total number of predictions in the web.
+        by_status: Count of predictions per ``PredictionStatus`` value.
+        by_tier: Count of predictions per ``ConfidenceTier`` value.
+        tier_a_confirmed: Number of Tier-A predictions with
+            ``CONFIRMED`` status.
+        tier_a_total: Total number of Tier-A predictions.
+        stressed: IDs of predictions under epistemic stress (e.g.
+            assumptions retracted or claims refuted).
+    """
     total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_tier: dict[str, int] = field(default_factory=dict)
@@ -26,7 +37,27 @@ class PredictionMetrics:
 
 @dataclass
 class WebMetrics:
-    """Full metrics snapshot of an EpistemicWeb."""
+    """Full metrics snapshot of an ``EpistemicWeb``.
+
+    Provides entity counts for every collection plus detailed prediction
+    metrics and coverage gap lists.
+
+    Attributes:
+        claim_count: Number of claims.
+        assumption_count: Number of assumptions.
+        analysis_count: Number of analyses.
+        theory_count: Number of theories.
+        discovery_count: Number of discoveries.
+        dead_end_count: Number of dead ends.
+        parameter_count: Number of parameters.
+        independence_group_count: Number of independence groups.
+        pairwise_separation_count: Number of pairwise separations.
+        prediction_metrics: Detailed prediction aggregate stats.
+        uncovered_numerical_claims: IDs of numerical claims that
+            lack a covering prediction.
+        empirical_assumptions_without_consequence: IDs of empirical
+            assumptions that have no falsifiable consequence.
+    """
     claim_count: int = 0
     assumption_count: int = 0
     analysis_count: int = 0
@@ -44,14 +75,37 @@ class WebMetrics:
 def compute_metrics(web: EpistemicWeb) -> WebMetrics:
     """Compute aggregate metrics from the epistemic web.
 
-    Pure function — no I/O, no side effects.
+    Pure function — no I/O, no side effects. Counts entities in every
+    collection, computes detailed prediction statistics, and identifies
+    coverage gaps.
+
+    Args:
+        web: The epistemic web to analyze.
+
+    Returns:
+        WebMetrics: A complete metrics snapshot.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError
 
 
 def tier_a_evidence_summary(web: EpistemicWeb) -> dict[str, object]:
-    """Summarise tier-A prediction evidence, flagging correlated groups.
+    """Summarize Tier-A prediction evidence, flagging correlated groups.
 
+    Identifies which Tier-A predictions share independence groups and
+    flags groups where all confirmed predictions are correlated.
     Returns a dict suitable for inclusion in status output.
+
+    Args:
+        web: The epistemic web to analyze.
+
+    Returns:
+        dict[str, object]: Summary keyed by independence group with
+            correlation flags and prediction details.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError

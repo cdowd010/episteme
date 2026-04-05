@@ -16,7 +16,10 @@ from .validate import DomainValidator
 
 
 class _NullProseSync:
-    """No-op ProseSync used until the prose sync adapter is implemented."""
+    """No-op ProseSync used until the prose sync adapter is implemented.
+
+    Returns an empty dict from ``sync()`` and has no side effects.
+    """
 
     def sync(self, web):
         """Satisfy the ProseSync interface without side effects."""
@@ -31,7 +34,20 @@ def build_gateway(
     """Construct a fully wired Gateway from a ProjectContext.
 
     This is the single composition root for gateway construction.
-    Both MCP tools and CLI commands should call this function.
+    Both MCP tools and CLI commands should call this function rather
+    than wiring dependencies manually.
+
+    Instantiates concrete adapters (``JsonRepository``, ``DomainValidator``,
+    ``MarkdownRenderer``, ``JsonTransactionLog``, ``_NullProseSync``) and
+    injects them into a new ``Gateway``.
+
+    Args:
+        context: Project paths and runtime configuration.
+        payload_validator: Optional custom payload validator. If ``None``,
+            a default ``JsonSchemaPayloadValidator`` is used.
+
+    Returns:
+        Gateway: A fully wired gateway ready for mutations and queries.
     """
     repo = JsonRepository(context.paths.data_dir)
     validator = DomainValidator()

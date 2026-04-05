@@ -47,8 +47,33 @@ from .types import (
 class EpistemicWeb:
     """Complete epistemic state of a research project.
 
-    All mutations go through methods that enforce invariants and return
-    a new web. The old web is left untouched (free rollback).
+    The EpistemicWeb is the aggregate root for the epistemic domain.
+    External code NEVER modifies entities directly — it calls methods
+    on the web, and the web ensures consistency.
+
+    Every mutation method returns a NEW web instance. The old web is
+    left untouched, providing free rollback/undo semantics and
+    eliminating state corruption from partial mutations.
+
+    All bidirectional links between entities (e.g.
+    ``Assumption.used_in_claims`` ↔ ``Claim.assumptions``,
+    ``Parameter.used_in_analyses`` ↔ ``Analysis.uses_parameters``)
+    are maintained automatically by the web's register/update/remove
+    methods.
+
+    Attributes:
+        claims: Registry of all claims, keyed by ``ClaimId``.
+        assumptions: Registry of all assumptions, keyed by ``AssumptionId``.
+        predictions: Registry of all predictions, keyed by ``PredictionId``.
+        theories: Registry of all theories, keyed by ``TheoryId``.
+        discoveries: Registry of all discoveries, keyed by ``DiscoveryId``.
+        analyses: Registry of all analyses, keyed by ``AnalysisId``.
+        independence_groups: Registry of all independence groups, keyed
+            by ``IndependenceGroupId``.
+        pairwise_separations: Registry of all pairwise separation records,
+            keyed by ``PairwiseSeparationId``.
+        dead_ends: Registry of all dead end records, keyed by ``DeadEndId``.
+        parameters: Registry of all parameters, keyed by ``ParameterId``.
     """
     claims: dict[ClaimId, Claim] = field(default_factory=dict)
     assumptions: dict[AssumptionId, Assumption] = field(default_factory=dict)
@@ -66,23 +91,69 @@ class EpistemicWeb:
     # ── Queries ───────────────────────────────────────────────────
 
     def get_claim(self, cid: ClaimId) -> Claim | None:
-        """Return a claim by ID, or None when the claim does not exist."""
+        """Return a claim by ID, or ``None`` when the claim does not exist.
+
+        Args:
+            cid: The unique identifier of the claim to look up.
+
+        Returns:
+            Claim | None: The claim instance, or ``None`` if not found.
+        """
         return self.claims.get(cid)
 
     def get_assumption(self, aid: AssumptionId) -> Assumption | None:
-        """Return an assumption by ID, or None when absent from the web."""
+        """Return an assumption by ID, or ``None`` when absent from the web.
+
+        Args:
+            aid: The unique identifier of the assumption to look up.
+
+        Returns:
+            Assumption | None: The assumption instance, or ``None`` if
+                not found.
+        """
         return self.assumptions.get(aid)
 
     def get_prediction(self, pid: PredictionId) -> Prediction | None:
-        """Return a prediction by ID, or None when no matching ID exists."""
+        """Return a prediction by ID, or ``None`` when no match exists.
+
+        Args:
+            pid: The unique identifier of the prediction to look up.
+
+        Returns:
+            Prediction | None: The prediction instance, or ``None`` if
+                not found.
+        """
         return self.predictions.get(pid)
 
     def claims_using_assumption(self, aid: AssumptionId) -> set[ClaimId]:
-        """All claims that reference this assumption."""
+        """Return all claims that reference this assumption in their assumptions set.
+
+        Performs a full scan of all claims. The returned set contains only
+        direct references, not transitive ones.
+
+        Args:
+            aid: The assumption ID to search for.
+
+        Returns:
+            set[ClaimId]: IDs of all claims whose ``assumptions`` field
+                contains ``aid``.
+        """
         return {cid for cid, c in self.claims.items() if aid in c.assumptions}
 
     def claim_lineage(self, cid: ClaimId) -> set[ClaimId]:
-        """Transitive closure of depends_on (all ancestors of a claim)."""
+        """Compute the transitive closure of a claim's ``depends_on`` chain.
+
+        Returns all ancestor claims reachable through the ``depends_on``
+        DAG. The input claim itself is NOT included in the result.
+        Uses an iterative depth-first traversal.
+
+        Args:
+            cid: The claim ID whose ancestors to compute.
+
+        Returns:
+            set[ClaimId]: All ancestor claim IDs (transitive ``depends_on``
+                closure), excluding ``cid`` itself.
+        """
         visited: set[ClaimId] = set()
         stack = [cid]
         while stack:
@@ -97,8 +168,19 @@ class EpistemicWeb:
         return visited
 
     def assumption_lineage(self, cid: ClaimId) -> set[AssumptionId]:
-        """All assumptions reachable through a claim and its ancestors,
-        including assumptions presupposed by those assumptions (depends_on)."""
+        """Return all assumptions reachable through a claim and its ancestors.
+
+        Collects assumptions from the claim and all its transitive
+        ancestors (via ``depends_on``), then expands through assumption
+        ``depends_on`` chains to capture presupposed assumptions.
+
+        Args:
+            cid: The claim ID whose full assumption lineage to compute.
+
+        Returns:
+            set[AssumptionId]: All assumption IDs transitively reachable
+                through claim and assumption dependency chains.
+        """
         all_claims = self.claim_lineage(cid) | {cid}
         direct: set[AssumptionId] = set()
         for ancestor_id in all_claims:
@@ -121,13 +203,24 @@ class EpistemicWeb:
         return result
 
     def prediction_implicit_assumptions(self, pid: PredictionId) -> set[AssumptionId]:
-        """All assumptions in the full derivation chain of a prediction.
+        """Return all assumptions in the full derivation chain of a prediction.
 
-        Includes assumptions on each claim in claim_ids (and their ancestors),
-        assumptions presupposed by those assumptions (depends_on chains),
-        and assumptions in conditional_on (and their depends_on chains).
+        Computes the complete set of assumptions the prediction silently
+        rests on by combining:
 
-        This is the complete set of assumptions the prediction silently rests on.
+        1. Assumptions from each claim in ``claim_ids`` and their ancestors
+           (via ``assumption_lineage``).
+        2. Assumptions presupposed by those assumptions (``depends_on``
+           chains).
+        3. Assumptions in ``conditional_on`` and their ``depends_on`` chains.
+
+        Args:
+            pid: The prediction ID whose implicit assumptions to compute.
+
+        Returns:
+            set[AssumptionId]: The complete set of assumption IDs the
+                prediction depends on. Empty set if the prediction does
+                not exist.
         """
         pred = self.predictions.get(pid)
         if pred is None:
@@ -150,12 +243,25 @@ class EpistemicWeb:
         return result
 
     def refutation_impact(self, pid: PredictionId) -> dict[str, set]:
-        """What is called into question when a prediction is refuted.
+        """Compute the blast radius when a prediction is refuted.
+
+        Answers "what is called into question when this prediction fails?"
+        by tracing backward through the derivation chain.
+
+        Args:
+            pid: The prediction ID to analyze.
 
         Returns:
-            claim_ids:           the direct claims jointly implying this prediction
-            claim_ancestors:     all ancestor claims (transitive depends_on closure)
-            implicit_assumptions: all assumptions in the full derivation chain
+            dict[str, set]: A dictionary with three keys:
+
+            - ``claim_ids``: Direct claims jointly implying this prediction
+              (copy of ``Prediction.claim_ids``).
+            - ``claim_ancestors``: All ancestor claims via transitive
+              ``depends_on`` closure, EXCLUDING the direct ``claim_ids``.
+            - ``implicit_assumptions``: All assumptions in the full
+              derivation chain (same as ``prediction_implicit_assumptions``).
+
+            Returns empty sets for all keys if the prediction does not exist.
         """
         pred = self.predictions.get(pid)
         if pred is None:
@@ -170,12 +276,24 @@ class EpistemicWeb:
         }
 
     def assumption_support_status(self, aid: AssumptionId) -> dict[str, set]:
-        """What depends on this assumption, directly and transitively.
+        """Compute the full dependency and test coverage of an assumption.
+
+        Answers "what depends on this assumption, and what tests it?"
+
+        Args:
+            aid: The assumption ID to analyze.
 
         Returns:
-            direct_claims:          claims that directly reference this assumption
-            dependent_predictions:  predictions whose derivation chain includes this assumption
-            tested_by:              predictions explicitly testing this assumption
+            dict[str, set]: A dictionary with three keys:
+
+            - ``direct_claims``: Claims that directly reference this
+              assumption in their ``assumptions`` set.
+            - ``dependent_predictions``: Predictions whose full derivation
+              chain includes this assumption (via implicit assumptions).
+            - ``tested_by``: Predictions explicitly testing this assumption
+              (via ``tests_assumptions``).
+
+            Returns empty sets for all keys if the assumption does not exist.
         """
         assumption = self.assumptions.get(aid)
         if assumption is None:
@@ -193,11 +311,18 @@ class EpistemicWeb:
         }
 
     def claims_depending_on_claim(self, cid: ClaimId) -> set[ClaimId]:
-        """All claims that transitively depend on this claim (forward direction).
+        """Return all claims that transitively depend on this claim.
 
-        Uses a reverse traversal: builds a reverse depends_on index then
-        BFS from cid. Answers "if this claim is wrong, which downstream
-        claims are built on it?"
+        Performs a forward traversal from ``cid`` using a reverse
+        ``depends_on`` index: "if this claim is wrong, which downstream
+        claims are built on it?" The input claim itself is NOT included.
+
+        Args:
+            cid: The claim ID to trace forward from.
+
+        Returns:
+            set[ClaimId]: All downstream claim IDs that directly or
+                transitively depend on ``cid``.
         """
         reverse: dict[ClaimId, set[ClaimId]] = {}
         for other_id, claim in self.claims.items():
@@ -214,9 +339,17 @@ class EpistemicWeb:
         return result
 
     def predictions_depending_on_claim(self, cid: ClaimId) -> set[PredictionId]:
-        """All predictions whose derivation chain includes this claim.
+        """Return all predictions whose derivation chain includes this claim.
 
-        Answers "if this claim is retracted, which predictions are now suspect?"
+        Answers "if this claim is retracted, which predictions are now
+        suspect?" Considers both direct and downstream claim dependencies.
+
+        Args:
+            cid: The claim ID to trace forward from.
+
+        Returns:
+            set[PredictionId]: All prediction IDs whose ``claim_ids``
+                intersect with ``cid`` or any of its downstream dependents.
         """
         affected_claims = self.claims_depending_on_claim(cid) | {cid}
         return {
@@ -225,17 +358,29 @@ class EpistemicWeb:
         }
 
     def parameter_impact(self, pid: ParameterId) -> dict[str, set]:
-        """Full blast radius of a parameter change.
+        """Compute the full blast radius of a parameter change.
 
-        Walks: parameter → stale analyses → claims covered by those analyses
-        → predictions depending on those claims. Also includes claims that
-        carry a parameter_constraints annotation for this parameter.
+        Walks the dependency chain: parameter → stale analyses → claims
+        covered by those analyses → predictions depending on those claims.
+        Also includes claims with ``parameter_constraints`` annotations
+        for this parameter and predictions directly linked to stale analyses.
+
+        Args:
+            pid: The parameter ID whose impact to compute.
 
         Returns:
-            stale_analyses:       analyses that use this parameter
-            constrained_claims:   claims with a threshold annotation on this parameter
-            affected_claims:      claims covered by stale analyses + constrained claims
-            affected_predictions: all predictions in the downstream chain
+            dict[str, set]: A dictionary with four keys:
+
+            - ``stale_analyses``: Analysis IDs that use this parameter.
+            - ``constrained_claims``: Claim IDs with a threshold annotation
+              on this parameter.
+            - ``affected_claims``: Union of claims covered by stale analyses
+              and constrained claims.
+            - ``affected_predictions``: All predictions in the downstream
+              chain of affected claims, plus predictions directly linked
+              to stale analyses.
+
+            Returns empty sets for all keys if the parameter does not exist.
         """
         param = self.parameters.get(pid)
         if param is None:
@@ -274,8 +419,26 @@ class EpistemicWeb:
     # ── Mutations (return new web) ────────────────────────────────
 
     def register_claim(self, claim: Claim) -> EpistemicWeb:
-        """Add a claim. Enforces: no duplicates, refs exist, no cycles,
-        bidirectional links updated."""
+        """Register a new claim in the web.
+
+        Enforces: no duplicate IDs, all referenced assumptions/claims/analyses/
+        parameters exist, no dependency cycles in ``depends_on``, and
+        bidirectional backlinks are updated on assumptions and analyses.
+
+        The incoming entity is deep-copied so the caller's reference cannot
+        mutate the web's stored copy after registration.
+
+        Args:
+            claim: The claim to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered claim.
+
+        Raises:
+            DuplicateIdError: If ``claim.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+            CycleError: If ``depends_on`` would create a dependency cycle.
+        """
         if claim.id in self.claims:
             raise DuplicateIdError(f"Claim {claim.id} already exists")
         self._check_refs_exist(claim.assumptions, self.assumptions, "assumption")
@@ -301,10 +464,23 @@ class EpistemicWeb:
         return new
 
     def register_assumption(self, assumption: Assumption) -> EpistemicWeb:
-        """Add an assumption. Validates depends_on refs exist and no cycles.
+        """Register a new assumption in the web.
 
-        Backlinks (used_in_claims, tested_by) are owned by claim/prediction
-        operations and are intentionally initialized empty here.
+        Validates that all ``depends_on`` references exist and that no
+        cycle would be introduced. Backlinks ``used_in_claims`` and
+        ``tested_by`` are intentionally initialized to empty sets —
+        they are owned by claim and prediction operations respectively.
+
+        Args:
+            assumption: The assumption to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered assumption.
+
+        Raises:
+            DuplicateIdError: If ``assumption.id`` already exists.
+            BrokenReferenceError: If any ``depends_on`` ID does not exist.
+            CycleError: If ``depends_on`` would create a cycle.
         """
         if assumption.id in self.assumptions:
             raise DuplicateIdError(f"Assumption {assumption.id} already exists")
@@ -318,7 +494,22 @@ class EpistemicWeb:
         return new
 
     def register_prediction(self, prediction: Prediction) -> EpistemicWeb:
-        """Add a prediction. Enforces: refs exist, bidirectional links updated."""
+        """Register a new prediction in the web.
+
+        Validates that all referenced claims, assumptions, analysis, and
+        independence group exist. Updates bidirectional backlinks:
+        ``Assumption.tested_by`` and ``IndependenceGroup.member_predictions``.
+
+        Args:
+            prediction: The prediction to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered prediction.
+
+        Raises:
+            DuplicateIdError: If ``prediction.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+        """
         if prediction.id in self.predictions:
             raise DuplicateIdError(f"Prediction {prediction.id} already exists")
         self._check_refs_exist(prediction.claim_ids, self.claims, "claim")
@@ -350,9 +541,22 @@ class EpistemicWeb:
         return new
 
     def register_analysis(self, analysis: Analysis) -> EpistemicWeb:
-        """Add an analysis reference. Maintains bidirectional uses_parameters link.
+        """Register a new analysis reference in the web.
 
-        claims_covered is a backlink owned by claim operations and starts empty.
+        Validates that all ``uses_parameters`` IDs exist and updates the
+        bidirectional ``Parameter.used_in_analyses`` backlink.
+        ``claims_covered`` is a backlink owned by claim operations and
+        starts empty.
+
+        Args:
+            analysis: The analysis to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered analysis.
+
+        Raises:
+            DuplicateIdError: If ``analysis.id`` already exists.
+            BrokenReferenceError: If any ``uses_parameters`` ID does not exist.
         """
         if analysis.id in self.analyses:
             raise DuplicateIdError(f"Analysis {analysis.id} already exists")
@@ -370,7 +574,21 @@ class EpistemicWeb:
         return new
 
     def register_theory(self, theory: Theory) -> EpistemicWeb:
-        """Add a theory. Validates related_claims and related_predictions refs."""
+        """Register a new theory in the web.
+
+        Validates that all ``related_claims`` and ``related_predictions``
+        IDs exist.
+
+        Args:
+            theory: The theory to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered theory.
+
+        Raises:
+            DuplicateIdError: If ``theory.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+        """
         if theory.id in self.theories:
             raise DuplicateIdError(f"Theory {theory.id} already exists")
         self._check_refs_exist(theory.related_claims, self.claims, "claim")
@@ -380,10 +598,21 @@ class EpistemicWeb:
         return new
 
     def register_independence_group(self, group: IndependenceGroup) -> EpistemicWeb:
-        """Add an independence group. Validates claim_lineage and assumption_lineage refs.
+        """Register a new independence group in the web.
 
-        member_predictions is a backlink owned by prediction operations and
-        starts empty.
+        Validates that all ``claim_lineage`` and ``assumption_lineage`` IDs
+        exist. ``member_predictions`` is a backlink owned by prediction
+        operations and starts empty.
+
+        Args:
+            group: The independence group to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered group.
+
+        Raises:
+            DuplicateIdError: If ``group.id`` already exists.
+            BrokenReferenceError: If any lineage ID does not exist.
         """
         if group.id in self.independence_groups:
             raise DuplicateIdError(f"Independence group {group.id} already exists")
@@ -396,7 +625,21 @@ class EpistemicWeb:
         return new
 
     def register_discovery(self, discovery: Discovery) -> EpistemicWeb:
-        """Add a discovery. Validates related_claims and related_predictions refs."""
+        """Register a new discovery in the web.
+
+        Validates that all ``related_claims`` and ``related_predictions``
+        IDs exist.
+
+        Args:
+            discovery: The discovery to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered discovery.
+
+        Raises:
+            DuplicateIdError: If ``discovery.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+        """
         if discovery.id in self.discoveries:
             raise DuplicateIdError(f"Discovery {discovery.id} already exists")
         self._check_refs_exist(discovery.related_claims, self.claims, "claim")
@@ -406,7 +649,21 @@ class EpistemicWeb:
         return new
 
     def register_dead_end(self, dead_end: DeadEnd) -> EpistemicWeb:
-        """Add a dead end record. Validates related_claims and related_predictions refs."""
+        """Register a new dead end record in the web.
+
+        Validates that all ``related_claims`` and ``related_predictions``
+        IDs exist.
+
+        Args:
+            dead_end: The dead end to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered dead end.
+
+        Raises:
+            DuplicateIdError: If ``dead_end.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+        """
         if dead_end.id in self.dead_ends:
             raise DuplicateIdError(f"DeadEnd {dead_end.id} already exists")
         self._check_refs_exist(dead_end.related_claims, self.claims, "claim")
@@ -416,9 +673,19 @@ class EpistemicWeb:
         return new
 
     def register_parameter(self, parameter: Parameter) -> EpistemicWeb:
-        """Add a parameter constant.
+        """Register a new parameter constant in the web.
 
-        used_in_analyses is a backlink owned by analysis operations and starts empty.
+        ``used_in_analyses`` is a backlink owned by analysis operations
+        and starts empty.
+
+        Args:
+            parameter: The parameter to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered parameter.
+
+        Raises:
+            DuplicateIdError: If ``parameter.id`` already exists.
         """
         if parameter.id in self.parameters:
             raise DuplicateIdError(f"Parameter {parameter.id} already exists")
@@ -429,7 +696,22 @@ class EpistemicWeb:
         return new
 
     def add_pairwise_separation(self, sep: PairwiseSeparation) -> EpistemicWeb:
-        """Document why two independence groups are separate."""
+        """Register a pairwise separation record between two independence groups.
+
+        Documents why two independence groups provide genuinely separate
+        evidence. Both groups must already exist and must be distinct.
+
+        Args:
+            sep: The separation record to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered separation.
+
+        Raises:
+            DuplicateIdError: If ``sep.id`` already exists.
+            BrokenReferenceError: If either group does not exist or both
+                groups are the same.
+        """
         if sep.id in self.pairwise_separations:
             raise DuplicateIdError(f"PairwiseSeparation {sep.id} already exists")
         if sep.group_a == sep.group_b:
@@ -445,7 +727,18 @@ class EpistemicWeb:
     def transition_prediction(
         self, pid: PredictionId, new_status: PredictionStatus
     ) -> EpistemicWeb:
-        """Change a prediction's status."""
+        """Change a prediction's lifecycle status.
+
+        Args:
+            pid: The prediction ID to transition.
+            new_status: The new status to assign.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated status.
+
+        Raises:
+            BrokenReferenceError: If the prediction does not exist.
+        """
         if pid not in self.predictions:
             raise BrokenReferenceError(f"Prediction {pid} does not exist")
         new = self._copy()
@@ -457,7 +750,18 @@ class EpistemicWeb:
         did: DeadEndId,
         new_status: DeadEndStatus,
     ) -> EpistemicWeb:
-        """Change a dead end's status."""
+        """Change a dead end's lifecycle status.
+
+        Args:
+            did: The dead end ID to transition.
+            new_status: The new status to assign (ACTIVE, RESOLVED, or ARCHIVED).
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated status.
+
+        Raises:
+            BrokenReferenceError: If the dead end does not exist.
+        """
         if did not in self.dead_ends:
             raise BrokenReferenceError(f"DeadEnd {did} does not exist")
         new = self._copy()
@@ -465,7 +769,18 @@ class EpistemicWeb:
         return new
 
     def transition_claim(self, cid: ClaimId, new_status: ClaimStatus) -> EpistemicWeb:
-        """Change a claim's status (ACTIVE → REVISED → RETRACTED)."""
+        """Change a claim's lifecycle status.
+
+        Args:
+            cid: The claim ID to transition.
+            new_status: The new status (ACTIVE, REVISED, or RETRACTED).
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated status.
+
+        Raises:
+            BrokenReferenceError: If the claim does not exist.
+        """
         if cid not in self.claims:
             raise BrokenReferenceError(f"Claim {cid} does not exist")
         new = self._copy()
@@ -473,7 +788,18 @@ class EpistemicWeb:
         return new
 
     def transition_theory(self, tid: TheoryId, new_status: TheoryStatus) -> EpistemicWeb:
-        """Change a theory's status."""
+        """Change a theory's lifecycle status.
+
+        Args:
+            tid: The theory ID to transition.
+            new_status: The new status (ACTIVE, REFINED, ABANDONED, or SUPERSEDED).
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated status.
+
+        Raises:
+            BrokenReferenceError: If the theory does not exist.
+        """
         if tid not in self.theories:
             raise BrokenReferenceError(f"Theory {tid} does not exist")
         new = self._copy()
@@ -481,7 +807,18 @@ class EpistemicWeb:
         return new
 
     def transition_discovery(self, did: DiscoveryId, new_status: DiscoveryStatus) -> EpistemicWeb:
-        """Change a discovery's status."""
+        """Change a discovery's lifecycle status.
+
+        Args:
+            did: The discovery ID to transition.
+            new_status: The new status (NEW, INTEGRATED, or ARCHIVED).
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated status.
+
+        Raises:
+            BrokenReferenceError: If the discovery does not exist.
+        """
         if did not in self.discoveries:
             raise BrokenReferenceError(f"Discovery {did} does not exist")
         new = self._copy()
@@ -498,13 +835,25 @@ class EpistemicWeb:
     ) -> EpistemicWeb:
         """Record the output of a completed analysis run.
 
-        Sets last_result, last_result_sha, and last_result_date on the
-        Analysis while preserving every other field (path, command,
+        Sets ``last_result``, ``last_result_sha``, and ``last_result_date``
+        on the analysis while preserving every other field (path, command,
         uses_parameters, claims_covered) exactly as-is.
 
         This is intentionally a narrow mutation — the researcher records
         what came out of running the analysis without touching any of the
         provenance or structural metadata.
+
+        Args:
+            anid: The analysis ID to record a result for.
+            result: The output value of the analysis run.
+            git_sha: Optional git SHA of the analysis code at run time.
+            result_date: Optional date when the result was recorded.
+
+        Returns:
+            EpistemicWeb: A new web instance with the analysis result recorded.
+
+        Raises:
+            BrokenReferenceError: If the analysis does not exist.
         """
         if anid not in self.analyses:
             raise BrokenReferenceError(f"Analysis {anid} does not exist")
@@ -517,11 +866,25 @@ class EpistemicWeb:
     # ── Update mutations — re-links bidirectional relationships ───
 
     def update_claim(self, new_claim: Claim) -> EpistemicWeb:
-        """Replace a claim's fields, maintaining all bidirectional links.
+        """Replace a claim's fields while maintaining all bidirectional links.
 
-        The new_claim must have the same ID as the existing claim.
-        Diffs old vs new link sets — removes stale backlinks, adds new ones.
-        Validates new refs exist and no cycle is introduced.
+        The new claim must have the same ID as an existing claim. Diffs
+        old vs new link sets for assumptions and analyses, removing stale
+        backlinks and adding new ones. Validates new refs exist and that
+        no dependency cycle is introduced.
+
+        Args:
+            new_claim: The updated claim. Must have the same ``id`` as
+                an existing claim in the web.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated claim and
+                corrected bidirectional links.
+
+        Raises:
+            BrokenReferenceError: If the claim does not exist or if any
+                newly referenced ID does not exist.
+            CycleError: If the updated ``depends_on`` would create a cycle.
         """
         if new_claim.id not in self.claims:
             raise BrokenReferenceError(f"Claim {new_claim.id} does not exist")
@@ -550,11 +913,23 @@ class EpistemicWeb:
         return new
 
     def update_assumption(self, new_assumption: Assumption) -> EpistemicWeb:
-        """Replace an assumption's fields.
+        """Replace an assumption's fields, preserving owned backlinks.
 
-        used_in_claims and tested_by are maintained by claims/predictions,
-        not by the assumption itself — they stay as-is. Only depends_on
-        chain changes need validation.
+        ``used_in_claims`` and ``tested_by`` are maintained by claim and
+        prediction operations respectively — they are preserved from the
+        old assumption. Only ``depends_on`` chain changes need validation.
+
+        Args:
+            new_assumption: The updated assumption. Must have the same ``id``
+                as an existing assumption.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated assumption.
+
+        Raises:
+            BrokenReferenceError: If the assumption does not exist or if
+                any ``depends_on`` ID does not exist.
+            CycleError: If the updated ``depends_on`` would create a cycle.
         """
         if new_assumption.id not in self.assumptions:
             raise BrokenReferenceError(f"Assumption {new_assumption.id} does not exist")
@@ -571,7 +946,24 @@ class EpistemicWeb:
         return new
 
     def update_prediction(self, new_prediction: Prediction) -> EpistemicWeb:
-        """Replace a prediction's fields, maintaining all bidirectional links."""
+        """Replace a prediction's fields while maintaining all bidirectional links.
+
+        Diffs old vs new ``tests_assumptions`` and ``independence_group``
+        sets, updating backlinks on assumptions and independence groups
+        accordingly.
+
+        Args:
+            new_prediction: The updated prediction. Must have the same ``id``
+                as an existing prediction.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated prediction and
+                corrected bidirectional links.
+
+        Raises:
+            BrokenReferenceError: If the prediction does not exist or if
+                any newly referenced ID does not exist.
+        """
         if new_prediction.id not in self.predictions:
             raise BrokenReferenceError(f"Prediction {new_prediction.id} does not exist")
         old = self.predictions[new_prediction.id]
@@ -604,9 +996,19 @@ class EpistemicWeb:
     def update_parameter(self, new_parameter: Parameter) -> EpistemicWeb:
         """Replace a parameter's fields (value, unit, uncertainty, etc.).
 
-        used_in_analyses is a backlink maintained by analyses — it is
-        preserved from the old parameter so callers cannot accidentally
-        corrupt the staleness tracking index.
+        ``used_in_analyses`` is a backlink maintained by analysis operations
+        — it is preserved from the old parameter so callers cannot
+        accidentally corrupt the staleness tracking index.
+
+        Args:
+            new_parameter: The updated parameter. Must have the same ``id``
+                as an existing parameter.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated parameter.
+
+        Raises:
+            BrokenReferenceError: If the parameter does not exist.
         """
         if new_parameter.id not in self.parameters:
             raise BrokenReferenceError(f"Parameter {new_parameter.id} does not exist")
@@ -618,10 +1020,23 @@ class EpistemicWeb:
         return new
 
     def update_analysis(self, new_analysis: Analysis) -> EpistemicWeb:
-        """Replace an analysis's fields, maintaining bidirectional links.
+        """Replace an analysis's fields while maintaining bidirectional links.
 
-        claims_covered is a backlink maintained by claim operations — preserved
-        as-is. Diffs uses_parameters and updates parameter.used_in_analyses.
+        ``claims_covered`` is a backlink maintained by claim operations and
+        is preserved as-is. Diffs ``uses_parameters`` and updates
+        ``Parameter.used_in_analyses`` accordingly.
+
+        Args:
+            new_analysis: The updated analysis. Must have the same ``id``
+                as an existing analysis.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated analysis and
+                corrected parameter backlinks.
+
+        Raises:
+            BrokenReferenceError: If the analysis does not exist or if
+                any ``uses_parameters`` ID does not exist.
         """
         if new_analysis.id not in self.analyses:
             raise BrokenReferenceError(f"Analysis {new_analysis.id} does not exist")
@@ -644,7 +1059,22 @@ class EpistemicWeb:
         return new
 
     def update_theory(self, new_theory: Theory) -> EpistemicWeb:
-        """Replace a theory's fields. Validates related refs."""
+        """Replace a theory's fields.
+
+        Validates that all ``related_claims`` and ``related_predictions``
+        IDs exist.
+
+        Args:
+            new_theory: The updated theory. Must have the same ``id``
+                as an existing theory.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated theory.
+
+        Raises:
+            BrokenReferenceError: If the theory does not exist or if
+                any referenced ID does not exist.
+        """
         if new_theory.id not in self.theories:
             raise BrokenReferenceError(f"Theory {new_theory.id} does not exist")
         self._check_refs_exist(new_theory.related_claims, self.claims, "claim")
@@ -656,9 +1086,20 @@ class EpistemicWeb:
     def update_independence_group(self, new_group: IndependenceGroup) -> EpistemicWeb:
         """Replace an independence group's annotation fields.
 
-        member_predictions is a backlink maintained by prediction operations —
-        preserved from the existing group. Validates claim_lineage and
-        assumption_lineage refs.
+        ``member_predictions`` is a backlink maintained by prediction
+        operations — preserved from the existing group. Validates
+        ``claim_lineage`` and ``assumption_lineage`` refs.
+
+        Args:
+            new_group: The updated independence group. Must have the same
+                ``id`` as an existing group.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated group.
+
+        Raises:
+            BrokenReferenceError: If the group does not exist or if
+                any lineage ID does not exist.
         """
         if new_group.id not in self.independence_groups:
             raise BrokenReferenceError(f"IndependenceGroup {new_group.id} does not exist")
@@ -673,8 +1114,21 @@ class EpistemicWeb:
         return new
 
     def update_pairwise_separation(self, new_sep: PairwiseSeparation) -> EpistemicWeb:
-        """Replace a pairwise separation's fields (e.g. updated basis text).
-        Validates group refs still exist."""
+        """Replace a pairwise separation record's fields.
+
+        Validates that both referenced groups still exist and are distinct.
+
+        Args:
+            new_sep: The updated separation record. Must have the same ``id``
+                as an existing record.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated separation.
+
+        Raises:
+            BrokenReferenceError: If the separation does not exist, if either
+                group does not exist, or if both groups are the same.
+        """
         if new_sep.id not in self.pairwise_separations:
             raise BrokenReferenceError(f"PairwiseSeparation {new_sep.id} does not exist")
         if new_sep.group_a == new_sep.group_b:
@@ -688,7 +1142,22 @@ class EpistemicWeb:
         return new
 
     def update_discovery(self, new_discovery: Discovery) -> EpistemicWeb:
-        """Replace a discovery's fields. Validates related refs."""
+        """Replace a discovery's fields.
+
+        Validates that all ``related_claims`` and ``related_predictions``
+        IDs exist.
+
+        Args:
+            new_discovery: The updated discovery. Must have the same ``id``
+                as an existing discovery.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated discovery.
+
+        Raises:
+            BrokenReferenceError: If the discovery does not exist or if
+                any referenced ID does not exist.
+        """
         if new_discovery.id not in self.discoveries:
             raise BrokenReferenceError(f"Discovery {new_discovery.id} does not exist")
         self._check_refs_exist(new_discovery.related_claims, self.claims, "claim")
@@ -698,7 +1167,22 @@ class EpistemicWeb:
         return new
 
     def update_dead_end(self, new_dead_end: DeadEnd) -> EpistemicWeb:
-        """Replace a dead end's fields. Validates related refs."""
+        """Replace a dead end's fields.
+
+        Validates that all ``related_claims`` and ``related_predictions``
+        IDs exist.
+
+        Args:
+            new_dead_end: The updated dead end. Must have the same ``id``
+                as an existing dead end.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated dead end.
+
+        Raises:
+            BrokenReferenceError: If the dead end does not exist or if
+                any referenced ID does not exist.
+        """
         if new_dead_end.id not in self.dead_ends:
             raise BrokenReferenceError(f"DeadEnd {new_dead_end.id} does not exist")
         self._check_refs_exist(new_dead_end.related_claims, self.claims, "claim")
@@ -710,10 +1194,21 @@ class EpistemicWeb:
     # ── Remove mutations — safe deletion with ref checks ──────────
 
     def remove_prediction(self, pid: PredictionId) -> EpistemicWeb:
-        """Remove a prediction. Tears down all backlinks and scrubs soft references.
+        """Remove a prediction from the web.
 
-        No entity hard-blocks prediction removal; Theory, DeadEnd, and Discovery
-        hold soft navigational links that are silently scrubbed.
+        Tears down all backlinks (``Assumption.tested_by``,
+        ``IndependenceGroup.member_predictions``) and scrubs soft
+        navigational references in theories, dead ends, and discoveries.
+        No entity hard-blocks prediction removal.
+
+        Args:
+            pid: The prediction ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the prediction.
+
+        Raises:
+            BrokenReferenceError: If the prediction does not exist.
         """
         if pid not in self.predictions:
             raise BrokenReferenceError(f"Prediction {pid} does not exist")
@@ -735,10 +1230,25 @@ class EpistemicWeb:
         return new
 
     def remove_claim(self, cid: ClaimId) -> EpistemicWeb:
-        """Remove a claim. Raises if any other claim or prediction references it.
+        """Remove a claim from the web.
 
-        Tear down the claim's own backlinks on assumptions and analyses.
-        Callers must first update or remove all referencing entities.
+        Raises if any other claim's ``depends_on`` or any prediction's
+        ``claim_ids`` still references this claim. Callers must first
+        update or remove all referencing entities.
+
+        On success, tears down backlinks on assumptions and analyses,
+        scrubs soft references in theories, dead ends, discoveries,
+        and independence group ``claim_lineage`` annotations.
+
+        Args:
+            cid: The claim ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the claim.
+
+        Raises:
+            BrokenReferenceError: If the claim does not exist or is still
+                referenced by other claims or predictions.
         """
         if cid not in self.claims:
             raise BrokenReferenceError(f"Claim {cid} does not exist")
@@ -777,8 +1287,22 @@ class EpistemicWeb:
         return new
 
     def remove_assumption(self, aid: AssumptionId) -> EpistemicWeb:
-        """Remove an assumption. Raises if any claim, prediction, or other
-        assumption references it."""
+        """Remove an assumption from the web.
+
+        Raises if any claim, prediction, or other assumption still
+        references this assumption. Scrubs ``assumption_lineage``
+        annotations in independence groups on success.
+
+        Args:
+            aid: The assumption ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the assumption.
+
+        Raises:
+            BrokenReferenceError: If the assumption does not exist or is
+                still referenced by claims, predictions, or other assumptions.
+        """
         if aid not in self.assumptions:
             raise BrokenReferenceError(f"Assumption {aid} does not exist")
         blocking_claims = [
@@ -806,10 +1330,21 @@ class EpistemicWeb:
         return new
 
     def remove_parameter(self, pid: ParameterId) -> EpistemicWeb:
-        """Remove a parameter. Raises if any analysis references it.
+        """Remove a parameter from the web.
 
-        Also cleans up dangling parameter_constraints annotations on claims
-        so the web stays consistent.
+        Raises if any analysis still references this parameter via
+        ``uses_parameters``. On success, cleans up dangling
+        ``parameter_constraints`` annotations on claims.
+
+        Args:
+            pid: The parameter ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the parameter.
+
+        Raises:
+            BrokenReferenceError: If the parameter does not exist or is
+                still used by analyses.
         """
         if pid not in self.parameters:
             raise BrokenReferenceError(f"Parameter {pid} does not exist")
@@ -829,9 +1364,21 @@ class EpistemicWeb:
         return new
 
     def remove_analysis(self, anid: AnalysisId) -> EpistemicWeb:
-        """Remove an analysis. Raises if any claim or prediction still references it.
+        """Remove an analysis from the web.
 
-        Tears down parameter.used_in_analyses backlinks.
+        Raises if any claim's ``analyses`` or any prediction's ``analysis``
+        still references this analysis. Tears down
+        ``Parameter.used_in_analyses`` backlinks on success.
+
+        Args:
+            anid: The analysis ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the analysis.
+
+        Raises:
+            BrokenReferenceError: If the analysis does not exist or is
+                still referenced by claims or predictions.
         """
         if anid not in self.analyses:
             raise BrokenReferenceError(f"Analysis {anid} does not exist")
@@ -855,8 +1402,21 @@ class EpistemicWeb:
         return new
 
     def remove_independence_group(self, gid: IndependenceGroupId) -> EpistemicWeb:
-        """Remove an independence group. Raises if any prediction or pairwise
-        separation still references it."""
+        """Remove an independence group from the web.
+
+        Raises if any prediction's ``independence_group`` or any pairwise
+        separation still references this group.
+
+        Args:
+            gid: The independence group ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the group.
+
+        Raises:
+            BrokenReferenceError: If the group does not exist or is still
+                referenced by predictions or separations.
+        """
         if gid not in self.independence_groups:
             raise BrokenReferenceError(f"IndependenceGroup {gid} does not exist")
         blocking_preds = [
@@ -877,7 +1437,20 @@ class EpistemicWeb:
         return new
 
     def remove_theory(self, tid: TheoryId) -> EpistemicWeb:
-        """Remove a theory. Theories are leaves — nothing references them by ID."""
+        """Remove a theory from the web.
+
+        Theories are leaf entities — nothing references them by ID, so
+        removal is always safe.
+
+        Args:
+            tid: The theory ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the theory.
+
+        Raises:
+            BrokenReferenceError: If the theory does not exist.
+        """
         if tid not in self.theories:
             raise BrokenReferenceError(f"Theory {tid} does not exist")
         new = self._copy()
@@ -885,7 +1458,20 @@ class EpistemicWeb:
         return new
 
     def remove_discovery(self, did: DiscoveryId) -> EpistemicWeb:
-        """Remove a discovery. Discoveries are leaves — nothing references them by ID."""
+        """Remove a discovery from the web.
+
+        Discoveries are leaf entities — nothing references them by ID, so
+        removal is always safe.
+
+        Args:
+            did: The discovery ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the discovery.
+
+        Raises:
+            BrokenReferenceError: If the discovery does not exist.
+        """
         if did not in self.discoveries:
             raise BrokenReferenceError(f"Discovery {did} does not exist")
         new = self._copy()
@@ -893,7 +1479,20 @@ class EpistemicWeb:
         return new
 
     def remove_dead_end(self, did: DeadEndId) -> EpistemicWeb:
-        """Remove a dead end. Dead ends are leaves — nothing references them by ID."""
+        """Remove a dead end from the web.
+
+        Dead ends are leaf entities — nothing references them by ID, so
+        removal is always safe.
+
+        Args:
+            did: The dead end ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the dead end.
+
+        Raises:
+            BrokenReferenceError: If the dead end does not exist.
+        """
         if did not in self.dead_ends:
             raise BrokenReferenceError(f"DeadEnd {did} does not exist")
         new = self._copy()
@@ -901,7 +1500,17 @@ class EpistemicWeb:
         return new
 
     def remove_pairwise_separation(self, sid: PairwiseSeparationId) -> EpistemicWeb:
-        """Remove a pairwise separation record."""
+        """Remove a pairwise separation record from the web.
+
+        Args:
+            sid: The separation record ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the separation record.
+
+        Raises:
+            BrokenReferenceError: If the separation does not exist.
+        """
         if sid not in self.pairwise_separations:
             raise BrokenReferenceError(f"PairwiseSeparation {sid} does not exist")
         new = self._copy()
@@ -913,15 +1522,32 @@ class EpistemicWeb:
     def _check_refs_exist(self, ids: set, registry: dict, label: str) -> None:
         """Ensure every referenced ID exists in the target registry.
 
+        Args:
+            ids: Set of IDs to check.
+            registry: The dictionary registry to check against.
+            label: Human-readable name of the entity type (used in error messages).
+
         Raises:
-            BrokenReferenceError: when one or more IDs are missing.
+            BrokenReferenceError: When one or more IDs are missing from
+                the registry.
         """
         missing = ids - registry.keys()
         if missing:
             raise BrokenReferenceError(f"Non-existent {label}(s): {missing}")
 
     def _check_no_cycle_with(self, claim: Claim) -> None:
-        """Verify adding this claim doesn't create a cycle in depends_on."""
+        """Verify that adding this claim would not create a dependency cycle.
+
+        Walks the ``depends_on`` chain starting from the claim's
+        dependencies. If the walk encounters the claim's own ID,
+        a cycle would result.
+
+        Args:
+            claim: The claim about to be registered or updated.
+
+        Raises:
+            CycleError: If adding this claim would create a dependency cycle.
+        """
         visited: set[ClaimId] = set()
         stack = list(claim.depends_on)
         while stack:
@@ -938,7 +1564,18 @@ class EpistemicWeb:
                 stack.extend(upstream.depends_on)
 
     def _check_no_assumption_cycle_with(self, assumption: Assumption) -> None:
-        """Verify adding this assumption doesn't create a cycle in depends_on."""
+        """Verify that adding this assumption would not create a dependency cycle.
+
+        Walks the assumption ``depends_on`` chain. If the walk encounters
+        the assumption's own ID, a cycle would result.
+
+        Args:
+            assumption: The assumption about to be registered or updated.
+
+        Raises:
+            CycleError: If adding this assumption would create a dependency
+                cycle in the assumption graph.
+        """
         visited: set[AssumptionId] = set()
         stack = list(assumption.depends_on)
         while stack:
@@ -955,12 +1592,15 @@ class EpistemicWeb:
                 stack.extend(upstream.depends_on)
 
     def _copy(self) -> EpistemicWeb:
-        """Deep copy for copy-on-write mutation semantics.
+        """Create a deep copy for copy-on-write mutation semantics.
 
         O(n) cost per mutation where n is total entity count. Acceptable
         for research-scale webs (hundreds to low thousands of entities).
         If this becomes a bottleneck, structural sharing of unchanged
-        sub-dicts is the migration path — not a change to make speculatively.
+        sub-dicts is the migration path.
+
+        Returns:
+            EpistemicWeb: A fully independent deep copy of this web.
         """
         return copy.deepcopy(self)
 
@@ -968,28 +1608,51 @@ class EpistemicWeb:
 # ── Domain exceptions ─────────────────────────────────────────────
 
 class EpistemicError(Exception):
-    """Base for all domain errors."""
+    """Base exception for all domain errors in the epistemic kernel.
+
+    All exceptions raised by the EpistemicWeb inherit from this class,
+    making it easy for callers to catch any domain error with a single
+    handler.
+    """
 
 
 class DuplicateIdError(EpistemicError):
-    """Raised when registering an entity whose ID already exists."""
+    """Raised when registering an entity whose ID already exists in the web.
+
+    Each entity type has a unique namespace — a claim ID only needs to be
+    unique among claims, not across all entity types.
+    """
 
     pass
 
 
 class BrokenReferenceError(EpistemicError):
-    """Raised when an operation references an ID that does not exist."""
+    """Raised when an operation references an entity ID that does not exist.
+
+    Also raised when a safe-deletion check finds that other entities
+    still hold hard references to the entity being removed.
+    """
 
     pass
 
 
 class CycleError(EpistemicError):
-    """Raised when a graph mutation would introduce a dependency cycle."""
+    """Raised when a graph mutation would introduce a dependency cycle.
+
+    The ``depends_on`` graphs for both claims and assumptions must
+    remain acyclic (DAG). This error is raised during registration
+    or update if adding the new edges would violate that constraint.
+    """
 
     pass
 
 
 class InvariantViolation(EpistemicError):
-    """Raised when post-conditions or global domain invariants are violated."""
+    """Raised when post-conditions or global domain invariants are violated.
+
+    Used for programmatic invariant checks that are not tied to a
+    specific entity operation but represent a broader structural
+    integrity failure.
+    """
 
     pass

@@ -21,7 +21,18 @@ def export_json(
 ) -> None:
     """Export the full epistemic web as a single JSON file.
 
-    Useful for archiving, sharing, or feeding into external tools.
+    Produces a point-in-time snapshot. Useful for archiving, sharing,
+    or feeding into external tools. The canonical on-disk state is not
+    affected.
+
+    Args:
+        context: Project paths and runtime configuration.
+        repo: Repository adapter used to load the web.
+        output_path: Destination file path for the JSON export.
+        pretty: If ``True``, indent the JSON output for readability.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError
 
@@ -33,6 +44,19 @@ def export_markdown(
 ) -> dict[str, Path]:
     """Export each entity type as a separate markdown file.
 
-    Returns {entity_type: file_path} for each file written.
+    Produces a point-in-time snapshot. The canonical on-disk state is
+    not affected.
+
+    Args:
+        context: Project paths and runtime configuration.
+        repo: Repository adapter used to load the web.
+        output_dir: Destination directory for the markdown files.
+
+    Returns:
+        dict[str, Path]: Mapping of ``{entity_type: file_path}`` for
+            each file written.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError

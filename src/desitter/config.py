@@ -27,7 +27,12 @@ _CONFIG_FILENAME = "desitter.toml"
 
 @dataclass
 class DesitterConfig:
-    """Parsed from desitter.toml. All fields have safe defaults."""
+    """Parsed from ``desitter.toml``. All fields have safe defaults.
+
+    Attributes:
+        project_dir: Project directory relative to the workspace root.
+            Defaults to ``"project"``.
+    """
     project_dir: Path = field(default_factory=lambda: Path("project"))
 
 
@@ -37,12 +42,23 @@ class DesitterConfig:
 class ProjectPaths:
     """All filesystem paths derived from workspace root and config.
 
-    Computed once at context-build time. Never re-derived at call time.
+    Computed once at context-build time by ``build_context()``.
+    Never re-derived at call time.
+
+    Attributes:
+        workspace: Absolute path to the workspace root directory.
+        project_dir: Absolute path to the project directory.
+        data_dir: Directory containing entity JSON files
+            (``claims.json``, ``predictions.json``, etc.).
+        views_dir: Directory for rendered markdown output files.
+        cache_dir: Directory for internal caches (render hashes, etc.).
+        render_cache_file: Path to the render fingerprint cache JSON file.
+        transaction_log_file: Path to the JSONL transaction log.
     """
     workspace: Path
     project_dir: Path
-    data_dir: Path           # entity JSON files (claims.json, predictions.json, ...)
-    views_dir: Path          # rendered markdown outputs
+    data_dir: Path
+    views_dir: Path
     cache_dir: Path
     render_cache_file: Path
     transaction_log_file: Path
@@ -56,6 +72,11 @@ class ProjectContext:
 
     Immutable after construction. Services must not store mutable state
     on the context — use it to locate resources, then do work locally.
+
+    Attributes:
+        workspace: Absolute path to the workspace root.
+        config: The parsed ``DesitterConfig``.
+        paths: Derived filesystem paths for all project resources.
     """
     workspace: Path
     config: DesitterConfig
@@ -65,9 +86,16 @@ class ProjectContext:
 # ── Builders ──────────────────────────────────────────────────────
 
 def load_config(workspace: Path) -> DesitterConfig:
-    """Read desitter.toml from workspace and return a DesitterConfig.
+    """Read ``desitter.toml`` from *workspace* and return a ``DesitterConfig``.
 
-    Missing file → all defaults. Missing keys → field defaults.
+    A missing file or missing keys are not errors — defaults are used.
+    Only the ``[desitter]`` table is read.
+
+    Args:
+        workspace: Absolute path to the workspace root.
+
+    Returns:
+        DesitterConfig: Parsed configuration with defaults for missing values.
     """
     config_path = workspace / _CONFIG_FILENAME
     if not config_path.exists():
@@ -87,9 +115,17 @@ def load_config(workspace: Path) -> DesitterConfig:
 
 
 def build_context(workspace: Path, config: DesitterConfig) -> ProjectContext:
-    """Derive all paths from workspace root and config. Return a ProjectContext.
+    """Derive all paths from workspace root and config, and return a ``ProjectContext``.
 
-    This is the only place path derivation logic lives.
+    This is the only place path derivation logic lives. All services
+    receive the resulting context rather than computing paths themselves.
+
+    Args:
+        workspace: Absolute path to the workspace root.
+        config: Parsed project configuration.
+
+    Returns:
+        ProjectContext: A fully derived runtime context.
     """
     project_dir = workspace / config.project_dir
     data_dir = project_dir / "data"

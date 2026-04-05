@@ -25,10 +25,15 @@ error_console = Console(stderr=True)
 
 
 def print_gateway_result(result: GatewayResult, *, as_json: bool = False) -> None:
-    """Print a GatewayResult in human or JSON mode.
+    """Print a ``GatewayResult`` in human or JSON mode.
 
-    Human mode: Rich panel with status, message, and findings table.
-    JSON mode:  Raw JSON to stdout.
+    Human mode renders a Rich panel with a color-coded status header
+    and an optional findings table. JSON mode serializes the result
+    to stdout.
+
+    Args:
+        result: The gateway result to display.
+        as_json: If ``True``, emit raw JSON instead of Rich output.
     """
     if as_json:
         _print_json(result)
@@ -40,7 +45,16 @@ def print_gateway_result(result: GatewayResult, *, as_json: bool = False) -> Non
 
 
 def print_health_report(report: HealthReport, *, as_json: bool = False) -> None:
-    """Print a HealthReport in human or JSON mode."""
+    """Print a ``HealthReport`` in human or JSON mode.
+
+    Human mode renders a Rich panel with overall status, critical/warning
+    counts, and an optional findings table. JSON mode serializes the
+    report to stdout.
+
+    Args:
+        report: The health report to display.
+        as_json: If ``True``, emit raw JSON instead of Rich output.
+    """
     if as_json:
         data = {
             "status": report.overall,
@@ -66,7 +80,16 @@ def print_health_report(report: HealthReport, *, as_json: bool = False) -> None:
 
 
 def print_status(status: ProjectStatus, *, as_json: bool = False) -> None:
-    """Print a ProjectStatus dashboard in human or JSON mode."""
+    """Print a ``ProjectStatus`` dashboard in human or JSON mode.
+
+    Human mode renders a Rich table with entity counts and prediction
+    metrics. JSON mode delegates to ``format_status_dict`` and prints
+    the result as JSON.
+
+    Args:
+        status: The project status snapshot to display.
+        as_json: If ``True``, emit raw JSON instead of Rich output.
+    """
     if as_json:
         from ...views.status import format_status_dict
         print(json.dumps(format_status_dict(status), indent=2))
@@ -91,7 +114,13 @@ def print_status(status: ProjectStatus, *, as_json: bool = False) -> None:
 
 
 def _print_findings_table(findings) -> None:
-    """Render findings as a Rich table."""
+    """Render a list of ``Finding`` objects as a Rich table.
+
+    Columns: Severity (color-coded), Source, Message.
+
+    Args:
+        findings: Iterable of ``Finding`` instances to render.
+    """
     table = Table(show_header=True, header_style="bold")
     table.add_column("Severity")
     table.add_column("Source")
@@ -104,5 +133,12 @@ def _print_findings_table(findings) -> None:
 
 
 def _print_json(obj: Any) -> None:
-    """Serialise obj to JSON and print to stdout."""
+    """Serialize *obj* to pretty-printed JSON and print to stdout.
+
+    Uses ``obj.__dict__`` for dataclass-like objects and ``str`` as
+    the default serializer for non-JSON-native types.
+
+    Args:
+        obj: The object to serialize.
+    """
     print(json.dumps(obj.__dict__ if hasattr(obj, "__dict__") else obj, indent=2, default=str))

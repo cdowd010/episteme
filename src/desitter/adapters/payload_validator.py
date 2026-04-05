@@ -14,7 +14,20 @@ from ..epistemic.types import Finding, Severity
 
 
 class JsonSchemaPayloadValidator:
-    """Validate payloads against schemas derived from domain dataclasses."""
+    """JSON Schema-based payload validator for gateway mutation inputs.
+
+    Derives JSON Schemas from domain dataclass type annotations at
+    construction time and validates incoming payloads against them.
+    Implements the ``PayloadValidator`` protocol from ``epistemic/ports.py``.
+
+    Schemas are generated with ``Draft202012Validator`` and ``FormatChecker``
+    for date format validation. Each entity type gets its own compiled
+    validator instance, cached for the lifetime of this object.
+
+    Attributes:
+        _validators: Mapping of canonical resource keys to their compiled
+            JSON Schema validators.
+    """
 
     def __init__(self) -> None:
         self._validators = {
@@ -26,7 +39,20 @@ class JsonSchemaPayloadValidator:
         }
 
     def validate(self, resource: str, payload: dict[str, object]) -> list[Finding]:
-        """Return CRITICAL findings for schema-invalid payloads."""
+        """Validate a payload against the JSON Schema for the given resource.
+
+        Normalizes the payload before validation. Returns CRITICAL findings
+        for each schema violation.
+
+        Args:
+            resource: The canonical resource key (e.g. ``"claim"``).
+            payload: The payload dictionary to validate.
+
+        Returns:
+            list[Finding]: One CRITICAL finding per schema error, or a
+                single CRITICAL finding if the resource type is unrecognized.
+                Empty list if the payload is valid.
+        """
         validator = self._validators.get(resource)
         if validator is None:
             return [
@@ -50,6 +76,19 @@ class JsonSchemaPayloadValidator:
 
 
 def _schema_for_entity(entity_cls: type[object]) -> dict[str, object]:
+    """Generate a JSON Schema object for a domain dataclass.
+
+    Inspects the dataclass fields and their type annotations to build
+    a JSON Schema with ``properties``, ``required`` fields, and
+    ``additionalProperties: false``.
+
+    Args:
+        entity_cls: The dataclass type to generate a schema for.
+
+    Returns:
+        dict[str, object]: A JSON Schema dictionary conforming to
+            Draft 2020-12.
+    """
     type_hints = get_type_hints(entity_cls)
     properties: dict[str, object] = {}
     required: list[str] = []
@@ -70,6 +109,20 @@ def _schema_for_entity(entity_cls: type[object]) -> dict[str, object]:
 
 
 def _schema_for_annotation(annotation: object) -> dict[str, object]:
+    """Convert a Python type annotation to a JSON Schema fragment.
+
+    Handles ``Any``, ``None``, ``NewType``, ``Union``/``Optional``,
+    ``set``/``frozenset``, ``list``, ``dict``, ``date``, ``Enum``
+    subclasses, and primitive types (``str``, ``int``, ``float``,
+    ``bool``).
+
+    Args:
+        annotation: A Python type annotation to convert.
+
+    Returns:
+        dict[str, object]: A JSON Schema fragment describing the type.
+            Returns an empty dict ``{}`` for unconstrained types.
+    """
     if annotation in (Any, object):
         return {}
 
@@ -132,6 +185,17 @@ def _schema_for_annotation(annotation: object) -> dict[str, object]:
 
 
 def _format_error(error) -> str:
+    """Format a ``jsonschema`` validation error into a human-readable string.
+
+    Constructs a dotted path from the error's JSON path and appends
+    the error message.
+
+    Args:
+        error: A ``jsonschema.ValidationError`` instance.
+
+    Returns:
+        str: A formatted string like ``"payload.field_name: error message"``.
+    """
     location = "payload"
     if error.path:
         location = "payload." + ".".join(str(part) for part in error.path)

@@ -49,7 +49,20 @@ ResultData = TypeVar("ResultData")
 
 @dataclass(frozen=True)
 class ClientResult(Generic[ResultData]):
-    """Typed wrapper over a GatewayResult."""
+    """Typed wrapper over a ``GatewayResult``.
+
+    Provides the same status/changed/message contract as ``GatewayResult``
+    but with a typed ``data`` field that holds a deserialized domain entity
+    (or list of entities) instead of a raw dict.
+
+    Attributes:
+        status: One of ``"ok"``, ``"dry_run"``, etc.
+        changed: ``True`` if persistent state was modified.
+        message: Human-readable summary.
+        findings: Validation findings (may be empty).
+        transaction_id: UUID4 if the operation was persisted.
+        data: The deserialized result, or ``None``.
+    """
 
     status: str
     changed: bool
@@ -60,7 +73,13 @@ class ClientResult(Generic[ResultData]):
 
 
 class DeSitterClientError(Exception):
-    """Raised when the gateway returns a non-success status."""
+    """Raised when the gateway returns a non-success status.
+
+    Attributes:
+        status: The gateway status string (e.g. ``"error"``, ``"BLOCKED"``).
+        message: Human-readable error message.
+        findings: Validation findings associated with the failure.
+    """
 
     def __init__(
         self,
@@ -75,9 +94,26 @@ class DeSitterClientError(Exception):
 
 
 class DeSitterClient:
-    """Thin Python wrapper over the gateway boundary."""
+    """Thin Python wrapper over the gateway boundary.
+
+    Provides typed convenience methods for every resource type so that
+    callers can use keyword arguments and receive deserialized domain
+    objects instead of raw dicts. All mutations still flow through the
+    same Gateway, repository, validator, and transaction log.
+
+    Attributes:
+        _context: Project runtime context.
+        _gateway: The ``Gateway`` instance backing all operations.
+    """
 
     def __init__(self, context: ProjectContext, gateway: Gateway | None = None) -> None:
+        """Initialize a client.
+
+        Args:
+            context: Project runtime context.
+            gateway: Optional pre-built gateway. If ``None``, one is
+                constructed from the context.
+        """
         self._context = context
         self._gateway = gateway or build_gateway(context)
 
@@ -98,7 +134,19 @@ class DeSitterClient:
         dry_run: bool = False,
         **payload: object,
     ) -> ClientResult[Any]:
-        """Register a new resource using keyword arguments instead of a raw dict."""
+        """Register a new resource using keyword arguments instead of a raw dict.
+
+        Args:
+            resource: Resource alias or canonical key.
+            dry_run: If ``True``, validate without writing to disk.
+            **payload: Entity attributes as keyword arguments.
+
+        Returns:
+            ClientResult: Deserialized entity in ``data`` on success.
+
+        Raises:
+            DeSitterClientError: If the gateway returns a non-success status.
+        """
         return self._handle_resource_result(
             resource,
             self._invoke_gateway(
@@ -110,14 +158,36 @@ class DeSitterClient:
         )
 
     def get(self, resource: str, identifier: str) -> ClientResult[Any]:
-        """Retrieve a single resource by ID."""
+        """Retrieve a single resource by ID.
+
+        Args:
+            resource: Resource alias or canonical key.
+            identifier: The entity's string ID.
+
+        Returns:
+            ClientResult: Deserialized entity in ``data``.
+
+        Raises:
+            DeSitterClientError: If the entity does not exist.
+        """
         return self._handle_resource_result(
             resource,
             self._invoke_gateway(self._gateway.get, resource, identifier),
         )
 
     def list(self, resource: str, **filters: object) -> ClientResult[list[Any]]:
-        """List resources, optionally filtering by keyword arguments."""
+        """List resources, optionally filtering by keyword arguments.
+
+        Args:
+            resource: Resource alias or canonical key.
+            **filters: Field-value pairs to match.
+
+        Returns:
+            ClientResult: ``data`` is a list of deserialized entities.
+
+        Raises:
+            DeSitterClientError: If the gateway returns a non-success status.
+        """
         result = self._invoke_gateway(self._gateway.list, resource, **filters)
         return self._handle_resource_list_result(resource, result)
 
@@ -129,7 +199,20 @@ class DeSitterClient:
         dry_run: bool = False,
         **payload: object,
     ) -> ClientResult[Any]:
-        """Update a resource using keyword arguments instead of a raw dict."""
+        """Update a resource using keyword arguments instead of a raw dict.
+
+        Args:
+            resource: Resource alias or canonical key.
+            identifier: The entity's string ID.
+            dry_run: If ``True``, validate without writing to disk.
+            **payload: Fields to update.
+
+        Returns:
+            ClientResult: Updated deserialized entity in ``data``.
+
+        Raises:
+            DeSitterClientError: If the entity does not exist or validation fails.
+        """
         return self._handle_resource_result(
             resource,
             self._invoke_gateway(
@@ -149,7 +232,20 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[Any]:
-        """Transition a status-bearing resource to a new state."""
+        """Transition a status-bearing resource to a new state.
+
+        Args:
+            resource: Resource alias or canonical key.
+            identifier: The entity's string ID.
+            new_status: Target status value (string or enum member).
+            dry_run: If ``True``, validate without writing to disk.
+
+        Returns:
+            ClientResult: Updated deserialized entity in ``data``.
+
+        Raises:
+            DeSitterClientError: If the transition is invalid.
+        """
         return self._handle_resource_result(
             resource,
             self._invoke_gateway(
@@ -162,7 +258,18 @@ class DeSitterClient:
         )
 
     def query(self, query_type: str, **params: object) -> ClientResult[Any]:
-        """Run a named gateway query."""
+        """Run a named gateway query.
+
+        Args:
+            query_type: Query name (e.g. ``"claim_lineage"``).
+            **params: Query parameters.
+
+        Returns:
+            ClientResult: Query result in ``data``.
+
+        Raises:
+            DeSitterClientError: If the query fails.
+        """
         result = self._invoke_gateway(self._gateway.query, query_type, **params)
         return self._handle_query_result(result)
 
@@ -183,7 +290,29 @@ class DeSitterClient:
         parameter_constraints: Mapping[str, str] | None = None,
         source: str | None = None,
     ) -> ClientResult[Claim]:
-        """Register a claim without constructing a payload dict by hand."""
+        """Register a claim with typed keyword arguments.
+
+        Convenience wrapper over ``register("claim", ...)`` that provides
+        type-safe parameters and elides ``None`` values from the payload.
+
+        Args:
+            id: Unique claim identifier.
+            statement: The claim statement.
+            type: Claim type (qualitative, numerical, etc.).
+            scope: Scope description.
+            falsifiability: How the claim can be falsified.
+            dry_run: If ``True``, validate without persisting.
+            status: Initial status. Defaults to ``ACTIVE``.
+            category: Optional category.
+            assumptions: IDs of assumptions this claim relies on.
+            depends_on: IDs of parent claims in the dependency graph.
+            analyses: IDs of analyses supporting this claim.
+            parameter_constraints: Parameter name → constraint mappings.
+            source: Provenance reference.
+
+        Returns:
+            ClientResult[Claim]: The registered claim entity.
+        """
         return cast(
             ClientResult[Claim],
             self.register(
@@ -220,7 +349,22 @@ class DeSitterClient:
         source: str | None = None,
         notes: str | None = None,
     ) -> ClientResult[Assumption]:
-        """Register an assumption."""
+        """Register an assumption with typed keyword arguments.
+
+        Args:
+            id: Unique assumption identifier.
+            statement: The assumption statement.
+            type: Assumption type (empirical, mathematical, etc.).
+            scope: Scope description.
+            dry_run: If ``True``, validate without persisting.
+            depends_on: IDs of parent assumptions.
+            falsifiable_consequence: Description of a testable consequence.
+            source: Provenance reference.
+            notes: Free-form notes.
+
+        Returns:
+            ClientResult[Assumption]: The registered assumption entity.
+        """
         return cast(
             ClientResult[Assumption],
             self.register(
@@ -266,7 +410,36 @@ class DeSitterClient:
         source: str | None = None,
         notes: str | None = None,
     ) -> ClientResult[Prediction]:
-        """Register a prediction."""
+        """Register a prediction with typed keyword arguments.
+
+        Args:
+            id: Unique prediction identifier.
+            observable: The observable quantity being predicted.
+            tier: Confidence tier (A, B, or C).
+            status: Initial prediction status.
+            evidence_kind: Kind of evidence (measurement, simulation, etc.).
+            measurement_regime: Regime classification.
+            predicted: The predicted numerical value or range.
+            dry_run: If ``True``, validate without persisting.
+            specification: Detailed prediction specification.
+            derivation: Derivation steps or reference.
+            claim_ids: IDs of claims this prediction tests.
+            tests_assumptions: IDs of assumptions this prediction tests.
+            analysis: ID of the analysis producing this prediction.
+            independence_group: ID of the independence group.
+            correlation_tags: Tags marking correlated measurement channels.
+            observed: Observed value, if available.
+            observed_bound: Observed bound, if applicable.
+            free_params: Number of free parameters in the prediction.
+            conditional_on: IDs of assumptions this is conditional on.
+            falsifier: ID of the prediction that falsified this one.
+            benchmark_source: Benchmark reference.
+            source: Provenance reference.
+            notes: Free-form notes.
+
+        Returns:
+            ClientResult[Prediction]: The registered prediction entity.
+        """
         return cast(
             ClientResult[Prediction],
             self.register(
@@ -315,7 +488,22 @@ class DeSitterClient:
         last_result_sha: str | None = None,
         last_result_date: date | str | None = None,
     ) -> ClientResult[Analysis]:
-        """Register an analysis."""
+        """Register an analysis with typed keyword arguments.
+
+        Args:
+            id: Unique analysis identifier.
+            dry_run: If ``True``, validate without persisting.
+            command: Shell command that runs the analysis.
+            path: Filesystem path to the analysis script.
+            uses_parameters: IDs of parameters consumed by this analysis.
+            notes: Free-form notes.
+            last_result: Most recent result value.
+            last_result_sha: SHA of the last result for staleness detection.
+            last_result_date: Date of the last result.
+
+        Returns:
+            ClientResult[Analysis]: The registered analysis entity.
+        """
         return cast(
             ClientResult[Analysis],
             self.register(
@@ -347,7 +535,21 @@ class DeSitterClient:
         related_predictions: Iterable[str] | None = None,
         source: str | None = None,
     ) -> ClientResult[Theory]:
-        """Register a theory."""
+        """Register a theory with typed keyword arguments.
+
+        Args:
+            id: Unique theory identifier.
+            title: Display title.
+            status: Theory status (proposed, active, etc.).
+            dry_run: If ``True``, validate without persisting.
+            summary: Summary description.
+            related_claims: IDs of related claims.
+            related_predictions: IDs of related predictions.
+            source: Provenance reference.
+
+        Returns:
+            ClientResult[Theory]: The registered theory entity.
+        """
         return cast(
             ClientResult[Theory],
             self.register(
@@ -382,7 +584,24 @@ class DeSitterClient:
         references: Iterable[str] | None = None,
         source: str | None = None,
     ) -> ClientResult[Discovery]:
-        """Register a discovery."""
+        """Register a discovery with typed keyword arguments.
+
+        Args:
+            id: Unique discovery identifier.
+            title: Display title.
+            date: Discovery date.
+            summary: Summary description.
+            impact: Impact assessment.
+            status: Discovery status.
+            dry_run: If ``True``, validate without persisting.
+            related_claims: IDs of related claims.
+            related_predictions: IDs of related predictions.
+            references: External reference strings.
+            source: Provenance reference.
+
+        Returns:
+            ClientResult[Discovery]: The registered discovery entity.
+        """
         return cast(
             ClientResult[Discovery],
             self.register(
@@ -418,7 +637,22 @@ class DeSitterClient:
         references: Iterable[str] | None = None,
         source: str | None = None,
     ) -> ClientResult[DeadEnd]:
-        """Register a dead end."""
+        """Register a dead end with typed keyword arguments.
+
+        Args:
+            id: Unique dead end identifier.
+            title: Display title.
+            description: What was attempted and why it failed.
+            status: Dead end status.
+            dry_run: If ``True``, validate without persisting.
+            related_predictions: IDs of related predictions.
+            related_claims: IDs of related claims.
+            references: External reference strings.
+            source: Provenance reference.
+
+        Returns:
+            ClientResult[DeadEnd]: The registered dead end entity.
+        """
         return cast(
             ClientResult[DeadEnd],
             self.register(
@@ -451,7 +685,21 @@ class DeSitterClient:
         source: str | None = None,
         notes: str | None = None,
     ) -> ClientResult[Parameter]:
-        """Register a parameter."""
+        """Register a parameter with typed keyword arguments.
+
+        Args:
+            id: Unique parameter identifier.
+            name: Display name.
+            value: The parameter value.
+            dry_run: If ``True``, validate without persisting.
+            unit: Unit of measurement.
+            uncertainty: Uncertainty value or range.
+            source: Provenance reference.
+            notes: Free-form notes.
+
+        Returns:
+            ClientResult[Parameter]: The registered parameter entity.
+        """
         return cast(
             ClientResult[Parameter],
             self.register(
@@ -480,7 +728,20 @@ class DeSitterClient:
         measurement_regime: MeasurementRegime | str | None = None,
         notes: str | None = None,
     ) -> ClientResult[IndependenceGroup]:
-        """Register an independence group."""
+        """Register an independence group with typed keyword arguments.
+
+        Args:
+            id: Unique independence group identifier.
+            label: Display label.
+            dry_run: If ``True``, validate without persisting.
+            claim_lineage: IDs of claims in the group's derivation lineage.
+            assumption_lineage: IDs of assumptions in the group's derivation lineage.
+            measurement_regime: Measurement regime classification.
+            notes: Free-form notes.
+
+        Returns:
+            ClientResult[IndependenceGroup]: The registered group entity.
+        """
         return cast(
             ClientResult[IndependenceGroup],
             self.register(
@@ -508,7 +769,18 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[PairwiseSeparation]:
-        """Register a pairwise separation record."""
+        """Register a pairwise separation record.
+
+        Args:
+            id: Unique separation record identifier.
+            group_a: ID of the first independence group.
+            group_b: ID of the second independence group.
+            basis: Justification for the separation.
+            dry_run: If ``True``, validate without persisting.
+
+        Returns:
+            ClientResult[PairwiseSeparation]: The registered separation.
+        """
         return cast(
             ClientResult[PairwiseSeparation],
             self.register(
@@ -522,63 +794,83 @@ class DeSitterClient:
         )
 
     def get_claim(self, identifier: str) -> ClientResult[Claim]:
+        """Retrieve a claim by ID."""
         return cast(ClientResult[Claim], self.get("claim", identifier))
 
     def get_assumption(self, identifier: str) -> ClientResult[Assumption]:
+        """Retrieve an assumption by ID."""
         return cast(ClientResult[Assumption], self.get("assumption", identifier))
 
     def get_prediction(self, identifier: str) -> ClientResult[Prediction]:
+        """Retrieve a prediction by ID."""
         return cast(ClientResult[Prediction], self.get("prediction", identifier))
 
     def get_analysis(self, identifier: str) -> ClientResult[Analysis]:
+        """Retrieve an analysis by ID."""
         return cast(ClientResult[Analysis], self.get("analysis", identifier))
 
     def get_theory(self, identifier: str) -> ClientResult[Theory]:
+        """Retrieve a theory by ID."""
         return cast(ClientResult[Theory], self.get("theory", identifier))
 
     def get_discovery(self, identifier: str) -> ClientResult[Discovery]:
+        """Retrieve a discovery by ID."""
         return cast(ClientResult[Discovery], self.get("discovery", identifier))
 
     def get_dead_end(self, identifier: str) -> ClientResult[DeadEnd]:
+        """Retrieve a dead end by ID."""
         return cast(ClientResult[DeadEnd], self.get("dead_end", identifier))
 
     def get_parameter(self, identifier: str) -> ClientResult[Parameter]:
+        """Retrieve a parameter by ID."""
         return cast(ClientResult[Parameter], self.get("parameter", identifier))
 
     def get_independence_group(self, identifier: str) -> ClientResult[IndependenceGroup]:
+        """Retrieve an independence group by ID."""
         return cast(ClientResult[IndependenceGroup], self.get("independence_group", identifier))
 
     def get_pairwise_separation(self, identifier: str) -> ClientResult[PairwiseSeparation]:
+        """Retrieve a pairwise separation by ID."""
         return cast(ClientResult[PairwiseSeparation], self.get("pairwise_separation", identifier))
 
     def list_claims(self, **filters: object) -> ClientResult[list[Claim]]:
+        """List all claims, optionally filtered."""
         return cast(ClientResult[list[Claim]], self.list("claim", **filters))
 
     def list_assumptions(self, **filters: object) -> ClientResult[list[Assumption]]:
+        """List all assumptions, optionally filtered."""
         return cast(ClientResult[list[Assumption]], self.list("assumption", **filters))
 
     def list_predictions(self, **filters: object) -> ClientResult[list[Prediction]]:
+        """List all predictions, optionally filtered."""
         return cast(ClientResult[list[Prediction]], self.list("prediction", **filters))
 
     def list_analyses(self, **filters: object) -> ClientResult[list[Analysis]]:
+        """List all analyses, optionally filtered."""
         return cast(ClientResult[list[Analysis]], self.list("analysis", **filters))
 
     def list_theories(self, **filters: object) -> ClientResult[list[Theory]]:
+        """List all theories, optionally filtered."""
         return cast(ClientResult[list[Theory]], self.list("theory", **filters))
 
     def list_discoveries(self, **filters: object) -> ClientResult[list[Discovery]]:
+        """List all discoveries, optionally filtered."""
         return cast(ClientResult[list[Discovery]], self.list("discovery", **filters))
 
     def list_dead_ends(self, **filters: object) -> ClientResult[list[DeadEnd]]:
+        """List all dead ends, optionally filtered."""
         return cast(ClientResult[list[DeadEnd]], self.list("dead_end", **filters))
 
     def list_parameters(self, **filters: object) -> ClientResult[list[Parameter]]:
+        """List all parameters, optionally filtered."""
         return cast(ClientResult[list[Parameter]], self.list("parameter", **filters))
 
     def list_independence_groups(self, **filters: object) -> ClientResult[list[IndependenceGroup]]:
+        """List all independence groups, optionally filtered."""
         return cast(ClientResult[list[IndependenceGroup]], self.list("independence_group", **filters))
 
     def list_pairwise_separations(self, **filters: object) -> ClientResult[list[PairwiseSeparation]]:
+        """List all pairwise separations, optionally filtered."""
         return cast(ClientResult[list[PairwiseSeparation]], self.list("pairwise_separation", **filters))
 
     def transition_claim(
@@ -588,6 +880,7 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[Claim]:
+        """Transition a claim to a new status."""
         return cast(
             ClientResult[Claim],
             self.transition("claim", identifier, new_status, dry_run=dry_run),
@@ -600,6 +893,7 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[Prediction]:
+        """Transition a prediction to a new status."""
         return cast(
             ClientResult[Prediction],
             self.transition("prediction", identifier, new_status, dry_run=dry_run),
@@ -612,6 +906,7 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[Theory]:
+        """Transition a theory to a new status."""
         return cast(
             ClientResult[Theory],
             self.transition("theory", identifier, new_status, dry_run=dry_run),
@@ -624,6 +919,7 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[Discovery]:
+        """Transition a discovery to a new status."""
         return cast(
             ClientResult[Discovery],
             self.transition("discovery", identifier, new_status, dry_run=dry_run),
@@ -636,12 +932,14 @@ class DeSitterClient:
         *,
         dry_run: bool = False,
     ) -> ClientResult[DeadEnd]:
+        """Transition a dead end to a new status."""
         return cast(
             ClientResult[DeadEnd],
             self.transition("dead_end", identifier, new_status, dry_run=dry_run),
         )
 
     def _invoke_gateway(self, func, *args, **kwargs) -> GatewayResult:
+        """Call a gateway method, wrapping unexpected errors in DeSitterClientError."""
         try:
             return func(*args, **kwargs)
         except DeSitterClientError:
@@ -654,6 +952,10 @@ class DeSitterClient:
         resource: str,
         result: GatewayResult,
     ) -> ClientResult[Any]:
+        """Convert a gateway result into a typed ClientResult with a deserialized entity.
+
+        Raises DeSitterClientError if the result status is not success.
+        """
         if result.status not in {"ok", "dry_run"}:
             raise DeSitterClientError(result.status, result.message, result.findings)
 
@@ -678,6 +980,10 @@ class DeSitterClient:
         resource: str,
         result: GatewayResult,
     ) -> ClientResult[list[Any]]:
+        """Convert a gateway list result into a typed ClientResult with deserialized entities.
+
+        Raises DeSitterClientError if the result status is not success.
+        """
         if result.status not in {"ok", "dry_run"}:
             raise DeSitterClientError(result.status, result.message, result.findings)
 
@@ -697,6 +1003,10 @@ class DeSitterClient:
         )
 
     def _handle_query_result(self, result: GatewayResult) -> ClientResult[Any]:
+        """Convert a gateway query result into a typed ClientResult.
+
+        Raises DeSitterClientError if the result status is not success.
+        """
         if result.status not in {"ok", "dry_run"}:
             raise DeSitterClientError(result.status, result.message, result.findings)
 
@@ -714,6 +1024,7 @@ class DeSitterClient:
         )
 
     def _canonical_resource(self, resource: str) -> str:
+        """Resolve a resource alias to its canonical key, falling back to the input."""
         try:
             canonical = self._gateway.resolve_resource(resource)
             return canonical if isinstance(canonical, str) else resource
@@ -722,13 +1033,24 @@ class DeSitterClient:
 
 
 def connect(path: str | Path) -> DeSitterClient:
-    """Build a client from a workspace path containing desitter.toml."""
+    """Build a client from a workspace path containing ``desitter.toml``.
+
+    This is the primary convenience entry point for creating a client.
+    Loads configuration and builds the full dependency graph automatically.
+
+    Args:
+        path: Filesystem path to the project workspace root.
+
+    Returns:
+        DeSitterClient: A fully wired client ready for use.
+    """
     workspace = Path(path)
     context = build_context(workspace, load_config(workspace))
     return DeSitterClient(context)
 
 
 def _without_none(**payload: object) -> dict[str, object]:
+    """Filter out ``None`` values from keyword arguments."""
     return {
         key: value
         for key, value in payload.items()

@@ -1,8 +1,8 @@
 """Epistemic domain kernel.
 
-The gravity well of the system. Models research truth as a directed graph
-of typed nodes (claims, assumptions, predictions, analyses, …) and typed
-edges with bidirectional invariants.
+Models research truth as a directed graph of typed nodes (claims, 
+assumptions, predictions, analyses, …) and typed edges with
+bidirectional invariants.
 
 Dependency rule: zero external imports. Only stdlib. This layer must be
 fast, portable, and free of supply-chain risk.

@@ -15,10 +15,22 @@ from ..config import ProjectContext
 
 
 class DomainValidator:
-    """WebValidator implementation that runs all domain invariants."""
+    """``WebValidator`` implementation that runs all domain invariants.
+
+    Delegates to ``epistemic.invariants.validate_all`` which runs the
+    full suite of semantic and coverage invariant checks on the web.
+    """
 
     def validate(self, web: EpistemicWeb) -> list[Finding]:
-        """Run all epistemic invariants and return findings."""
+        """Run all epistemic invariants and return findings.
+
+        Args:
+            web: The epistemic web to validate.
+
+        Returns:
+            list[Finding]: All findings from all invariant validators,
+                ordered by the fixed validator execution order.
+        """
         return validate_all(web)
 
 
@@ -29,8 +41,20 @@ def validate_project(
 ) -> list[Finding]:
     """Load the web from storage and run all validators.
 
-    Returns the combined list of findings across all validators.
-    extra_validators allows control-plane callers to inject additional rules.
+    Composes domain invariant validation with any additional validators
+    injected by the caller. Returns the combined finding list.
+
+    Args:
+        context: Project paths and runtime configuration.
+        repo: Repository adapter used to load the web.
+        extra_validators: Additional validator instances to run after
+            the default domain validators. May be ``None``.
+
+    Returns:
+        list[Finding]: Combined findings from all validators.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError
 
@@ -38,6 +62,16 @@ def validate_project(
 def validate_structure(context: ProjectContext) -> list[Finding]:
     """Check that the expected directory and file structure is present.
 
-    Returns INFO/WARNING/CRITICAL findings for missing paths.
+    Verifies that required project directories (data, prose, etc.) and
+    files exist. Returns INFO/WARNING/CRITICAL findings for missing paths.
+
+    Args:
+        context: Project paths and runtime configuration.
+
+    Returns:
+        list[Finding]: Findings for any missing or unexpected paths.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
     """
     raise NotImplementedError

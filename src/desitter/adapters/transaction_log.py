@@ -15,9 +15,16 @@ from pathlib import Path
 
 
 class JsonTransactionLog:
-    """Appends provenance records to a JSONL file.
+    """Append-only JSONL transaction log for operation provenance.
 
-    log_file: path to the .jsonl file (created if missing).
+    Every successful gateway mutation appends a newline-delimited JSON
+    record to the log file. Each record contains a UUID4 transaction ID,
+    ISO 8601 UTC timestamp, operation descriptor, and entity identifier.
+
+    Implements the ``TransactionLog`` protocol from ``epistemic/ports.py``.
+
+    Attributes:
+        _log_file: Path to the ``.jsonl`` log file (created if missing).
     """
 
     def __init__(self, log_file: Path) -> None:
@@ -31,13 +38,23 @@ class JsonTransactionLog:
     def append(self, operation: str, identifier: str) -> str:
         """Append a provenance record and return the transaction ID.
 
-        Record schema:
-          {
-            "tx_id":     "<uuid4>",
-            "timestamp": "<ISO 8601 UTC>",
-            "operation": "<operation>",
-            "identifier":"<identifier>"
-          }
+        Creates the log file's parent directory if it does not exist.
+        Each record is a single JSON line with the schema::
+
+            {
+                "tx_id":      "<uuid4>",
+                "timestamp":  "<ISO 8601 UTC>",
+                "operation":  "<operation>",
+                "identifier": "<identifier>"
+            }
+
+        Args:
+            operation: A colon-delimited operation descriptor, e.g.
+                ``"register:claim"`` or ``"set:parameter"``.
+            identifier: The ID of the entity affected.
+
+        Returns:
+            str: A UUID4 transaction ID uniquely identifying this record.
         """
         tx_id = str(uuid.uuid4())
         record = {
@@ -54,7 +71,12 @@ class JsonTransactionLog:
     def read_all(self) -> list[dict]:
         """Return all records in the log, oldest first.
 
-        Returns an empty list if the log file doesn't exist.
+        Parses each line of the JSONL file as a JSON object. Blank
+        lines are silently skipped.
+
+        Returns:
+            list[dict]: All provenance records in chronological order.
+                Returns an empty list if the log file does not exist.
         """
         if not self._log_file.exists():
             return []
