@@ -18,6 +18,7 @@ Command surface (mirrors MCP tools):
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -53,7 +54,7 @@ def cli(ctx: click.Context, workspace: Path | None, output_json: bool) -> None:
 @click.pass_context
 def register(ctx: click.Context, resource: str, data: str | None, dry_run: bool) -> None:
     """Register a new entity. Reads JSON payload from --data or stdin."""
-    raise NotImplementedError
+    _feature_gated(ctx, "register")
 
 
 @cli.command()
@@ -62,7 +63,7 @@ def register(ctx: click.Context, resource: str, data: str | None, dry_run: bool)
 @click.pass_context
 def get(ctx: click.Context, resource: str, identifier: str) -> None:
     """Retrieve a single entity by ID."""
-    raise NotImplementedError
+    _feature_gated(ctx, "get")
 
 
 @cli.command("list")
@@ -70,7 +71,7 @@ def get(ctx: click.Context, resource: str, identifier: str) -> None:
 @click.pass_context
 def list_resources(ctx: click.Context, resource: str) -> None:
     """List all entities of a given type."""
-    raise NotImplementedError
+    _feature_gated(ctx, "list")
 
 
 @cli.command()
@@ -81,7 +82,7 @@ def list_resources(ctx: click.Context, resource: str) -> None:
 @click.pass_context
 def set(ctx: click.Context, resource: str, identifier: str, data: str | None, dry_run: bool) -> None:
     """Update fields on an existing entity."""
-    raise NotImplementedError
+    _feature_gated(ctx, "set")
 
 
 @cli.command()
@@ -94,28 +95,28 @@ def transition(
     ctx: click.Context, resource: str, identifier: str, new_status: str, dry_run: bool
 ) -> None:
     """Transition an entity to a new status."""
-    raise NotImplementedError
+    _feature_gated(ctx, "transition")
 
 
 @cli.command()
 @click.pass_context
 def validate(ctx: click.Context) -> None:
     """Run all domain validators and print findings."""
-    raise NotImplementedError
+    _feature_gated(ctx, "validate")
 
 
 @cli.command()
 @click.pass_context
 def health(ctx: click.Context) -> None:
     """Run all health checks and print a structured report."""
-    raise NotImplementedError
+    _feature_gated(ctx, "health")
 
 
 @cli.command()
 @click.pass_context
 def status(ctx: click.Context) -> None:
     """Print a high-level project status snapshot."""
-    raise NotImplementedError
+    _feature_gated(ctx, "status")
 
 
 @cli.command()
@@ -123,7 +124,7 @@ def status(ctx: click.Context) -> None:
 @click.pass_context
 def render(ctx: click.Context, force: bool) -> None:
     """Regenerate all markdown view surfaces."""
-    raise NotImplementedError
+    _feature_gated(ctx, "render")
 
 
 @cli.command()
@@ -134,7 +135,7 @@ def render(ctx: click.Context, force: bool) -> None:
 @click.pass_context
 def export(ctx: click.Context, fmt: str, output: Path | None) -> None:
     """Bulk-export the epistemic web as JSON or markdown."""
-    raise NotImplementedError
+    _feature_gated(ctx, "export")
 
 
 @cli.command()
@@ -145,7 +146,31 @@ def init(ws_path: Path | None) -> None:
     Creates desitter.toml-aware project directories and the standard layout.
     Idempotent — safe to run on an existing workspace.
     """
-    raise NotImplementedError
+    raise click.ClickException(
+        "Command 'init' is not available yet (feature-gated). "
+        "See TRACKER milestones 2 and 3."
+    )
+
+
+def _feature_gated(ctx: click.Context, command_name: str) -> None:
+    """Emit a stable feature-gated error for not-yet-implemented CLI commands."""
+    message = (
+        f"Command '{command_name}' is not available yet (feature-gated). "
+        "See TRACKER milestones 2 and 3."
+    )
+    if ctx.obj.get("output_json"):
+        click.echo(
+            json.dumps(
+                {
+                    "status": "error",
+                    "changed": False,
+                    "message": message,
+                },
+                indent=2,
+            )
+        )
+        return
+    raise click.ClickException(message)
 
 
 def main() -> None:

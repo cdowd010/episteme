@@ -60,3 +60,55 @@ class TestWriteFile:
         repo._write_file("data.json", original)
         loaded = repo._load_file("data.json")
         assert loaded == original
+
+
+class TestHydration:
+    def test_load_preserves_all_entities_in_a_collection(self, tmp_path):
+        (tmp_path / "parameters.json").write_text(
+            json.dumps(
+                [
+                    {"id": "PAR-001", "name": "alpha", "value": 0.1},
+                    {"id": "PAR-002", "name": "beta", "value": 0.2},
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        repo = JsonRepository(tmp_path)
+        web = repo.load()
+
+        assert sorted(str(pid) for pid in web.parameters.keys()) == [
+            "PAR-001",
+            "PAR-002",
+        ]
+
+    def test_load_accumulates_state_across_collections(self, tmp_path):
+        (tmp_path / "parameters.json").write_text(
+            json.dumps(
+                [
+                    {"id": "PAR-001", "name": "alpha", "value": 0.1},
+                    {"id": "PAR-002", "name": "beta", "value": 0.2},
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "analyses.json").write_text(
+            json.dumps(
+                [
+                    {"id": "AN-001", "uses_parameters": ["PAR-001"]},
+                    {"id": "AN-002", "uses_parameters": ["PAR-002"]},
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        repo = JsonRepository(tmp_path)
+        web = repo.load()
+
+        assert sorted(str(aid) for aid in web.analyses.keys()) == ["AN-001", "AN-002"]
+        assert sorted(str(aid) for aid in web.parameters["PAR-001"].used_in_analyses) == [
+            "AN-001"
+        ]
+        assert sorted(str(aid) for aid in web.parameters["PAR-002"].used_in_analyses) == [
+            "AN-002"
+        ]

@@ -85,8 +85,6 @@ class JsonRepository:
                     f"Expected list payload in {_RESOURCE_FILES[collection_name]!r}, "
                     f"got {type(raw_items)!r}"
                 )
-
-            register_method = getattr(web, _REGISTER_METHODS[resource])
             for raw_item in raw_items:
                 if not isinstance(raw_item, dict):
                     raise TypeError(
@@ -94,7 +92,9 @@ class JsonRepository:
                         f"got {type(raw_item)!r}"
                     )
                 entity = build_entity(resource, raw_item)
-                web = register_method(entity)
+                # Bind against the current web each iteration since register_* returns a
+                # new EpistemicWeb instance.
+                web = getattr(web, _REGISTER_METHODS[resource])(entity)
 
         return web
 

@@ -86,7 +86,10 @@ def register_tools(server, context: ProjectContext) -> None:
         Returns CLEAN or BLOCKED with a list of findings.
         """
         from ...controlplane.validate import validate_project
-        findings = validate_project(context, gateway.repo)
+        try:
+            findings = validate_project(context, gateway.repo)
+        except NotImplementedError as exc:
+            return _feature_gated("validate_web", exc)
         status = "CLEAN" if not any(
             f.severity.name == "CRITICAL" for f in findings
         ) else "BLOCKED"
@@ -104,7 +107,10 @@ def register_tools(server, context: ProjectContext) -> None:
 
         overall: "HEALTHY" | "WARNINGS" | "CRITICAL"
         """
-        report = run_health_check(context, gateway.repo, gateway.validator)
+        try:
+            report = run_health_check(context, gateway.repo, gateway.validator)
+        except NotImplementedError as exc:
+            return _feature_gated("health_check", exc)
         return {
             "status": report.overall,
             "critical": report.critical_count,
@@ -119,8 +125,12 @@ def register_tools(server, context: ProjectContext) -> None:
     def project_status() -> dict:
         """Return a high-level project status snapshot."""
         from ...views.status import format_status_dict
-        status = get_status(context, gateway.repo)
-        return {"status": "ok", "data": format_status_dict(status)}
+        try:
+            status = get_status(context, gateway.repo)
+            data = format_status_dict(status)
+        except NotImplementedError as exc:
+            return _feature_gated("project_status", exc)
+        return {"status": "ok", "data": data}
 
     @server.tool()
     def render_views(force: bool = False) -> dict:
@@ -129,13 +139,16 @@ def register_tools(server, context: ProjectContext) -> None:
         force: if True, re-render even if nothing has changed.
         """
         from ...views.render import render_all
-        web = gateway.repo.load()
-        written_by_surface = render_all(
-            context,
-            web,
-            gateway.renderer,
-            force=force,
-        )
+        try:
+            web = gateway.repo.load()
+            written_by_surface = render_all(
+                context,
+                web,
+                gateway.renderer,
+                force=force,
+            )
+        except NotImplementedError as exc:
+            return _feature_gated("render_views", exc)
         return {
             "status": "ok",
             "changed": any(written_by_surface.values()),
@@ -151,7 +164,10 @@ def register_tools(server, context: ProjectContext) -> None:
         parameter-change blast radius.
         """
         from ...controlplane.check import check_stale
-        findings = check_stale(context)
+        try:
+            findings = check_stale(context)
+        except NotImplementedError as exc:
+            return _feature_gated("check_stale", exc)
         return {
             "status": "ok",
             "findings": [
@@ -164,7 +180,10 @@ def register_tools(server, context: ProjectContext) -> None:
     def check_refs() -> dict:
         """Verify all ID cross-references in the epistemic web are intact."""
         from ...controlplane.check import check_refs
-        findings = check_refs(context, gateway.repo)
+        try:
+            findings = check_refs(context, gateway.repo)
+        except NotImplementedError as exc:
+            return _feature_gated("check_refs", exc)
         return {
             "status": "ok",
             "findings": [
@@ -183,11 +202,28 @@ def register_tools(server, context: ProjectContext) -> None:
         from pathlib import Path
         from ...controlplane.export import export_json, export_markdown
         out = Path(output_path) if output_path else context.paths.project_dir / "export"
-        if fmt == "json":
-            export_json(context, gateway.repo, out if output_path else out.with_suffix(".json"))
-        else:
-            export_markdown(context, gateway.repo, out)
+        try:
+            if fmt == "json":
+                export_json(context, gateway.repo, out if output_path else out.with_suffix(".json"))
+            else:
+                export_markdown(context, gateway.repo, out)
+        except NotImplementedError as exc:
+            return _feature_gated("export_web", exc)
         return {"status": "ok", "changed": True, "message": f"Exported as {fmt} to {out}"}
+
+
+def _feature_gated(tool_name: str, exc: NotImplementedError | None = None) -> dict:
+    """Return a stable MCP error envelope for feature-gated tool handlers."""
+    detail = str(exc).strip() if exc is not None else ""
+    suffix = f" Detail: {detail}" if detail else ""
+    return {
+        "status": "error",
+        "changed": False,
+        "message": (
+            f"Tool '{tool_name}' is not available yet (feature-gated). "
+            f"See TRACKER milestones 2 and 3.{suffix}"
+        ),
+    }
 
 
 def _envelope(result) -> dict:

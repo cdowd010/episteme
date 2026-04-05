@@ -1,4 +1,4 @@
-# deSitter — Reality Tracker
+# deSitter — Tracker
 
 Status legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[-]` deferred/blocking
 
@@ -43,10 +43,13 @@ These are execution rules, not just ideals. New work should be rejected if it vi
 - [x] Config and runtime context are in place: `load_config`, `build_context`, `ProjectContext`.
 - [x] Transaction log adapter is implemented.
 - [x] JSON repository `load()` and `save()` are implemented.
+- [x] JSON repository hydration bug fixed: `load()` now binds register methods on the current web per entity, preserving all items in a collection.
 - [x] Payload validation exists as a port plus JSON Schema adapter and is wired in the gateway factory.
+- [x] Payload schema derivation now models `None` explicitly as JSON `null` for `Optional[...]` fields.
 - [x] Core gateway verbs are implemented: `register`, `get`, `list`, `set`, `transition`, `query`.
 - [x] Base Python client exists with `connect()` and entity-specific `register_*`, `get_*`, `list_*`, and `transition_*` helpers.
 - [x] Python client tests exist for round-trip registration, `connect()` wiring, and schema-error surfacing.
+- [x] CLI and MCP paths that currently depend on stubbed services are feature-gated with explicit error responses instead of surfacing raw `NotImplementedError` exceptions.
 
 ### Confirmed Missing or Stubbed
 
@@ -54,7 +57,7 @@ These are execution rules, not just ideals. New work should be rejected if it vi
 - [ ] `record_analysis_result` is not exposed through `Gateway`.
 - [ ] `record_analysis_result` is not exposed through `DeSitterClient`.
 - [ ] There is no checked-in `schemas/payloads/` directory with machine-readable payload schemas for external tooling.
-- [ ] CLI command handlers in `interfaces/cli/main.py` still raise `NotImplementedError`.
+- [ ] CLI command handlers are currently feature-gated placeholders pending milestone 3 wiring.
 - [ ] MCP does not expose a `record_result` tool yet.
 - [ ] `controlplane/validate.py` orchestration is still stubbed.
 - [ ] `controlplane/check.py` orchestration is still stubbed.
@@ -62,6 +65,17 @@ These are execution rules, not just ideals. New work should be rejected if it vi
 - [ ] `views/health.py`, `views/status.py`, `views/metrics.py`, and `views/render.py` are still stubbed.
 - [ ] `adapters/markdown_renderer.py` surface renderers are still stubbed.
 - [ ] CLI and MCP integration tests are effectively missing.
+
+### Audit-Driven Hardening (Scoped)
+
+- [x] Add regression tests proving repository hydration preserves multiple entities per collection and accumulates state across collection boundaries.
+- [x] Add payload-validator tests proving `Optional[str]` rejects object payloads and accepts explicit `null`.
+- [x] Feature-gate currently exposed CLI/MCP commands backed by stubbed read-side services.
+- [ ] Keep tightening fail-fast type boundaries around `Any`-typed model fields while preserving Python API MVP scope.
+- [ ] Decide post-MVP persistence policy for non-JSON-native values (avoid silent `default=str` coercion unless explicitly intended).
+- [ ] Scope a per-call query index-reuse pass in `EpistemicWeb` (`assumption_support_status`, `parameter_impact`) after Milestone 1 API gates close, without introducing global caches.
+- [ ] Introduce a `JSONValue` alias and migrate persisted payload-bearing fields away from broad `Any` types in a staged pass.
+- [ ] Remove repository `json.dumps(..., default=str)` once `JSONValue` boundaries are enforced and migration tests are in place.
 
 ### Known Drift to Resolve
 

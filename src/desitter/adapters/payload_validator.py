@@ -73,6 +73,9 @@ def _schema_for_annotation(annotation: object) -> dict[str, object]:
     if annotation in (Any, object):
         return {}
 
+    if annotation is type(None):
+        return {"type": "null"}
+
     if hasattr(annotation, "__supertype__"):
         return _schema_for_annotation(annotation.__supertype__)
 

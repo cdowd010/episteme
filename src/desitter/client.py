@@ -715,7 +715,8 @@ class DeSitterClient:
 
     def _canonical_resource(self, resource: str) -> str:
         try:
-            return self._gateway.resolve_resource(resource)
+            canonical = self._gateway.resolve_resource(resource)
+            return canonical if isinstance(canonical, str) else resource
         except KeyError:
             return resource
 
