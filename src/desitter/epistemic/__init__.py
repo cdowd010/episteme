@@ -52,14 +52,14 @@ from .types import (
     TheoryId,
     TheoryStatus,
 )
-from .web import (
+from .errors import (
     BrokenReferenceError,
     CycleError,
     DuplicateIdError,
     EpistemicError,
-    EpistemicWeb,
     InvariantViolation,
 )
+from .web import EpistemicWeb
 
 __all__ = [
     # types

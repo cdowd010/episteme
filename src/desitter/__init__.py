@@ -1,26 +1,15 @@
-"""deSitter (desitter) — control plane for research epistemic webs.
-
-The CLI and MCP server are peer interfaces over the same gateway.
-Both route through: controlplane.gateway.Gateway.
+"""deSitter — control plane for research epistemic webs.
 
 Layer cake (top to bottom):
-  interfaces      — CLI and MCP adapters
-  views           — read-only summaries and rendering services
-  controlplane    — orchestration boundary above the epistemic kernel
-  epistemic       — domain kernel: EpistemicWeb, entities, invariants, ports
-  adapters        — JSON repo, markdown renderer, transaction log
+  interfaces   — optional consumer adapters (CLI, MCP, REST, …)
+  views        — read-only summaries and computed projections
+  controlplane — orchestration boundary above the epistemic kernel
+  epistemic    — domain kernel: EpistemicWeb, entities, invariants, ports
+  local edge   — optional deployment adapters such as local workspaces
 
-Quick start (programmatic):
-  import desitter as ds
+Programmatic entry point::
 
-  client = connect()
-  client.register_claim(
-    id="C-001",
-    statement="Catalyst X increases yield.",
-    type="foundational",
-    scope="global",
-    falsifiability="A replicated null result would falsify this claim.",
-  )
+    from desitter.client import DeSitterClient, connect
 """
 
 __version__ = "0.1.0"

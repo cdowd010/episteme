@@ -1,11 +1,7 @@
-"""Entry point for `python -m desitter`.
+"""Entry point for ``python -m desitter``.
 
-Delegates to the Click CLI, so:
-    python -m desitter <command> [options]
-is equivalent to:
-    ds <command> [options]
+The package currently exposes the library API only. Consumer interfaces
+can be added as separate adapters.
 """
-from desitter.interfaces.cli.main import cli
-
 if __name__ == "__main__":
-    cli()
+    raise SystemExit("No default interface configured. Use the desitter library API directly.")

@@ -1,33 +1,31 @@
 """Project configuration and runtime context.
 
-This module is the single place for:
-    - DesitterConfig   — parsed from desitter.toml (or defaults)
-  - ProjectPaths     — all filesystem paths derived from workspace + config
-  - ProjectContext   — the runtime contract passed to every service
-    - load_config()    — reads desitter.toml, returns DesitterConfig
-  - build_context()  — derives all paths, returns ProjectContext
+This module is the runtime configuration contract for the entire system.
+``DesitterConfig`` holds settings parsed from ``desitter.toml``.
+``ProjectPaths`` holds all derived filesystem paths.
+``ProjectContext`` bundles the workspace path, config, and paths into
+the single object passed through every service call.
 
-Every service receives a ProjectContext. No service reads desitter.toml
-directly — all config is injected via ProjectContext.
-
-desitter.toml schema (all keys optional):
-
-    [desitter]
-  project_dir = "project"     # relative to workspace root
+Nothing in ``epistemic/``, ``controlplane/``, or ``views/`` needs this
+module directly. It is consumed by the ``client`` package and by
+interface adapters (CLI, MCP) at startup.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .epistemic.types import Finding
+
 _CONFIG_FILENAME = "desitter.toml"
 
 
-# ── User config (from desitter.toml) ─────────────────────────────
+# ── Configuration ────────────────────────────────────────────────
+
 
 @dataclass
 class DesitterConfig:
-    """Parsed from ``desitter.toml``. All fields have safe defaults.
+    """Parsed project settings loaded from ``desitter.toml``.
 
     Attributes:
         project_dir: Project directory relative to the workspace root.
@@ -36,68 +34,63 @@ class DesitterConfig:
     project_dir: Path = field(default_factory=lambda: Path("project"))
 
 
-# ── Filesystem paths ──────────────────────────────────────────────
+# ── Derived paths ────────────────────────────────────────────────
+
 
 @dataclass
 class ProjectPaths:
-    """All filesystem paths derived from workspace root and config.
+    """All filesystem paths derived from a workspace root.
 
-    Computed once at context-build time by ``build_context()``.
-    Never re-derived at call time.
+    Computed once at startup by ``build_context()``. Never re-derived.
 
     Attributes:
-        workspace: Absolute path to the workspace root directory.
+        root: Absolute path to the workspace root directory.
         project_dir: Absolute path to the project directory.
-        data_dir: Directory containing entity JSON files
-            (``claims.json``, ``predictions.json``, etc.).
-        views_dir: Directory for rendered markdown output files.
-        cache_dir: Directory for internal caches (render hashes, etc.).
-        render_cache_file: Path to the render fingerprint cache JSON file.
-        transaction_log_file: Path to the JSONL transaction log.
+        data_dir: Directory containing entity data files.
+        cache_dir: Directory for internal caches.
     """
-    workspace: Path
+    root: Path
     project_dir: Path
     data_dir: Path
-    views_dir: Path
     cache_dir: Path
-    render_cache_file: Path
-    transaction_log_file: Path
 
 
-# ── Runtime contract ──────────────────────────────────────────────
+# ── Runtime context ──────────────────────────────────────────────
+
 
 @dataclass
 class ProjectContext:
-    """Runtime contract passed to every service.
+    """Runtime context passed through every service call.
 
-    Immutable after construction. Services must not store mutable state
-    on the context — use it to locate resources, then do work locally.
+    Bundles the workspace path, the parsed config, and the computed
+    paths into a single object. Constructed once at startup.
 
     Attributes:
         workspace: Absolute path to the workspace root.
-        config: The parsed ``DesitterConfig``.
-        paths: Derived filesystem paths for all project resources.
+        config: Parsed project configuration.
+        paths: Derived filesystem paths.
     """
     workspace: Path
     config: DesitterConfig
     paths: ProjectPaths
 
 
-# ── Builders ──────────────────────────────────────────────────────
+# ── Builders ─────────────────────────────────────────────────────
 
-def load_config(workspace: Path) -> DesitterConfig:
-    """Read ``desitter.toml`` from *workspace* and return a ``DesitterConfig``.
+
+def load_config(root: Path) -> DesitterConfig:
+    """Read ``desitter.toml`` from *root* and return project settings.
 
     A missing file or missing keys are not errors — defaults are used.
     Only the ``[desitter]`` table is read.
 
     Args:
-        workspace: Absolute path to the workspace root.
+        root: Absolute path to the workspace root.
 
     Returns:
-        DesitterConfig: Parsed configuration with defaults for missing values.
+        DesitterConfig: Parsed configuration with defaults.
     """
-    config_path = workspace / _CONFIG_FILENAME
+    config_path = root / _CONFIG_FILENAME
     if not config_path.exists():
         return DesitterConfig()
 
@@ -114,30 +107,49 @@ def load_config(workspace: Path) -> DesitterConfig:
     )
 
 
-def build_context(workspace: Path, config: DesitterConfig) -> ProjectContext:
-    """Derive all paths from workspace root and config, and return a ``ProjectContext``.
+def build_context(
+    root: Path,
+    config: DesitterConfig | None = None,
+) -> ProjectContext:
+    """Derive the runtime context for a workspace root.
 
-    This is the only place path derivation logic lives. All services
-    receive the resulting context rather than computing paths themselves.
+    This is the single place the default directory layout is derived.
+    Callers supply a workspace root and optionally a pre-loaded config.
 
     Args:
-        workspace: Absolute path to the workspace root.
-        config: Parsed project configuration.
+        root: Absolute path to the workspace root.
+        config: Parsed configuration. When ``None``, the configuration
+            is loaded from disk via ``load_config``.
 
     Returns:
-        ProjectContext: A fully derived runtime context.
+        ProjectContext: The assembled runtime context.
     """
-    project_dir = workspace / config.project_dir
+    resolved_config = config or load_config(root)
+    project_dir = root / resolved_config.project_dir
     data_dir = project_dir / "data"
     cache_dir = project_dir / ".cache"
 
     paths = ProjectPaths(
-        workspace=workspace,
+        root=root,
         project_dir=project_dir,
         data_dir=data_dir,
-        views_dir=project_dir / "views",
         cache_dir=cache_dir,
-        render_cache_file=cache_dir / "render.json",
-        transaction_log_file=data_dir / "transaction_log.jsonl",
     )
-    return ProjectContext(workspace=workspace, config=config, paths=paths)
+    return ProjectContext(workspace=root, config=resolved_config, paths=paths)
+
+
+def validate_workspace(context: ProjectContext) -> list[Finding]:
+    """Validate the expected directory layout for a workspace.
+
+    Checks that the expected directories exist and are accessible.
+
+    Args:
+        context: The runtime context to validate.
+
+    Returns:
+        list[Finding]: Findings for missing or unexpected paths.
+
+    Raises:
+        NotImplementedError: Not yet implemented.
+    """
+    raise NotImplementedError

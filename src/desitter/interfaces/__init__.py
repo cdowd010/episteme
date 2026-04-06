@@ -1,18 +1,8 @@
-"""Interface adapters — entry points for all consumers.
+"""Interface adapters — consumer entry points.
 
-All interfaces expose the same service layers (controlplane/, views/).
-No business logic lives in any interface module. If a handler does more
-than parse input → call service → format output, move the logic up.
+Each interface is a thin adapter over ``controlplane`` and ``views``.
+No business logic lives in any interface module.
 
-Current interfaces:
-  cli/   — Click-based CLI for humans and scripts
-  mcp/   — FastMCP server for AI agents
-
-Planned interfaces:
-  rest/  — REST API adapter (FastAPI or similar)
-  gui/   — Desktop or web GUI adapter
-  sdk/   — Python library API (desitter.record(), etc.)
-
-Adding a new interface means creating a new subdirectory here.
-Nothing in controlplane/, views/, or epistemic/ needs to change.
+Add a new interface by creating a subdirectory here.
+Nothing in ``controlplane``, ``views``, or ``epistemic`` needs to change.
 """

@@ -1,13 +1,13 @@
 """Read-only validation orchestration.
 
-Composes epistemic domain validators with any control-plane checks
-(file structure, path integrity, etc.) and returns a unified finding list.
+Composes validators over an already-loaded epistemic web and returns a
+unified finding list.
 
-Does NOT write to disk. Does NOT mutate the web.
+Concrete deployment checks belong to the adapter that owns that
+deployment, not to this generic control-plane module.
 """
 from __future__ import annotations
 
-from ..config import ProjectContext
 from ..epistemic.invariants import validate_all
 from ..epistemic.ports import EpistemicWebPort, WebValidator
 from ..epistemic.types import Finding
@@ -53,24 +53,6 @@ def validate_project(
 
     Returns:
         list[Finding]: Combined findings from all validators.
-
-    Raises:
-        NotImplementedError: Not yet implemented.
-    """
-    raise NotImplementedError
-
-
-def validate_structure(context: ProjectContext) -> list[Finding]:
-    """Check that the expected directory and file structure is present.
-
-    Verifies that required project directories (data, prose, etc.) and
-    files exist. Returns INFO/WARNING/CRITICAL findings for missing paths.
-
-    Args:
-        context: Project paths and runtime configuration.
-
-    Returns:
-        list[Finding]: Findings for any missing or unexpected paths.
 
     Raises:
         NotImplementedError: Not yet implemented.

@@ -1,16 +1,16 @@
-"""Repository metrics and correlation-aware tier-A evidence summaries.
+"""Epistemic-web metric read models and computation.
 
-Computes aggregate statistics over the epistemic web for use by the
-status service and health checks.
-
-All functions are pure: (EpistemicWeb) -> result. No I/O.
+Pure functions — no I/O, no side effects. Counts entities, computes
+detailed prediction statistics, and identifies coverage gaps.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from ..epistemic.ports import EpistemicWebPort
-from ..epistemic.types import ConfidenceTier, PredictionStatus
+
+
+# ── Read models ──────────────────────────────────────────────────
 
 
 @dataclass
@@ -27,6 +27,7 @@ class PredictionMetrics:
         stressed: IDs of predictions under epistemic stress (e.g.
             assumptions retracted or claims refuted).
     """
+
     total: int = 0
     by_status: dict[str, int] = field(default_factory=dict)
     by_tier: dict[str, int] = field(default_factory=dict)
@@ -58,6 +59,7 @@ class WebMetrics:
         empirical_assumptions_without_consequence: IDs of empirical
             assumptions that have no falsifiable consequence.
     """
+
     claim_count: int = 0
     assumption_count: int = 0
     analysis_count: int = 0
@@ -70,6 +72,9 @@ class WebMetrics:
     prediction_metrics: PredictionMetrics = field(default_factory=PredictionMetrics)
     uncovered_numerical_claims: list[str] = field(default_factory=list)
     empirical_assumptions_without_consequence: list[str] = field(default_factory=list)
+
+
+# ── Computation ──────────────────────────────────────────────────
 
 
 def compute_metrics(web: EpistemicWebPort) -> WebMetrics:
@@ -87,6 +92,7 @@ def compute_metrics(web: EpistemicWebPort) -> WebMetrics:
 
     Raises:
         NotImplementedError: Not yet implemented.
+
     """
     raise NotImplementedError
 
@@ -107,5 +113,14 @@ def tier_a_evidence_summary(web: EpistemicWebPort) -> dict[str, object]:
 
     Raises:
         NotImplementedError: Not yet implemented.
+
     """
     raise NotImplementedError
+
+
+__all__ = [
+    "PredictionMetrics",
+    "WebMetrics",
+    "compute_metrics",
+    "tier_a_evidence_summary",
+]

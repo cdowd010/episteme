@@ -1,10 +1,7 @@
 """Health checks for the project.
 
 Composes domain validation into a single structured health report.
-Intended as the primary "is everything OK?" surface for MCP tools and the CLI.
-
-The web is always available in memory via ``client.gateway.web`` — health
-checks do not need a repository reference; the caller passes the web directly.
+The caller passes the already-loaded web directly.
 """
 from __future__ import annotations
 

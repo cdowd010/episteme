@@ -24,6 +24,13 @@ from .model import (
     Prediction,
     Theory,
 )
+from .errors import (
+    BrokenReferenceError,
+    CycleError,
+    DuplicateIdError,
+    EpistemicError,
+    InvariantViolation,
+)
 from .types import (
     AnalysisId,
     AssumptionId,
@@ -460,10 +467,12 @@ class EpistemicWeb:
 
         # Maintain bidirectional: assumption.used_in_claims
         for aid in claim.assumptions:
+            new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
             new.assumptions[aid].used_in_claims.add(claim.id)
 
         # Maintain bidirectional: analysis.claims_covered
         for anid in claim.analyses:
+            new.analyses[anid] = copy.deepcopy(new.analyses[anid])
             new.analyses[anid].claims_covered.add(claim.id)
 
         return new
@@ -535,13 +544,14 @@ class EpistemicWeb:
 
         # Maintain bidirectional: assumption.tested_by
         for aid in prediction.tests_assumptions:
+            new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
             new.assumptions[aid].tested_by.add(prediction.id)
 
         # Maintain bidirectional: group.member_predictions
         if prediction.independence_group:
-            new.independence_groups[prediction.independence_group].member_predictions.add(
-                prediction.id
-            )
+            gid = prediction.independence_group
+            new.independence_groups[gid] = copy.deepcopy(new.independence_groups[gid])
+            new.independence_groups[gid].member_predictions.add(prediction.id)
 
         return new
 
@@ -574,6 +584,7 @@ class EpistemicWeb:
 
         # Maintain bidirectional: parameter.used_in_analyses
         for pid in analysis.uses_parameters:
+            new.parameters[pid] = copy.deepcopy(new.parameters[pid])
             new.parameters[pid].used_in_analyses.add(analysis.id)
 
         return new
@@ -747,6 +758,7 @@ class EpistemicWeb:
         if pid not in self.predictions:
             raise BrokenReferenceError(f"Prediction {pid} does not exist")
         new = self._copy()
+        new.predictions[pid] = copy.deepcopy(new.predictions[pid])
         new.predictions[pid].status = new_status
         return new
 
@@ -770,6 +782,7 @@ class EpistemicWeb:
         if did not in self.dead_ends:
             raise BrokenReferenceError(f"DeadEnd {did} does not exist")
         new = self._copy()
+        new.dead_ends[did] = copy.deepcopy(new.dead_ends[did])
         new.dead_ends[did].status = new_status
         return new
 
@@ -789,6 +802,7 @@ class EpistemicWeb:
         if cid not in self.claims:
             raise BrokenReferenceError(f"Claim {cid} does not exist")
         new = self._copy()
+        new.claims[cid] = copy.deepcopy(new.claims[cid])
         new.claims[cid].status = new_status
         return new
 
@@ -808,6 +822,7 @@ class EpistemicWeb:
         if tid not in self.theories:
             raise BrokenReferenceError(f"Theory {tid} does not exist")
         new = self._copy()
+        new.theories[tid] = copy.deepcopy(new.theories[tid])
         new.theories[tid].status = new_status
         return new
 
@@ -827,6 +842,7 @@ class EpistemicWeb:
         if did not in self.discoveries:
             raise BrokenReferenceError(f"Discovery {did} does not exist")
         new = self._copy()
+        new.discoveries[did] = copy.deepcopy(new.discoveries[did])
         new.discoveries[did].status = new_status
         return new
 
@@ -863,6 +879,7 @@ class EpistemicWeb:
         if anid not in self.analyses:
             raise BrokenReferenceError(f"Analysis {anid} does not exist")
         new = self._copy()
+        new.analyses[anid] = copy.deepcopy(new.analyses[anid])
         new.analyses[anid].last_result = result
         new.analyses[anid].last_result_sha = git_sha
         new.analyses[anid].last_result_date = result_date
@@ -905,14 +922,18 @@ class EpistemicWeb:
 
         # Diff assumption.used_in_claims
         for aid in old.assumptions - new_claim.assumptions:
+            new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
             new.assumptions[aid].used_in_claims.discard(new_claim.id)
         for aid in new_claim.assumptions - old.assumptions:
+            new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
             new.assumptions[aid].used_in_claims.add(new_claim.id)
 
         # Diff analysis.claims_covered
         for anid in old.analyses - new_claim.analyses:
+            new.analyses[anid] = copy.deepcopy(new.analyses[anid])
             new.analyses[anid].claims_covered.discard(new_claim.id)
         for anid in new_claim.analyses - old.analyses:
+            new.analyses[anid] = copy.deepcopy(new.analyses[anid])
             new.analyses[anid].claims_covered.add(new_claim.id)
 
         return new
@@ -985,16 +1006,22 @@ class EpistemicWeb:
 
         # Diff assumption.tested_by
         for aid in old.tests_assumptions - new_prediction.tests_assumptions:
+            new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
             new.assumptions[aid].tested_by.discard(new_prediction.id)
         for aid in new_prediction.tests_assumptions - old.tests_assumptions:
+            new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
             new.assumptions[aid].tested_by.add(new_prediction.id)
 
         # Diff independence_group.member_predictions
         if old.independence_group != new_prediction.independence_group:
             if old.independence_group and old.independence_group in new.independence_groups:
-                new.independence_groups[old.independence_group].member_predictions.discard(new_prediction.id)
+                old_gid = old.independence_group
+                new.independence_groups[old_gid] = copy.deepcopy(new.independence_groups[old_gid])
+                new.independence_groups[old_gid].member_predictions.discard(new_prediction.id)
             if new_prediction.independence_group and new_prediction.independence_group in new.independence_groups:
-                new.independence_groups[new_prediction.independence_group].member_predictions.add(new_prediction.id)
+                new_gid = new_prediction.independence_group
+                new.independence_groups[new_gid] = copy.deepcopy(new.independence_groups[new_gid])
+                new.independence_groups[new_gid].member_predictions.add(new_prediction.id)
 
         return new
 
@@ -1057,8 +1084,10 @@ class EpistemicWeb:
         # Diff parameter.used_in_analyses
         for pid in old.uses_parameters - new_analysis.uses_parameters:
             if pid in new.parameters:
+                new.parameters[pid] = copy.deepcopy(new.parameters[pid])
                 new.parameters[pid].used_in_analyses.discard(new_analysis.id)
         for pid in new_analysis.uses_parameters - old.uses_parameters:
+            new.parameters[pid] = copy.deepcopy(new.parameters[pid])
             new.parameters[pid].used_in_analyses.add(new_analysis.id)
 
         return new
@@ -1222,16 +1251,25 @@ class EpistemicWeb:
         del new.predictions[pid]
         for aid in pred.tests_assumptions:
             if aid in new.assumptions:
+                new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
                 new.assumptions[aid].tested_by.discard(pid)
         if pred.independence_group and pred.independence_group in new.independence_groups:
-            new.independence_groups[pred.independence_group].member_predictions.discard(pid)
+            gid = pred.independence_group
+            new.independence_groups[gid] = copy.deepcopy(new.independence_groups[gid])
+            new.independence_groups[gid].member_predictions.discard(pid)
         # Scrub soft references in theories, dead ends, and discoveries
-        for theory in new.theories.values():
-            theory.related_predictions.discard(pid)
-        for dead_end in new.dead_ends.values():
-            dead_end.related_predictions.discard(pid)
-        for discovery in new.discoveries.values():
-            discovery.related_predictions.discard(pid)
+        for tid, theory in list(new.theories.items()):
+            if pid in theory.related_predictions:
+                new.theories[tid] = copy.deepcopy(theory)
+                new.theories[tid].related_predictions.discard(pid)
+        for de_id, dead_end in list(new.dead_ends.items()):
+            if pid in dead_end.related_predictions:
+                new.dead_ends[de_id] = copy.deepcopy(dead_end)
+                new.dead_ends[de_id].related_predictions.discard(pid)
+        for disc_id, discovery in list(new.discoveries.items()):
+            if pid in discovery.related_predictions:
+                new.discoveries[disc_id] = copy.deepcopy(discovery)
+                new.discoveries[disc_id].related_predictions.discard(pid)
         return new
 
     def remove_claim(self, cid: ClaimId) -> EpistemicWeb:
@@ -1275,20 +1313,30 @@ class EpistemicWeb:
         del new.claims[cid]
         for aid in claim.assumptions:
             if aid in new.assumptions:
+                new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
                 new.assumptions[aid].used_in_claims.discard(cid)
         for anid in claim.analyses:
             if anid in new.analyses:
+                new.analyses[anid] = copy.deepcopy(new.analyses[anid])
                 new.analyses[anid].claims_covered.discard(cid)
         # Scrub soft references in theories, dead ends, and discoveries
-        for theory in new.theories.values():
-            theory.related_claims.discard(cid)
-        for dead_end in new.dead_ends.values():
-            dead_end.related_claims.discard(cid)
-        for discovery in new.discoveries.values():
-            discovery.related_claims.discard(cid)
+        for tid, theory in list(new.theories.items()):
+            if cid in theory.related_claims:
+                new.theories[tid] = copy.deepcopy(theory)
+                new.theories[tid].related_claims.discard(cid)
+        for de_id, dead_end in list(new.dead_ends.items()):
+            if cid in dead_end.related_claims:
+                new.dead_ends[de_id] = copy.deepcopy(dead_end)
+                new.dead_ends[de_id].related_claims.discard(cid)
+        for disc_id, discovery in list(new.discoveries.items()):
+            if cid in discovery.related_claims:
+                new.discoveries[disc_id] = copy.deepcopy(discovery)
+                new.discoveries[disc_id].related_claims.discard(cid)
         # Scrub claim_lineage annotations in independence groups
-        for group in new.independence_groups.values():
-            group.claim_lineage.discard(cid)
+        for gid, group in list(new.independence_groups.items()):
+            if cid in group.claim_lineage:
+                new.independence_groups[gid] = copy.deepcopy(group)
+                new.independence_groups[gid].claim_lineage.discard(cid)
         return new
 
     def remove_assumption(self, aid: AssumptionId) -> EpistemicWeb:
@@ -1330,8 +1378,10 @@ class EpistemicWeb:
         new = self._copy()
         del new.assumptions[aid]
         # Scrub assumption_lineage annotations in independence groups
-        for group in new.independence_groups.values():
-            group.assumption_lineage.discard(aid)
+        for gid, group in list(new.independence_groups.items()):
+            if aid in group.assumption_lineage:
+                new.independence_groups[gid] = copy.deepcopy(group)
+                new.independence_groups[gid].assumption_lineage.discard(aid)
         return new
 
     def remove_parameter(self, pid: ParameterId) -> EpistemicWeb:
@@ -1364,8 +1414,10 @@ class EpistemicWeb:
         new = self._copy()
         del new.parameters[pid]
         # Clean up dangling constraint annotations on claims
-        for claim in new.claims.values():
-            claim.parameter_constraints.pop(pid, None)
+        for cid, claim in list(new.claims.items()):
+            if pid in claim.parameter_constraints:
+                new.claims[cid] = copy.deepcopy(claim)
+                new.claims[cid].parameter_constraints.pop(pid, None)
         return new
 
     def remove_analysis(self, anid: AnalysisId) -> EpistemicWeb:
@@ -1403,6 +1455,7 @@ class EpistemicWeb:
         del new.analyses[anid]
         for pid in analysis.uses_parameters:
             if pid in new.parameters:
+                new.parameters[pid] = copy.deepcopy(new.parameters[pid])
                 new.parameters[pid].used_in_analyses.discard(anid)
         return new
 
@@ -1597,67 +1650,42 @@ class EpistemicWeb:
                 stack.extend(upstream.depends_on)
 
     def _copy(self) -> EpistemicWeb:
-        """Create a deep copy for copy-on-write mutation semantics.
+        """Create a shallow copy for copy-on-write mutation semantics.
 
-        O(n) cost per mutation where n is total entity count. Acceptable
-        for research-scale webs (hundreds to low thousands of entities).
-        If this becomes a bottleneck, structural sharing of unchanged
-        sub-dicts is the migration path.
+        Creates new dict instances for all collections but shares entity
+        object references. Each mutation method is responsible for
+        deep-copying only the specific entities whose fields it will
+        modify (backlink updates, status transitions, field assignments).
+
+        This reduces per-mutation cost from O(N_total_entities) to
+        O(N_mutated_entities): a transition that changes one prediction's
+        status deep-copies only that prediction, not all 1000.
 
         Returns:
-            EpistemicWeb: A fully independent deep copy of this web.
+            EpistemicWeb: A copy with independent dict instances.
         """
-        return copy.deepcopy(self)
+        return EpistemicWeb(
+            version=self.version,
+            claims=dict(self.claims),
+            assumptions=dict(self.assumptions),
+            predictions=dict(self.predictions),
+            theories=dict(self.theories),
+            discoveries=dict(self.discoveries),
+            analyses=dict(self.analyses),
+            independence_groups=dict(self.independence_groups),
+            pairwise_separations=dict(self.pairwise_separations),
+            dead_ends=dict(self.dead_ends),
+            parameters=dict(self.parameters),
+        )
 
 
-# ── Domain exceptions ─────────────────────────────────────────────
-
-class EpistemicError(Exception):
-    """Base exception for all domain errors in the epistemic kernel.
-
-    All exceptions raised by the EpistemicWeb inherit from this class,
-    making it easy for callers to catch any domain error with a single
-    handler.
-    """
-
-
-class DuplicateIdError(EpistemicError):
-    """Raised when registering an entity whose ID already exists in the web.
-
-    Each entity type has a unique namespace — a claim ID only needs to be
-    unique among claims, not across all entity types.
-    """
-
-    pass
-
-
-class BrokenReferenceError(EpistemicError):
-    """Raised when an operation references an entity ID that does not exist.
-
-    Also raised when a safe-deletion check finds that other entities
-    still hold hard references to the entity being removed.
-    """
-
-    pass
-
-
-class CycleError(EpistemicError):
-    """Raised when a graph mutation would introduce a dependency cycle.
-
-    The ``depends_on`` graphs for both claims and assumptions must
-    remain acyclic (DAG). This error is raised during registration
-    or update if adding the new edges would violate that constraint.
-    """
-
-    pass
-
-
-class InvariantViolation(EpistemicError):
-    """Raised when post-conditions or global domain invariants are violated.
-
-    Used for programmatic invariant checks that are not tied to a
-    specific entity operation but represent a broader structural
-    integrity failure.
-    """
-
-    pass
+# Domain exceptions live in errors.py — imported at the top of this module.
+# Re-exported here so that ``from desitter.epistemic.web import <Error>``
+# continues to work for any caller that imports directly from this module.
+__all_errors__ = [
+    "BrokenReferenceError",
+    "CycleError",
+    "DuplicateIdError",
+    "EpistemicError",
+    "InvariantViolation",
+]

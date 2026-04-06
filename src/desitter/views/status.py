@@ -1,29 +1,30 @@
-"""Read models and project status summaries.
+"""Project-status read model, snapshot builder, and serialization.
 
-Computes human-friendly summaries from metrics and the epistemic web.
-Consumed by the CLI `status` command and the MCP `project_status` tool.
-
-All functions are read-only.
+Computes a compact summary of an epistemic web suitable for dashboards,
+AI agent context, and MCP status responses.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from ..epistemic.ports import WebRepository
-from ..config import ProjectContext
-from .metrics import WebMetrics, compute_metrics
+from ..epistemic.ports import EpistemicWebPort
+from .metrics import WebMetrics
+
+
+# ── Read model ───────────────────────────────────────────────────
 
 
 @dataclass
 class ProjectStatus:
     """High-level project status snapshot.
 
-    Suitable for display as a CLI dashboard or for structured agent
-    consumption via MCP.
+    Suitable for any consumer that needs a compact summary of a loaded
+    epistemic web.
 
     Attributes:
         project_name: Display name of the project.
-        workspace: Filesystem path to the project root.
+        location: Optional deployment-specific location label.
         metrics: Full ``WebMetrics`` snapshot.
         health_summary: One of ``"HEALTHY"``, ``"WARNINGS"``, or
             ``"CRITICAL"``.
@@ -31,48 +32,69 @@ class ProjectStatus:
             governance mode is enabled, otherwise ``None``.
         extra: Arbitrary additional metadata for extensibility.
     """
+
     project_name: str
-    workspace: str
+    location: str
     metrics: WebMetrics
     health_summary: str
     governance_session: int | None
-    extra: dict = field(default_factory=dict)
+    extra: dict[str, object] = field(default_factory=dict)
+
+
+# ── Snapshot builder ─────────────────────────────────────────────
 
 
 def get_status(
-    context: ProjectContext,
-    repo: WebRepository,
+    web: EpistemicWebPort,
+    *,
+    project_name: str = "",
+    location: str = "",
+    health_summary: str = "",
+    governance_session: int | None = None,
+    extra: Mapping[str, object] | None = None,
 ) -> ProjectStatus:
     """Build a full project status snapshot.
 
-    Loads the web, computes metrics, runs a lightweight health check,
-    and assembles a ``ProjectStatus``.
+    Computes metrics and assembles a ``ProjectStatus`` from an already-
+    loaded web plus optional caller-supplied metadata.
 
     Args:
-        context: Project paths and runtime configuration.
-        repo: Repository adapter used to load the web.
+        web: The epistemic web to snapshot.
+        project_name: Optional display name supplied by the caller.
+        location: Optional deployment-specific location label.
+        health_summary: Optional pre-computed health summary label.
+        governance_session: Optional governance session number.
+        extra: Optional additional metadata.
 
     Returns:
         ProjectStatus: The assembled project status.
 
     Raises:
         NotImplementedError: Not yet implemented.
+
     """
     raise NotImplementedError
 
 
-def format_status_dict(status: ProjectStatus) -> dict:
-    """Serialize a ``ProjectStatus`` to a plain dict for MCP/JSON output.
+# ── Serialization ────────────────────────────────────────────────
 
-    Converts all dataclass fields to JSON-serializable primitives.
+
+def format_status_dict(status: ProjectStatus) -> dict:
+    """Serialize a ``ProjectStatus`` to a plain primitive mapping.
+
+    Converts dataclass fields to transport-friendly primitive values.
 
     Args:
         status: The project status to serialize.
 
     Returns:
-        dict: A JSON-serializable representation of the status.
+        dict: A primitive representation of the status.
 
     Raises:
         NotImplementedError: Not yet implemented.
+
     """
     raise NotImplementedError
+
+
+__all__ = ["ProjectStatus", "format_status_dict", "get_status"]

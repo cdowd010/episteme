@@ -1,8 +1,11 @@
 """Generated view surfaces with incremental SHA-256 caching.
 
-Renders the epistemic web into human-readable files (markdown tables,
-summary views, etc.). Only re-renders surfaces whose input fingerprint
-has changed since the last run.
+Orchestrates the rendering of an epistemic web into human-readable files
+(markdown tables, summary views, etc.). Only re-renders surfaces whose
+input fingerprint has changed since the last run.
+
+This module performs I/O (cache reads/writes, file output) and therefore
+lives in the control plane rather than the read-only views layer.
 
 Does NOT mutate the epistemic web.
 """
@@ -12,12 +15,10 @@ import hashlib
 import json
 from pathlib import Path
 
-from ..epistemic.ports import WebRenderer
-from ..epistemic.web import EpistemicWeb
-from ..config import ProjectContext
+from ..epistemic.ports import EpistemicWebPort, WebRenderer
 
 
-def compute_fingerprint(web: EpistemicWeb) -> str:
+def compute_fingerprint(web: EpistemicWebPort) -> str:
     """Compute a SHA-256 fingerprint of the web's serializable state.
 
     Used by ``render_all`` to decide whether re-rendering is needed.
@@ -36,11 +37,11 @@ def compute_fingerprint(web: EpistemicWeb) -> str:
     raise NotImplementedError
 
 
-def load_render_cache(context: ProjectContext) -> dict[str, str]:
+def load_render_cache(cache_path: Path) -> dict[str, str]:
     """Load the ``{surface_name: last_fingerprint}`` cache from disk.
 
     Args:
-        context: Project paths (determines cache file location).
+        cache_path: Path to the render fingerprint cache JSON file.
 
     Returns:
         dict[str, str]: The cached fingerprints. Returns an empty dict
@@ -52,11 +53,11 @@ def load_render_cache(context: ProjectContext) -> dict[str, str]:
     raise NotImplementedError
 
 
-def save_render_cache(context: ProjectContext, cache: dict[str, str]) -> None:
+def save_render_cache(cache_path: Path, cache: dict[str, str]) -> None:
     """Persist the render cache to disk.
 
     Args:
-        context: Project paths (determines cache file location).
+        cache_path: Path to the render fingerprint cache JSON file.
         cache: The ``{surface_name: fingerprint}`` mapping to persist.
 
     Raises:
@@ -66,10 +67,11 @@ def save_render_cache(context: ProjectContext, cache: dict[str, str]) -> None:
 
 
 def render_all(
-    context: ProjectContext,
-    web: EpistemicWeb,
+    web: EpistemicWebPort,
     renderer: WebRenderer,
     *,
+    output_dir: Path | None = None,
+    cache_path: Path | None = None,
     force: bool = False,
 ) -> dict[str, bool]:
     """Render all surfaces, skipping unchanged ones unless ``force=True``.
@@ -79,9 +81,12 @@ def render_all(
     input has changed. Updates the cache after rendering.
 
     Args:
-        context: Project paths and runtime configuration.
         web: The epistemic web to render.
         renderer: The view renderer that produces markdown surfaces.
+        output_dir: Directory to write rendered files. If ``None``,
+            surfaces are returned but not written to disk.
+        cache_path: Path to the render fingerprint cache file. If
+            ``None``, caching is skipped and all surfaces are rendered.
         force: If ``True``, re-render all surfaces regardless of cache.
 
     Returns:

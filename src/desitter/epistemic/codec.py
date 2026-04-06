@@ -3,7 +3,7 @@
 This module owns the translation between:
   - typed domain dataclasses
   - primitive payload dictionaries used by the gateway
-  - JSON-friendly values written by the repository
+    - primitive transport values exchanged at system boundaries
 
 It contains no I/O and no business rules.
 """
@@ -113,7 +113,7 @@ def status_enum_type(resource: str) -> type[Enum] | None:
 
 
 def normalize_payload(payload: Mapping[str, object]) -> dict[str, object]:
-    """Convert mixed Python values to JSON-friendly primitives.
+    """Convert mixed Python values to primitive transport values.
 
     Recursively serializes all values in the payload: enums become
     their ``.value``, dates become ISO strings, sets become sorted
@@ -125,7 +125,7 @@ def normalize_payload(payload: Mapping[str, object]) -> dict[str, object]:
 
     Returns:
         dict[str, object]: A new dictionary with all keys converted
-            to strings and all values serialized to JSON-compatible
+            to strings and all values serialized to transport-friendly
             primitives.
     """
     return {str(key): serialize_value(value) for key, value in payload.items()}
@@ -167,7 +167,7 @@ def build_entity(resource: str, payload: Mapping[str, object]) -> object:
 
 
 def deserialize_entity(resource: str, payload: Mapping[str, object]) -> object:
-    """Construct a typed domain entity from a serialized payload.
+    """Construct a typed domain entity from a primitive payload.
 
     This is an alias for ``build_entity`` used when decoding gateway
     responses back into typed domain objects on the client side.
@@ -183,7 +183,7 @@ def deserialize_entity(resource: str, payload: Mapping[str, object]) -> object:
 
 
 def serialize_value(value: object) -> object:
-    """Recursively serialize a Python value to JSON-friendly primitives.
+    """Recursively serialize a Python value to primitive transport values.
 
     Handles dataclass instances, enums, dates, sets, lists, tuples,
     and dicts. Sets are converted to sorted lists for deterministic
@@ -193,7 +193,7 @@ def serialize_value(value: object) -> object:
         value: Any Python value to serialize.
 
     Returns:
-        object: A JSON-compatible primitive (str, int, float, bool,
+        object: A transport-friendly primitive (str, int, float, bool,
             None, list, or dict).
     """
     if is_dataclass(value) and not isinstance(value, type):
@@ -223,10 +223,10 @@ def serialize_value(value: object) -> object:
 
 
 def entity_to_dict(entity: object) -> dict[str, object]:
-    """Serialize a domain dataclass instance to a JSON-friendly dictionary.
+    """Serialize a domain dataclass instance to a primitive payload mapping.
 
     Each field on the dataclass is serialized via ``serialize_value``.
-    The result is a flat dictionary suitable for JSON encoding.
+    The result is a flat mapping suitable for boundary transport.
 
     Args:
         entity: A dataclass instance to serialize. Must be an instance,
