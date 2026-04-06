@@ -120,9 +120,12 @@ for CI pipelines and audit tooling.
 
 ## Quick Start
 
+> **Not yet published.** Install from source for development.
+
 ```bash
-pip install desitter            # CLI + core
-pip install "desitter[mcp]"     # + MCP server for AI agent use
+git clone https://github.com/your-org/desitter
+cd desitter
+pip install -e ".[dev]"
 ```
 
 ```python
@@ -218,30 +221,30 @@ src/desitter/
 │   ├── model.py            # Entity dataclasses: Claim, Assumption, Prediction, …
 │   ├── web.py              # EpistemicWeb, aggregate root, all mutations
 │   ├── invariants.py       # Ten pure validator functions
+│   ├── codec.py            # Serialization between entities and primitive payloads
+│   ├── errors.py           # Domain exception hierarchy: EpistemicError, …
 │   └── ports.py            # Abstract interfaces: WebRepository, WebValidator, …
-├── adapters/               # Infrastructure implementations
-│   ├── json_repository.py  # Implements WebRepository over project/data/*.json
-│   ├── markdown_renderer.py
-│   └── transaction_log.py
 ├── controlplane/           # Core services
 │   ├── gateway.py          # Single mutation/query boundary + GatewayResult
-│   ├── factory.py          # Wires concrete adapters into Gateway
-│   ├── validate.py
+│   ├── _gateway_catalog.py # Resource and query spec tables
+│   ├── factory.py          # Wires concrete implementations into Gateway
+│   ├── validate.py         # Domain-wide invariant orchestration
 │   ├── check.py            # Staleness detection, reference integrity
-│   └── export.py
+│   ├── prose.py            # Managed-prose sync and verification
+│   ├── render.py           # SHA-256 fingerprint cache + incremental render
+│   └── export.py           # Export orchestration
+├── client/                 # Python API surface
+│   ├── __init__.py         # DeSitterClient, connect()
+│   ├── _core.py            # Generic gateway verbs, persistence, context manager
+│   └── _resources.py       # Typed entity helpers: register_claim, get_claim, …
 ├── views/                  # Read-only composed summaries
 │   ├── health.py           # run_health_check → HealthReport
-│   ├── render.py           # SHA-256 fingerprint cache + incremental render
 │   ├── status.py           # get_status → ProjectStatus
-│   └── metrics.py
-└── interfaces/             # Thin adapters, no business logic
-    ├── cli/
-    │   ├── main.py         # Click command tree
-    │   └── formatters.py   # Rich tables + JSON fallback
-    └── mcp/
-        ├── server.py       # FastMCP entry point
-        └── tools.py        # Tool handlers → gateway + view services
+│   └── metrics.py          # compute_metrics → PredictionMetrics, WebMetrics
+└── interfaces/             # Thin adapters, no business logic (planned)
 ```
+
+Planned but not yet created: `adapters/` (json_repository, transaction_log, markdown_renderer), `interfaces/cli/`, `interfaces/mcp/`.
 
 ---
 
@@ -253,21 +256,14 @@ pytest
 pytest --cov
 ```
 
-| Phase | Scope | Status |
+| Milestone | Scope | Status |
 |---|---|---|
-| 1 | Epistemic kernel, `EpistemicWeb`, all entities, ten invariants | **Complete** |
-| 2 | Persistence, config, packaging | **Partial** — config and transaction log done; JSON repository and renderer stubbed |
-| 3 | Control plane and view services | In progress |
-| 4 | Interface layer, MCP server and CLI | Pending |
-| 5 | Human-first UX, Rich output, `ds inspect` | Pending |
-| 6 | Result recording and provenance | Pending |
-| 7 | Governance, session tracking, close gates (opt-in) | Pending |
+| 1 | **Python API MVP** — `connect()`, entity register/get/list/transition helpers, `set_*` helpers, `record_analysis_result`, payload schemas | **In progress** |
+| 2 | **Shared read-side services** — `validate_project`, `run_health_check`, `get_status`, `compute_metrics`, render, export | Pending |
+| 3 | **Interface backfill** — CLI and MCP as thin delegates over the gateway and shared services | Pending |
+| 4 | **Documentation and coherence** — align docs with shipped behavior, worked examples, terminology | Pending |
 
-The epistemic kernel (Phase 1) is the foundation the rest is built on. It is
-complete, fully tested, and stable. Layers above it are being built in the order
-listed.
-
-See [TRACKER.md](TRACKER.md) for the full task-level breakdown.
+See [TRACKER.md](TRACKER.md) for the full task-level breakdown and exit criteria.
 
 ---
 
