@@ -10,6 +10,24 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ResourceSpec:
+    """Metadata describing how a resource type maps to ``EpistemicWebPort`` methods.
+
+    The gateway uses this to resolve generic operation names (``register``,
+    ``set``, ``transition``) to the concrete method names on the web
+    aggregate and to the attribute name where entities are stored.
+
+    Attributes:
+        collection_attr: Name of the ``EpistemicWebPort`` attribute that
+            holds all entities of this type, e.g. ``"claims"``.
+        register_method: Method name on ``EpistemicWebPort`` to call when
+            registering a new entity, e.g. ``"register_claim"``.
+        update_method: Method name on ``EpistemicWebPort`` to call when
+            updating an existing entity, e.g. ``"update_claim"``.
+        transition_method: Method name on ``EpistemicWebPort`` to call
+            when transitioning entity status, e.g. ``"transition_claim"``.
+            ``None`` for resource types that do not support status transitions.
+    """
+
     collection_attr: str
     register_method: str
     update_method: str
@@ -18,6 +36,21 @@ class ResourceSpec:
 
 @dataclass(frozen=True)
 class QuerySpec:
+    """Metadata describing a named read-only query exposed by the gateway.
+
+    Each entry in ``QUERY_SPECS`` maps a caller-facing query name to the
+    concrete ``EpistemicWebPort`` method that implements it, and declares
+    which parameters must be coerced to typed entity IDs before dispatch.
+
+    Attributes:
+        method_name: Name of the ``EpistemicWebPort`` method to call,
+            e.g. ``"claim_lineage"``.
+        parameter_resources: Mapping of parameter name to resource key
+            for parameters that must be coerced to typed IDs before the
+            call. For example ``{"cid": "claim"}`` means the ``cid``
+            parameter should be coerced to a ``ClaimId``.
+    """
+
     method_name: str
     parameter_resources: dict[str, str]
 
@@ -34,6 +67,11 @@ RESOURCE_SPECS: dict[str, ResourceSpec] = {
     "independence_group": ResourceSpec("independence_groups", "register_independence_group", "update_independence_group"),
     "pairwise_separation": ResourceSpec("pairwise_separations", "add_pairwise_separation", "update_pairwise_separation"),
 }
+"""Mapping of canonical resource keys to their ``ResourceSpec`` descriptors.
+
+Covers all ten built-in entity types. The gateway resolves operations
+(register, get, list, set, transition) against this table.
+"""
 
 
 QUERY_SPECS: dict[str, QuerySpec] = {
@@ -54,6 +92,13 @@ QUERY_SPECS: dict[str, QuerySpec] = {
     ),
     "parameter_impact": QuerySpec("parameter_impact", {"pid": "parameter"}),
 }
+"""Mapping of query names to their ``QuerySpec`` descriptors.
+
+Each entry declares a named read-only query that the gateway exposes
+via ``Gateway.query(query_type, **params)``. Parameters listed in
+``QuerySpec.parameter_resources`` are coerced to typed entity IDs
+before the underlying web method is invoked.
+"""
 
 
 __all__ = ["QuerySpec", "RESOURCE_SPECS", "ResourceSpec", "QUERY_SPECS"]

@@ -10,6 +10,11 @@ Layer cake (top to bottom):
 Programmatic entry point::
 
     from desitter.client import DeSitterClient, connect
+
+Attributes:
+    __version__ (str): PEP 440 version string for the installed package.
+        Follows ``MAJOR.MINOR.PATCH`` semver conventions. Read at runtime
+        by tooling and introspection.
 """
 
 __version__ = "0.1.0"

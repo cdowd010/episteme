@@ -206,21 +206,44 @@ class Gateway:
     # ── Private helpers ───────────────────────────────────────────
 
     def _resource_spec(self, resource: str) -> ResourceSpec:
-        """Look up the ResourceSpec for a canonical resource key.
+        """Look up the ``ResourceSpec`` for a canonical resource key.
+
+        Args:
+            resource: Canonical resource key (e.g. ``"claim"``).
+
+        Returns:
+            ResourceSpec: The metadata descriptor for the resource.
 
         Raises:
-            KeyError: If the resource is not in ``RESOURCE_SPECS``.
+            KeyError: If ``resource`` is not in ``RESOURCE_SPECS``.
         """
         raise NotImplementedError
 
     def _typed_identifier(self, resource: str, identifier: str) -> object:
-        """Coerce a string identifier to the resource's typed ID newtype."""
+        """Coerce a string identifier to the resource's typed ID NewType.
+
+        Args:
+            resource: Canonical resource key (e.g. ``"claim"``).
+            identifier: Raw string form of the entity ID.
+
+        Returns:
+            object: The typed NewType instance (e.g. ``ClaimId("C-001")``).
+
+        Raises:
+            KeyError: If ``resource`` is not recognized.
+        """
         raise NotImplementedError
 
     def _lookup_entity(self, resource: str, identifier: str) -> object | None:
         """Find an entity in the in-memory web by resource key and string ID.
 
-        Returns ``None`` if the entity does not exist.
+        Args:
+            resource: Canonical resource key (e.g. ``"prediction"``).
+            identifier: Raw string form of the entity ID.
+
+        Returns:
+            object | None: The domain entity instance, or ``None`` if the
+                entity does not exist in the web.
         """
         raise NotImplementedError
 
@@ -229,7 +252,19 @@ class Gateway:
         resource: str,
         payload: Mapping[str, object],
     ) -> list[Finding]:
-        """Run schema validation if a PayloadValidator is configured."""
+        """Run schema validation if a ``PayloadValidator`` is configured.
+
+        When no ``PayloadValidator`` was injected at construction time,
+        returns an empty list (validation is skipped).
+
+        Args:
+            resource: Canonical resource key (e.g. ``"claim"``).
+            payload: Inbound mutation payload to validate.
+
+        Returns:
+            list[Finding]: Zero or more schema findings. Empty when
+                no validator is configured or no issues are found.
+        """
         raise NotImplementedError
 
     def _finalize_mutation(
@@ -244,12 +279,28 @@ class Gateway:
     ) -> GatewayResult:
         """Enforce invariants and, if clean, commit the new web to memory.
 
-        If any CRITICAL findings are produced, returns ``BLOCKED`` without
-        updating ``self._web``. If ``dry_run`` is ``True``, validates but
-        does not update ``self._web``. Otherwise sets ``self._web = new_web``.
+        Runs the ``WebValidator`` against ``new_web``. If any CRITICAL
+        findings are produced, returns a ``BLOCKED`` result without
+        updating ``self._web``. If ``dry_run`` is ``True``, validates
+        but does not update ``self._web`` regardless of findings.
+        Otherwise sets ``self._web = new_web``.
 
-        Persistence (``repo.save()``) is NOT called here — that belongs
-        to ``DeSitterClient.save()``.
+        Persistence (``repo.save()``) is NOT performed here — that
+        belongs to ``DeSitterClient.save()``.
+
+        Args:
+            operation: Human-readable operation name for the result message.
+            resource: Canonical resource key (used in log/message context).
+            identifier: The entity ID affected by the operation.
+            new_web: The candidate new web state produced by the mutation.
+            dry_run: When ``True``, validate without committing the new web.
+            message: Success message to include in the result when no
+                CRITICAL findings are present.
+
+        Returns:
+            GatewayResult: ``"ok"`` with ``changed=True`` on clean commit;
+                ``"ok"`` with ``changed=False`` on a clean dry_run;
+                ``"BLOCKED"`` if any CRITICAL findings were produced.
         """
         raise NotImplementedError
 
@@ -258,7 +309,22 @@ class Gateway:
         item: Mapping[str, object],
         filters: Mapping[str, object],
     ) -> bool:
-        """Test whether a serialized entity dict matches all filter predicates."""
+        """Test whether a serialized entity dict matches all filter predicates.
+
+        Matching semantics per field type:
+        - ``list`` field vs filter value: field must contain the value.
+        - ``dict`` field vs filter value: field must be a superset of the
+          filter mapping.
+        - Scalar field: equality comparison.
+
+        Args:
+            item: Serialized entity dict (the candidate to test).
+            filters: Key-value pairs that must all match for the item
+                to be included.
+
+        Returns:
+            bool: ``True`` if every filter predicate matches the item.
+        """
         raise NotImplementedError
 
     def _error_result(
@@ -267,6 +333,16 @@ class Gateway:
         *,
         findings: list[Finding] | None = None,
     ) -> GatewayResult:
-        """Construct an error GatewayResult."""
+        """Construct an error ``GatewayResult``.
+
+        Args:
+            message: Human-readable error description.
+            findings: Optional structured findings to include alongside
+                the error message (e.g. schema violations).
+
+        Returns:
+            GatewayResult: Result with ``status="error"``,
+                ``changed=False``, and the provided message and findings.
+        """
         raise NotImplementedError
 

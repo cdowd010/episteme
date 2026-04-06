@@ -6,8 +6,8 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status: Early Development](https://img.shields.io/badge/status-early%20development-orange.svg)](TRACKER.md)
 
-> **Early development, not ready for production use.**
-> The API, file formats, and CLI surface are unstable. See [TRACKER.md](TRACKER.md) for current build status.
+> **Early development — implementation in progress.**
+> The API surface and data model are designed and documented; the underlying wiring is not yet complete. See [TRACKER.md](TRACKER.md) for current build status.
 
 ---
 
@@ -40,9 +40,9 @@ visible — and keeps it honest.
 ---
 
 For researchers, the primary interface is the Python API: `desitter.connect()`
-in scripts and notebooks. For AI agent sessions, the primary interface is the
-MCP server. The CLI remains important, but mainly as an inspection, health-check,
-render, and audit surface.
+in scripts and notebooks. The MCP server and CLI are deferred until the core
+capability is stable; once available, they will enable AI agent workflows and
+inspection, health-check, and audit operations respectively.
 
 Every successful mutation is recorded in the append-only transaction log at
 `project/data/transaction_log.jsonl` — a first-class public artifact that
@@ -73,7 +73,7 @@ structure, and tracks what changed.
 
 ## Interfaces
 
-deSitter exposes the same core system through three interfaces:
+deSitter exposes the same core system through multiple interfaces.
 
 **Python API — primary for researchers in scripts and notebooks**
 
@@ -93,10 +93,6 @@ client.register_claim(
 
 **MCP server — primary for AI agent sessions**
 
-```bash
-ds-mcp   # start the MCP server
-```
-
 The [Model Context Protocol](https://modelcontextprotocol.io) lets AI assistants
 (Claude, Copilot, Cursor, and others) call deSitter tools directly as structured
 operations. An agent can audit a derivation chain, identify structural gaps,
@@ -104,17 +100,8 @@ pre-flight a new prediction with `dry_run=True`, and commit it — all within a
 single session. The epistemic web provides the shared, persistent,
 invariant-enforced state. The AI provides the reasoning.
 
-**CLI — inspection, health-check, and audit**
-
-```bash
-ds health
-ds validate
-ds status
-ds render
-```
-
-Every command accepts `--json` for machine-readable output, making it suitable
-for CI pipelines and audit tooling.
+Additional interfaces — CLI, REST, and others — follow the same pattern: thin
+adapters over the Gateway, no business logic in the interface layer.
 
 ---
 
@@ -145,6 +132,7 @@ claims = client.list_claims().data or []
 ```
 
 ```bash
+# CLI interface — planned, pending Python API milestone
 ds health
 ds validate
 ds status
@@ -191,8 +179,6 @@ The layers above the kernel — adapters, control plane, view services, interfac
 
 All mutations route through a single `Gateway`. A bug fixed at the gateway is
 fixed for every interface simultaneously.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a full technical walkthrough.
 
 ---
 

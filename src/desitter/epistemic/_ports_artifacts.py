@@ -10,7 +10,25 @@ from ._ports_web import EpistemicWebPort
 
 @dataclass(frozen=True)
 class Artifact:
-    """Portable artifact emitted by a renderer or exporter."""
+    """Portable artifact emitted by a renderer or exporter.
+
+    Artifacts are self-contained, transport-friendly objects that carry
+    their content alongside metadata. Consumers (``ArtifactSink``
+    implementations) decide what to do with them — write to disk, stream
+    to a client, embed in a report, etc.
+
+    Attributes:
+        name: Human-readable name for this artifact (e.g. a filename
+            or section identifier such as ``"claims_table.md"`` or
+            ``"web_export.json"``).
+        content: The artifact's body. Type depends on the renderer or
+            exporter: commonly ``str`` for text, ``bytes`` for binary,
+            or a plain dict for structured data.
+        media_type: IANA media type string (e.g. ``"text/markdown"`` or
+            ``"application/json"``), or ``None`` if unspecified.
+        metadata: Optional key-value metadata for consumers (e.g.
+            generation timestamp, source entity IDs, version tag).
+    """
 
     name: str
     content: object
@@ -19,26 +37,64 @@ class Artifact:
 
 
 class ArtifactSink(Protocol):
-    """Consume artifacts emitted by renderers or exporters."""
+    """Consume a stream of artifacts produced by a renderer or exporter.
+
+    Implementations decide how to handle each artifact: write to disk,
+    push to an object store, embed in an in-memory report, etc. The
+    control plane calls ``emit`` once per rendering or export pass.
+    """
 
     def emit(self, artifacts: Iterable[Artifact]) -> None:
-        """Consume a stream of artifacts."""
+        """Consume a stream of artifacts.
+
+        Args:
+            artifacts: An iterable of ``Artifact`` instances to consume.
+                Iterating this may trigger I/O in the producer.
+        """
         ...
 
 
 class WebExporter(Protocol):
-    """Produce portable artifacts from the epistemic web."""
+    """Produce portable data artifacts from the epistemic web.
+
+    Exporters serialize the web into a transport format (e.g. JSON,
+    CSV) via a stream of ``Artifact`` instances. The implementation
+    decides the format; the control-plane ``export`` function handles
+    routing to an ``ArtifactSink``.
+    """
 
     def export(self, web: EpistemicWebPort) -> Iterable[Artifact]:
-        """Serialize the web into a stream of portable artifacts."""
+        """Serialize the web into a stream of portable artifacts.
+
+        Args:
+            web: The epistemic web to export.
+
+        Returns:
+            Iterable[Artifact]: A stream of serialized artifacts. May
+                be lazy (generator) or eagerly materialized.
+        """
         ...
 
 
 class WebRenderer(Protocol):
-    """Generate human-readable artifacts from the web."""
+    """Generate human-readable artifacts from the epistemic web.
+
+    Renderers produce markdown tables, summary views, or other
+    human-readable formats from the web. The control-plane ``render_all``
+    function calls the renderer and passes results to an ``ArtifactSink``
+    or cache layer.
+    """
 
     def render(self, web: EpistemicWebPort) -> Iterable[Artifact]:
-        """Return rendered artifacts ready for an ArtifactSink."""
+        """Return rendered artifacts ready for an ``ArtifactSink``.
+
+        Args:
+            web: The epistemic web to render.
+
+        Returns:
+            Iterable[Artifact]: A stream of rendered artifacts (e.g.
+                one per markdown section or output file).
+        """
         ...
 
 

@@ -9,15 +9,34 @@ from .types import Finding
 
 
 class WebValidator(Protocol):
-    """Validate the web and return findings."""
+    """Validate an epistemic web and return a structured finding list.
+
+    Implementations may run domain invariant checks (``DomainValidator``)
+    or deployment-specific structural checks. Multiple validators can be
+    composed via ``validate_project``.
+    """
 
     def validate(self, web: EpistemicWebPort) -> list[Finding]:
-        """Run all validation rules and return findings."""
+        """Run all validation rules and return findings.
+
+        Args:
+            web: The epistemic web to validate.
+
+        Returns:
+            list[Finding]: Zero or more findings describing integrity
+                violations. An empty list means no issues were found.
+        """
         ...
 
 
 class ProseSync(Protocol):
-    """Update managed prose blocks derived from canonical state."""
+    """Update managed-prose blocks derived from canonical epistemic state.
+
+    Implementations know which prose blocks exist (e.g. generated
+    markdown sections in the repository) and how to write them. The
+    control-plane functions in ``prose.py`` depend on this protocol so
+    that filesystem I/O stays out of the control plane.
+    """
 
     def sync(
         self,
@@ -25,27 +44,76 @@ class ProseSync(Protocol):
         *,
         dry_run: bool = False,
     ) -> dict[str, object]:
-        """Sync prose blocks and return a summary of changes."""
+        """Update managed prose blocks to match canonical state.
+
+        Args:
+            web: The epistemic web to derive prose from.
+            dry_run: When ``True``, compute changes but do not write
+                anything to disk.
+
+        Returns:
+            dict[str, object]: A summary of which blocks were (or would
+                be) updated, keyed by block name.
+        """
         ...
 
     def verify(self, web: EpistemicWebPort) -> list[Finding]:
-        """Report prose blocks that have drifted from canonical state."""
+        """Report prose blocks that have drifted from canonical state.
+
+        Args:
+            web: The epistemic web to check against.
+
+        Returns:
+            list[Finding]: One finding per block whose on-disk content
+                differs from what the web would generate.
+        """
         ...
 
 
 class TransactionLog(Protocol):
-    """Append provenance for gateway mutations and queries."""
+    """Append-only provenance log for gateway mutations.
+
+    Each successful gateway mutation records an entry so that external
+    tools can watch, index, or react to state changes. The implementation
+    decides the storage format (e.g. ``transaction_log.jsonl``).
+    """
 
     def append(self, operation: str, identifier: str) -> str:
-        """Record an operation and return its transaction ID."""
+        """Record a completed operation and return its transaction ID.
+
+        Args:
+            operation: Human-readable operation name, e.g.
+                ``"register_claim"``.
+            identifier: The primary entity ID affected by the operation.
+
+        Returns:
+            str: A unique transaction ID for this log entry (e.g. a
+                UUID or monotonic counter string).
+        """
         ...
 
 
 class PayloadValidator(Protocol):
-    """Validate inbound mutation payloads before the gateway mutates the web."""
+    """Validate inbound mutation payloads before the gateway mutates the web.
+
+    Implementations perform schema checks against the declared payload
+    structure for each resource type. The gateway calls this before
+    constructing domain entities, so type errors surface as structured
+    ``Finding`` lists rather than Python exceptions.
+    """
 
     def validate(self, resource: str, payload: Mapping[str, object]) -> list[Finding]:
-        """Return findings describing payload/schema issues, if any."""
+        """Return findings describing schema or structural issues, if any.
+
+        Args:
+            resource: Canonical resource key (e.g. ``"claim"``,
+                ``"prediction"``).
+            payload: The inbound mutation payload to validate.
+
+        Returns:
+            list[Finding]: Zero or more schema or type findings. An
+                empty list means the payload passed all checks.
+        """
         ...
 
 

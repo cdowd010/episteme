@@ -15,7 +15,20 @@ class _DeSitterClientResourceHelpers(
     _DeSitterClientRegistryHelpers,
     _DeSitterClientStructureHelpers,
 ):
-    """Combined typed helper surface for built-in client resources."""
+    """Combined typed helper surface for all built-in client resources.
+
+    Merges the three resource family mixins into one class so that
+    ``DeSitterClient`` need only inherit from a single helpers class.
+    No new methods are defined here; all implementations live in the
+    constituent mixin classes.
+
+    Families:
+    - ``_DeSitterClientHypothesisHelpers``: claims, assumptions,
+      predictions, analyses.
+    - ``_DeSitterClientRegistryHelpers``: theories, discoveries, dead ends.
+    - ``_DeSitterClientStructureHelpers``: parameters, independence groups,
+      pairwise separations.
+    """
 
 
 __all__ = ["_DeSitterClientResourceHelpers"]
