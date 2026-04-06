@@ -110,7 +110,7 @@ adapters over the Gateway, no business logic in the interface layer.
 > **Not yet published.** Install from source for development.
 
 ```bash
-git clone https://github.com/your-org/desitter
+git clone https://github.com/cdowd010/desitter
 cd desitter
 pip install -e ".[dev]"
 ```
