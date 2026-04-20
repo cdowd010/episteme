@@ -1,8 +1,8 @@
 """Tests for on-demand semantic invariant validators."""
 from __future__ import annotations
 
-from desitter.epistemic.model import TheoryId, TheoryStatus
-from desitter.epistemic.invariants import validate_all
+from episteme.epistemic.model import TheoryId, TheoryStatus
+from episteme.epistemic.invariants import validate_all
 
 
 def test_theory_abandonment_impact(base_web):

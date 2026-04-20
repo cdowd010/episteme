@@ -9,7 +9,7 @@ from ..epistemic.model import DeadEnd, Discovery, Theory
 from ..epistemic.types import DeadEndStatus, DiscoveryStatus, TheoryStatus
 
 
-class _DeSitterClientRegistryHelpers:
+class _EpistemeClientRegistryHelpers:
     """Typed helpers for theories, discoveries, and dead ends."""
 
     def register_theory(
@@ -304,4 +304,4 @@ class _DeSitterClientRegistryHelpers:
         raise NotImplementedError
 
 
-__all__ = ["_DeSitterClientRegistryHelpers"]
+__all__ = ["_EpistemeClientRegistryHelpers"]

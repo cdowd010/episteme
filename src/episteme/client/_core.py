@@ -13,7 +13,7 @@ from ..controlplane.gateway import Gateway, GatewayResult
 from ..epistemic.ports import WebRepository
 
 
-class _DeSitterClientCore:
+class _EpistemeClientCore:
     """Shared client lifecycle and generic gateway orchestration.
 
     Owns the ``Gateway`` reference and the optional ``WebRepository``
@@ -22,7 +22,7 @@ class _DeSitterClientCore:
     that typed helper methods delegate to.
 
     All public methods return ``ClientResult`` and never raise
-    ``DeSitterClientError`` unless the gateway returns a non-success
+    ``EpistemeClientError`` unless the gateway returns a non-success
     status and the caller has opted in to raising.
     """
 
@@ -64,7 +64,7 @@ class _DeSitterClientCore:
         """Enter the context manager.
 
         Returns:
-            _DeSitterClientCore: ``self``, so that ``with ds.connect() as client:``
+            _EpistemeClientCore: ``self``, so that ``with ds.connect() as client:``
                 binds the client to ``client``.
         """
         raise NotImplementedError
@@ -286,4 +286,4 @@ class _DeSitterClientCore:
         raise NotImplementedError
 
 
-__all__ = ["_DeSitterClientCore"]
+__all__ = ["_EpistemeClientCore"]

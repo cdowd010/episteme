@@ -1,7 +1,7 @@
 """Tests for the controlplane check module."""
 from __future__ import annotations
 
-from desitter.controlplane.check import check_stale
+from episteme.controlplane.check import check_stale
 
 
 def test_check_stale_detects_outdated_analysis(base_web):

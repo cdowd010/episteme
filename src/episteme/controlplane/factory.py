@@ -5,7 +5,7 @@ optional abstract dependencies (``WebValidator``, ``PayloadValidator``)
 into a ``Gateway``.
 
 Persistence (``WebRepository``) is NOT wired here — it belongs to
-``DeSitterClient``, which owns all persistence decisions.
+``EpistemeClient``, which owns all persistence decisions.
 """
 from __future__ import annotations
 

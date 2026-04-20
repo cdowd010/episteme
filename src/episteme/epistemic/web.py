@@ -1847,7 +1847,7 @@ class EpistemicWeb:
 
 
 # Domain exceptions live in errors.py — imported at the top of this module.
-# Re-exported here so that ``from desitter.epistemic.web import <Error>``
+# Re-exported here so that ``from episteme.epistemic.web import <Error>``
 # continues to work for any caller that imports directly from this module.
 __all_errors__ = [
     "BrokenReferenceError",

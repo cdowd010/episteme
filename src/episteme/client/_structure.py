@@ -8,7 +8,7 @@ from ..epistemic.model import IndependenceGroup, PairwiseSeparation, Parameter
 from ..epistemic.types import MeasurementRegime
 
 
-class _DeSitterClientStructureHelpers:
+class _EpistemeClientStructureHelpers:
     """Typed helpers for parameters and evidence-structure resources."""
 
     def register_parameter(
@@ -211,4 +211,4 @@ class _DeSitterClientStructureHelpers:
         raise NotImplementedError
 
 
-__all__ = ["_DeSitterClientStructureHelpers"]
+__all__ = ["_EpistemeClientStructureHelpers"]

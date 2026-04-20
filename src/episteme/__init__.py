@@ -1,4 +1,4 @@
-"""deSitter — control plane for research epistemic webs.
+"""Episteme — control plane for research epistemic webs.
 
 Layer cake (top to bottom):
   interfaces   — optional consumer adapters (CLI, MCP, REST, …)
@@ -9,7 +9,7 @@ Layer cake (top to bottom):
 
 Programmatic entry point::
 
-    from desitter.client import DeSitterClient, connect
+    from episteme.client import EpistemeClient, connect
 
 Attributes:
     __version__ (str): PEP 440 version string for the installed package.
@@ -19,4 +19,4 @@ Attributes:
 
 __version__ = "0.1.0"
 
-from .client import ClientResult, DeSitterClient, DeSitterClientError, connect
+from .client import ClientResult, EpistemeClient, EpistemeClientError, connect

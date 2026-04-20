@@ -74,7 +74,7 @@ class Claim:
             with ``Theory.motivates_claims``.
         parameter_constraints: Annotation map ``{ParameterId: constraint_str}``
             where the constraint string is human-readable (e.g. ``"< 0.05"``.
-            deSitter does not evaluate these — it surfaces them when a
+            Episteme does not evaluate these — it surfaces them when a
             referenced parameter changes.
         source: Provenance string — DOI, arXiv ID, URL, citation, or
             ``"derived from ..."``.
@@ -296,12 +296,12 @@ class PairwiseSeparation:
 class Analysis:
     """A piece of analytical work whose results feed back into the epistemic web.
 
-    deSitter does not run analyses — the researcher runs them using their
+    Episteme does not run analyses — the researcher runs them using their
     preferred tools (SageMath, Python, R, Jupyter, etc.) and records the
     result via ``ds record`` or the ``record_result`` MCP tool.
 
     ``path`` and ``command`` are provenance pointers: they tell the researcher
-    (or agent) where the code lives and how to run it. deSitter never invokes
+    (or agent) where the code lives and how to run it. Episteme never invokes
     them. The most recently recorded result stores its git SHA directly on the
     analysis, giving a clear provenance chain: path + SHA + recorded value.
 

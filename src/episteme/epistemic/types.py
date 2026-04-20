@@ -14,37 +14,37 @@ from typing import NewType
 # runtime, but the type checker treats them as distinct types.
 
 ClaimId = NewType("ClaimId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.Claim`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.Claim`."""
 
 AssumptionId = NewType("AssumptionId", str)
-"""Nominal identifier for an :class:`~desitter.epistemic.model.Assumption`."""
+"""Nominal identifier for an :class:`~episteme.epistemic.model.Assumption`."""
 
 PredictionId = NewType("PredictionId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.Prediction`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.Prediction`."""
 
 TheoryId = NewType("TheoryId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.Theory`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.Theory`."""
 
 DiscoveryId = NewType("DiscoveryId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.Discovery`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.Discovery`."""
 
 AnalysisId = NewType("AnalysisId", str)
-"""Nominal identifier for an :class:`~desitter.epistemic.model.Analysis`."""
+"""Nominal identifier for an :class:`~episteme.epistemic.model.Analysis`."""
 
 IndependenceGroupId = NewType("IndependenceGroupId", str)
-"""Nominal identifier for an :class:`~desitter.epistemic.model.IndependenceGroup`."""
+"""Nominal identifier for an :class:`~episteme.epistemic.model.IndependenceGroup`."""
 
 ParameterId = NewType("ParameterId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.Parameter`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.Parameter`."""
 
 DeadEndId = NewType("DeadEndId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.DeadEnd`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.DeadEnd`."""
 
 PairwiseSeparationId = NewType("PairwiseSeparationId", str)
-"""Nominal identifier for a :class:`~desitter.epistemic.model.PairwiseSeparation`."""
+"""Nominal identifier for a :class:`~episteme.epistemic.model.PairwiseSeparation`."""
 
 ObservationId = NewType("ObservationId", str)
-"""Nominal identifier for an :class:`~desitter.epistemic.model.Observation`."""
+"""Nominal identifier for an :class:`~episteme.epistemic.model.Observation`."""
 
 
 
@@ -73,7 +73,7 @@ class Finding:
     """A single validation or health-check result.
 
     Findings are the universal unit of diagnostic output across the entire
-    deSitter system: domain invariant validators, payload schema checks,
+    Episteme system: domain invariant validators, payload schema checks,
     health reports, and coverage analyses all produce ``Finding`` instances.
 
     Attributes:

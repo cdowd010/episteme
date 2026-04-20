@@ -1,7 +1,7 @@
 """Project configuration and runtime context.
 
 This module is the runtime configuration contract for the entire system.
-``DesitterConfig`` holds settings parsed from ``desitter.toml``.
+``EpistemeConfig`` holds settings parsed from ``episteme.toml``.
 ``ProjectPaths`` holds all derived filesystem paths.
 ``ProjectContext`` bundles the workspace path, config, and paths into
 the single object passed through every service call.
@@ -17,15 +17,15 @@ from pathlib import Path
 
 from .epistemic.types import Finding
 
-_CONFIG_FILENAME = "desitter.toml"
+_CONFIG_FILENAME = "episteme.toml"
 
 
 # ── Configuration ────────────────────────────────────────────────
 
 
 @dataclass
-class DesitterConfig:
-    """Parsed project settings loaded from ``desitter.toml``.
+class EpistemeConfig:
+    """Parsed project settings loaded from ``episteme.toml``.
 
     Attributes:
         project_dir: Project directory relative to the workspace root.
@@ -71,28 +71,28 @@ class ProjectContext:
         paths: Derived filesystem paths.
     """
     workspace: Path
-    config: DesitterConfig
+    config: EpistemeConfig
     paths: ProjectPaths
 
 
 # ── Builders ─────────────────────────────────────────────────────
 
 
-def load_config(root: Path) -> DesitterConfig:
-    """Read ``desitter.toml`` from *root* and return project settings.
+def load_config(root: Path) -> EpistemeConfig:
+    """Read ``episteme.toml`` from *root* and return project settings.
 
     A missing file or missing keys are not errors — defaults are used.
-    Only the ``[desitter]`` table is read.
+    Only the ``[episteme]`` table is read.
 
     Args:
         root: Absolute path to the workspace root.
 
     Returns:
-        DesitterConfig: Parsed configuration with defaults.
+        EpistemeConfig: Parsed configuration with defaults.
     """
     config_path = root / _CONFIG_FILENAME
     if not config_path.exists():
-        return DesitterConfig()
+        return EpistemeConfig()
 
     try:
         import tomllib          # Python 3.11+
@@ -100,16 +100,16 @@ def load_config(root: Path) -> DesitterConfig:
         import tomli as tomllib  # type: ignore[no-redef]
 
     raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    desitter = raw.get("desitter", {})
+    episteme = raw.get("episteme", {})
 
-    return DesitterConfig(
-        project_dir=Path(desitter.get("project_dir", "project")),
+    return EpistemeConfig(
+        project_dir=Path(episteme.get("project_dir", "project")),
     )
 
 
 def build_context(
     root: Path,
-    config: DesitterConfig | None = None,
+    config: EpistemeConfig | None = None,
 ) -> ProjectContext:
     """Derive the runtime context for a workspace root.
 

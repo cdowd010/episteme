@@ -1,12 +1,12 @@
-"""Shared pytest fixtures for the deSitter test suite."""
+"""Shared pytest fixtures for the Episteme test suite."""
 from __future__ import annotations
 
 from datetime import date
 
 import pytest
 
-from desitter.epistemic.web import EpistemicWeb
-from desitter.epistemic.model import (
+from episteme.epistemic.web import EpistemicWeb
+from episteme.epistemic.model import (
     Analysis,
     AnalysisId,
     Assumption,
@@ -27,7 +27,7 @@ from desitter.epistemic.model import (
     TheoryId,
     TheoryStatus,
 )
-from desitter.epistemic.types import (
+from episteme.epistemic.types import (
     Criticality,
     ConfidenceTier,
     EvidenceKind,

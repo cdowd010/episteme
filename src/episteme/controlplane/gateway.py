@@ -12,7 +12,7 @@ Responsibilities:
   - Post-mutation invariant enforcement (CRITICAL findings block mutation).
 
 Not responsible for:
-  - Persistence — that belongs to DeSitterClient via WebRepository.
+  - Persistence — that belongs to EpistemeClient via WebRepository.
   - Transaction logging — deferred to the persistence layer.
   - Prose sync, view rendering, or any I/O.
   - Formatting human CLI output.
@@ -48,7 +48,7 @@ class Gateway:
     treats it identically via the protocol.
 
     Every public method returns a ``GatewayResult`` and never raises.
-    Persistence is the caller's responsibility (``DeSitterClient.save()``).
+    Persistence is the caller's responsibility (``EpistemeClient.save()``).
     """
 
     def __init__(
@@ -286,7 +286,7 @@ class Gateway:
         Otherwise sets ``self._web = new_web``.
 
         Persistence (``repo.save()``) is NOT performed here — that
-        belongs to ``DeSitterClient.save()``.
+        belongs to ``EpistemeClient.save()``.
 
         Args:
             operation: Human-readable operation name for the result message.

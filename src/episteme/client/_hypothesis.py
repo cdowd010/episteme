@@ -18,7 +18,7 @@ from ..epistemic.types import (
 )
 
 
-class _DeSitterClientHypothesisHelpers:
+class _EpistemeClientHypothesisHelpers:
     """Typed helpers for claims, assumptions, predictions, and analyses."""
 
     def register_claim(
@@ -393,4 +393,4 @@ class _DeSitterClientHypothesisHelpers:
         raise NotImplementedError
 
 
-__all__ = ["_DeSitterClientHypothesisHelpers"]
+__all__ = ["_EpistemeClientHypothesisHelpers"]

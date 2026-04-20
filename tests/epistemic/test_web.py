@@ -1,7 +1,7 @@
 """Tests for EpistemicWeb mutation operations."""
 from __future__ import annotations
 
-from desitter.epistemic.model import (
+from episteme.epistemic.model import (
     ClaimId,
     ObservationId,
     PredictionId,

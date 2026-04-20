@@ -19,7 +19,7 @@ class ClientResult(Generic[ResultData]):
     """Typed wrapper over a gateway result returned by every client operation.
 
     Callers inspect ``status`` to determine success or failure before
-    reading ``data``. No client operation raises ``DeSitterClientError``
+    reading ``data``. No client operation raises ``EpistemeClientError``
     by default; that behaviour must be explicitly requested.
 
     Attributes:
@@ -47,7 +47,7 @@ class ClientResult(Generic[ResultData]):
     data: ResultData | None = None
 
 
-class DeSitterClientError(Exception):
+class EpistemeClientError(Exception):
     """Raised when the gateway returns a non-success status.
 
     Not raised by default — callers must opt in to this behaviour.
@@ -80,4 +80,4 @@ class DeSitterClientError(Exception):
         self.findings = findings or []
 
 
-__all__ = ["ClientResult", "DeSitterClientError"]
+__all__ = ["ClientResult", "EpistemeClientError"]

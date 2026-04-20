@@ -923,7 +923,7 @@ class WebRepository(Protocol):
     """Persistence abstraction for loading and saving the epistemic web.
 
     Implementors provide storage-specific serialization/deserialization
-    logic. The ``Gateway`` and ``DeSitterClient`` depend on this protocol
+    logic. The ``Gateway`` and ``EpistemeClient`` depend on this protocol
     rather than any specific storage format.
 
     Concrete implementations include:
