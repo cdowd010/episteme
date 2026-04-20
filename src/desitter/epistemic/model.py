@@ -21,6 +21,7 @@ from .types import (
     ClaimStatus,
     ClaimType,
     ConfidenceTier,
+    Criticality,
     DeadEndId,
     DeadEndStatus,
     DiscoveryId,
@@ -28,6 +29,8 @@ from .types import (
     EvidenceKind,
     IndependenceGroupId,
     MeasurementRegime,
+    ObservationId,
+    ObservationStatus,
     ParameterId,
     PairwiseSeparationId,
     PredictionId,
@@ -67,6 +70,8 @@ class Claim:
             DAG enforced by the web's cycle-detection logic.
         analyses: IDs of analyses linked to this claim. Bidirectional with
             ``Analysis.claims_covered``.
+        theories: IDs of theories that motivate this claim. Bidirectional
+            with ``Theory.motivates_claims``.
         parameter_constraints: Annotation map ``{ParameterId: constraint_str}``
             where the constraint string is human-readable (e.g. ``"< 0.05"``.
             deSitter does not evaluate these — it surfaces them when a
@@ -84,6 +89,7 @@ class Claim:
     assumptions: set[AssumptionId] = field(default_factory=set)
     depends_on: set[ClaimId] = field(default_factory=set)
     analyses: set[AnalysisId] = field(default_factory=set)
+    theories: set[TheoryId] = field(default_factory=set)
     parameter_constraints: dict[ParameterId, str] = field(default_factory=dict)
     source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
 
@@ -109,6 +115,10 @@ class Assumption:
         type: Whether the assumption is ``EMPIRICAL`` (testable) or
             ``METHODOLOGICAL`` (a modeling/procedural choice).
         scope: Applicability scope, e.g. ``"global"`` or ``"domain-specific"``.
+        criticality: How load-bearing this assumption is. ``LOW``,
+            ``MODERATE``, ``HIGH``, or ``LOAD_BEARING``. Defaults to
+            ``MODERATE`` — researchers should explicitly upgrade assumptions
+            that are single points of failure.
         used_in_claims: IDs of claims that reference this assumption.
             Backlink maintained by claim operations — not set by callers.
         depends_on: IDs of other assumptions this one presupposes.
@@ -125,6 +135,7 @@ class Assumption:
     statement: str
     type: AssumptionType
     scope: str
+    criticality: Criticality = Criticality.MODERATE
     used_in_claims: set[ClaimId] = field(default_factory=set)
     depends_on: set[AssumptionId] = field(default_factory=set)
     falsifiable_consequence: str | None = None
@@ -187,6 +198,13 @@ class Prediction:
             ``FULLY_SPECIFIED`` tier.
         conditional_on: IDs of assumptions taken as given for validity.
         falsifier: Description of what evidence would refute this prediction.
+        stress_criteria: Description of what evidence would move this
+            prediction from CONFIRMED to STRESSED — the threshold for
+            tension without full refutation. Together with ``falsifier``,
+            this makes the adjudication boundaries explicit and auditable.
+        observations: IDs of observations that bear on this prediction.
+            Backlink maintained by observation operations — not set by
+            callers.
         benchmark_source: Reference to the benchmark data source.
         source: Provenance string — DOI, arXiv ID, URL, or citation.
         notes: Free-form notes for the researcher.
@@ -210,6 +228,8 @@ class Prediction:
     free_params: int = 0
     conditional_on: set[AssumptionId] = field(default_factory=set)
     falsifier: str | None = None
+    stress_criteria: str | None = None
+    observations: set[ObservationId] = field(default_factory=set)
     benchmark_source: str | None = None
     source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
     notes: str | None = None
@@ -323,10 +343,14 @@ class Analysis:
 class Theory:
     """A higher-level explanatory framework being explored.
 
-    A theory motivates and organises claims. Claims are the atomic
-    assertions the theory rests on; predictions are what the theory
-    predicts that could be tested. Theories are leaf entities —
-    nothing else in the web references them by ID.
+    A theory motivates and organises claims. Claims declare which theories
+    motivate them via ``Claim.theories``, and this entity's
+    ``motivates_claims`` backlink is maintained automatically by the web.
+    This makes the relationship structural: when a theory is abandoned,
+    the system can answer "which claims lose their theoretical motivation?"
+
+    ``related_predictions`` remains a soft navigational link — predictions
+    relate to theories indirectly through claims.
 
     Attributes:
         id: Unique identifier (e.g. ``"T-001"``).
@@ -334,8 +358,8 @@ class Theory:
         status: Lifecycle state — ``ACTIVE``, ``REFINED``, ``ABANDONED``,
             or ``SUPERSEDED``.
         summary: Optional prose description of the theory.
-        related_claims: IDs of claims this theory motivates or rests on.
-            Soft navigational link — scrubbed on claim removal.
+        motivates_claims: IDs of claims this theory motivates. Backlink
+            maintained by claim operations — not set by callers.
         related_predictions: IDs of predictions this theory generates.
             Soft navigational link — scrubbed on prediction removal.
         source: Provenance string — DOI, arXiv ID, URL, or citation.
@@ -344,7 +368,7 @@ class Theory:
     title: str
     status: TheoryStatus
     summary: str | None = None
-    related_claims: set[ClaimId] = field(default_factory=set)
+    motivates_claims: set[ClaimId] = field(default_factory=set)
     related_predictions: set[PredictionId] = field(default_factory=set)
     source: str | None = None                    # doi:..., arxiv:..., url, citation
 
@@ -442,6 +466,9 @@ class Parameter:
         used_in_analyses: IDs of analyses that depend on this parameter.
             Backlink maintained by analysis operations — not set by
             callers.
+        last_modified: Date when the parameter value was last changed.
+            Used by ``check_stale`` to identify analyses whose results
+            predate the most recent parameter change.
         notes: Free-form notes for the researcher.
     """
     id: ParameterId
@@ -451,6 +478,59 @@ class Parameter:
     uncertainty: Any = None             # absolute uncertainty, same type as value
     source: str | None = None           # citation or derivation note
     used_in_analyses: set[AnalysisId] = field(default_factory=set)
+    last_modified: date | None = None   # when the value was last changed
+    notes: str | None = None
+
+
+@dataclass
+class Observation:
+    """A recorded empirical observation or measurement.
+
+    Observations capture raw empirical data that may exist before any
+    prediction or claim is formulated. This supports inductive and
+    exploratory workflows where observation precedes hypothesis
+    formation, a common pattern in real science that the
+    hypothetico-deductive model alone cannot capture.
+
+    Observations can optionally be linked to predictions they bear on:
+    ``predictions`` is a forward structural link, and ``Prediction.observations``
+    is the auto-maintained backlink.
+
+    An observation without any linked predictions represents an
+    exploratory finding that has not yet been connected to the
+    reasoning chain. The researcher (or agent) may later formulate
+    claims and predictions that reference it.
+
+    Attributes:
+        id: Unique identifier (e.g. ``"OBS-001"``).
+        description: What was observed, in human-readable prose.
+        value: The observed/measured value (numeric, string, or
+            structured).
+        date: When the observation was made or recorded.
+        status: Lifecycle state ``PRELIMINARY``, ``VALIDATED``,
+            ``DISPUTED``, or ``RETRACTED``.
+        methodology: How the observation was made — experimental
+            protocol, instrument, data pipeline, etc.
+        predictions: IDs of predictions this observation bears on.
+            Bidirectional with ``Prediction.observations``.
+        related_claims: IDs of claims this observation is relevant to.
+            Soft navigational link scrubbed on claim removal.
+        related_assumptions: IDs of assumptions this observation is
+            relevant to. Soft navigational link scrubbed on assumption
+            removal.
+        source: Provenance string DOI, arXiv ID, URL, lab notebook ref.
+        notes: Free-form notes for the researcher.
+    """
+    id: ObservationId
+    description: str
+    value: Any
+    date: date
+    status: ObservationStatus
+    methodology: str | None = None
+    predictions: set[PredictionId] = field(default_factory=set)
+    related_claims: set[ClaimId] = field(default_factory=set)
+    related_assumptions: set[AssumptionId] = field(default_factory=set)
+    source: str | None = None
     notes: str | None = None
 
 

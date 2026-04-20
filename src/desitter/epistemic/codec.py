@@ -22,6 +22,7 @@ from .model import (
     DeadEnd,
     Discovery,
     IndependenceGroup,
+    Observation,
     PairwiseSeparation,
     Parameter,
     Prediction,
@@ -40,6 +41,7 @@ ENTITY_TYPES: dict[str, type[object]] = {
     "parameter": Parameter,
     "independence_group": IndependenceGroup,
     "pairwise_separation": PairwiseSeparation,
+    "observation": Observation,
 }
 """Mapping of canonical resource keys to their dataclass types.
 

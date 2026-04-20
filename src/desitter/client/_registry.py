@@ -20,14 +20,15 @@ class _DeSitterClientRegistryHelpers:
         *,
         dry_run: bool = False,
         summary: str | None = None,
-        related_claims: Iterable[str] | None = None,
         related_predictions: Iterable[str] | None = None,
         source: str | None = None,
     ) -> ClientResult[Theory]:
         """Register a theory in the epistemic web.
 
         A theory is a high-level narrative construct that groups related claims
-        and predictions into a coherent explanatory framework.
+        and predictions into a coherent explanatory framework. Claims declare
+        which theories motivate them via ``Claim.theories``; the theory's
+        ``motivates_claims`` backlink is auto-maintained.
 
         Args:
             id: Unique identifier for the theory.
@@ -36,7 +37,6 @@ class _DeSitterClientRegistryHelpers:
                 key).
             dry_run: Simulate without committing.
             summary: Extended free-text summary of the theory.
-            related_claims: IDs of claims that fall under this theory.
             related_predictions: IDs of predictions associated with this
                 theory.
             source: Citation or reference.

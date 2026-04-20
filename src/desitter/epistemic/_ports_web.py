@@ -12,6 +12,7 @@ from .model import (
     DeadEnd,
     Discovery,
     IndependenceGroup,
+    Observation,
     PairwiseSeparation,
     Parameter,
     Prediction,
@@ -27,6 +28,8 @@ from .types import (
     DiscoveryId,
     DiscoveryStatus,
     IndependenceGroupId,
+    ObservationId,
+    ObservationStatus,
     ParameterId,
     PairwiseSeparationId,
     PredictionId,
@@ -84,6 +87,7 @@ class EpistemicWebPort(Protocol):
     pairwise_separations: Mapping[PairwiseSeparationId, PairwiseSeparation]
     dead_ends: Mapping[DeadEndId, DeadEnd]
     parameters: Mapping[ParameterId, Parameter]
+    observations: Mapping[ObservationId, Observation]
 
     # ── Point lookups ─────────────────────────────────────────────
 
@@ -403,6 +407,24 @@ class EpistemicWebPort(Protocol):
         """
         ...
 
+    def register_observation(self, observation: Observation) -> EpistemicWebPort:
+        """Register a new observation. Returns a new web instance.
+
+        Validates that all referenced predictions, claims, and assumptions
+        exist. Updates ``Prediction.observations`` backlinks.
+
+        Args:
+            observation: The observation to add. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWebPort: New web containing the registered observation.
+
+        Raises:
+            DuplicateIdError: If ``observation.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+        """
+        ...
+
     # ── Update mutations ──────────────────────────────────────────
 
     def update_claim(self, new_claim: Claim) -> EpistemicWebPort:
@@ -571,6 +593,24 @@ class EpistemicWebPort(Protocol):
         """
         ...
 
+    def update_observation(self, new_observation: Observation) -> EpistemicWebPort:
+        """Replace an observation's fields. Returns a new web instance.
+
+        Diffs ``predictions`` links and updates ``Prediction.observations``
+        backlinks accordingly.
+
+        Args:
+            new_observation: The updated observation. Must match an existing ``id``.
+
+        Returns:
+            EpistemicWebPort: New web with the updated observation.
+
+        Raises:
+            BrokenReferenceError: If the observation does not exist or if
+                any referenced ID does not exist.
+        """
+        ...
+
     # ── Status transitions ────────────────────────────────────────
 
     def transition_prediction(self, pid: PredictionId, new_status: PredictionStatus) -> EpistemicWebPort:
@@ -645,6 +685,21 @@ class EpistemicWebPort(Protocol):
 
         Raises:
             BrokenReferenceError: If the discovery does not exist.
+        """
+        ...
+
+    def transition_observation(self, oid: ObservationId, new_status: ObservationStatus) -> EpistemicWebPort:
+        """Change an observation's lifecycle status. Returns a new web instance.
+
+        Args:
+            oid: The observation ID to transition.
+            new_status: The target ``ObservationStatus`` value.
+
+        Returns:
+            EpistemicWebPort: New web with the updated observation status.
+
+        Raises:
+            BrokenReferenceError: If the observation does not exist.
         """
         ...
 
@@ -843,6 +898,23 @@ class EpistemicWebPort(Protocol):
 
         Raises:
             BrokenReferenceError: If the separation does not exist.
+        """
+        ...
+
+    def remove_observation(self, oid: ObservationId) -> EpistemicWebPort:
+        """Remove an observation from the web. Returns a new web instance.
+
+        Tears down ``Prediction.observations`` backlinks. Observations are
+        provenance records — nothing hard-blocks their removal.
+
+        Args:
+            oid: The observation ID to remove.
+
+        Returns:
+            EpistemicWebPort: New web without the observation.
+
+        Raises:
+            BrokenReferenceError: If the observation does not exist.
         """
         ...
 

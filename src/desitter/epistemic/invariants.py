@@ -16,11 +16,14 @@ from .types import (
     ClaimStatus,
     ClaimType,
     ConfidenceTier,
+    Criticality,
     EvidenceKind,
     Finding,
     MeasurementRegime,
+    ObservationStatus,
     PredictionStatus,
     Severity,
+    TheoryStatus,
 )
 from .ports import EpistemicWebPort
 
@@ -466,6 +469,138 @@ def validate_conditional_assumption_pressure(web: EpistemicWebPort) -> list[Find
     return findings
 
 
+def validate_stress_criteria(web: EpistemicWebPort) -> list[Finding]:
+    """Flag STRESSED predictions without explicit stress criteria.
+
+    The boundary between CONFIRMED and STRESSED is philosophically
+    ambiguous. Making the researcher declare ``stress_criteria`` upfront
+    — what evidence would constitute tension without full refutation —
+    ensures the adjudication is explicit and auditable rather than
+    ad-hoc. Severity: WARNING.
+
+    Args:
+        web: The epistemic web to validate.
+
+    Returns:
+        list[Finding]: One WARNING per STRESSED prediction missing
+            ``stress_criteria``.
+    """
+    findings: list[Finding] = []
+    for pid, pred in web.predictions.items():
+        if pred.status == PredictionStatus.STRESSED and not pred.stress_criteria:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"predictions/{pid}",
+                "STRESSED prediction has no stress_criteria — the boundary "
+                "between CONFIRMED and STRESSED should be declared explicitly",
+            ))
+    return findings
+
+
+def validate_retracted_observation_citations(web: EpistemicWebPort) -> list[Finding]:
+    """Flag observations that still link to retracted claims or disputed/retracted observations.
+
+    If an observation's ``related_claims`` includes claims that have been
+    retracted, the observation's interpretation may be compromised.
+    Also flags observations in RETRACTED status that are still linked to
+    predictions. Severity: WARNING.
+
+    Args:
+        web: The epistemic web to validate.
+
+    Returns:
+        list[Finding]: One WARNING per problematic observation.
+    """
+    findings: list[Finding] = []
+    retracted_claims = {
+        cid for cid, c in web.claims.items()
+        if c.status == ClaimStatus.RETRACTED
+    }
+    for oid, obs in web.observations.items():
+        cited = obs.related_claims & retracted_claims
+        if cited:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"observations/{oid}",
+                f"Observation references retracted claim(s): {sorted(cited)}",
+            ))
+        if obs.status == ObservationStatus.RETRACTED and obs.predictions:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"observations/{oid}",
+                f"Retracted observation still linked to prediction(s): "
+                f"{sorted(obs.predictions)}",
+            ))
+    return findings
+
+
+def validate_theory_abandonment_impact(web: EpistemicWebPort) -> list[Finding]:
+    """Flag claims whose only theoretical motivation comes from abandoned/superseded theories.
+
+    If all theories referenced by a claim have been abandoned or superseded,
+    the claim has lost its theoretical motivation. This does not invalidate
+    the claim (it may still be empirically supported), but the researcher
+    should be aware. Severity: WARNING.
+
+    Args:
+        web: The epistemic web to validate.
+
+    Returns:
+        list[Finding]: One WARNING per claim with only abandoned/superseded
+            theoretical motivation.
+    """
+    findings: list[Finding] = []
+    terminal_statuses = {TheoryStatus.ABANDONED, TheoryStatus.SUPERSEDED}
+    for cid, claim in web.claims.items():
+        if not claim.theories:
+            continue
+        all_terminal = all(
+            web.theories.get(tid) is not None
+            and web.theories[tid].status in terminal_statuses
+            for tid in claim.theories
+        )
+        if all_terminal:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"claims/{cid}",
+                f"All motivating theories are abandoned/superseded: "
+                f"{sorted(claim.theories)}. Claim has lost theoretical "
+                f"motivation.",
+            ))
+    return findings
+
+
+def validate_load_bearing_assumption_coverage(web: EpistemicWebPort) -> list[Finding]:
+    """Flag LOAD_BEARING or HIGH criticality assumptions with no tested_by coverage.
+
+    Load-bearing assumptions are single points of failure. If they have
+    no predictions testing them, the project has a critical blind spot.
+    Severity: WARNING for HIGH, CRITICAL for LOAD_BEARING.
+
+    Args:
+        web: The epistemic web to validate.
+
+    Returns:
+        list[Finding]: One finding per high-criticality untested assumption.
+    """
+    findings: list[Finding] = []
+    for aid, assumption in web.assumptions.items():
+        if assumption.criticality == Criticality.LOAD_BEARING and not assumption.tested_by:
+            findings.append(Finding(
+                Severity.CRITICAL,
+                f"assumptions/{aid}",
+                "LOAD_BEARING assumption has no predictions in tested_by — "
+                "this is a single point of failure with no active test",
+            ))
+        elif assumption.criticality == Criticality.HIGH and not assumption.tested_by:
+            findings.append(Finding(
+                Severity.WARNING,
+                f"assumptions/{aid}",
+                "HIGH criticality assumption has no predictions in tested_by",
+            ))
+    return findings
+
+
 def validate_all(web: EpistemicWebPort) -> list[Finding]:
     """Run all domain invariant validators and return the combined findings.
 
@@ -485,6 +620,10 @@ def validate_all(web: EpistemicWebPort) -> list[Finding]:
         8. Implicit assumption coverage
         9. Foundational claim dependencies
         10. Conditional assumption pressure
+        11. Stress criteria
+        12. Retracted observation citations
+        13. Theory abandonment impact
+        14. Load-bearing assumption coverage
 
     Args:
         web: The epistemic web to validate.
@@ -504,4 +643,8 @@ def validate_all(web: EpistemicWebPort) -> list[Finding]:
         + validate_implicit_assumption_coverage(web)
         + validate_foundational_claim_deps(web)
         + validate_conditional_assumption_pressure(web)
+        + validate_stress_criteria(web)
+        + validate_retracted_observation_citations(web)
+        + validate_theory_abandonment_impact(web)
+        + validate_load_bearing_assumption_coverage(web)
     )

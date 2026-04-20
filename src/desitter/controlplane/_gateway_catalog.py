@@ -66,6 +66,7 @@ RESOURCE_SPECS: dict[str, ResourceSpec] = {
     "parameter": ResourceSpec("parameters", "register_parameter", "update_parameter"),
     "independence_group": ResourceSpec("independence_groups", "register_independence_group", "update_independence_group"),
     "pairwise_separation": ResourceSpec("pairwise_separations", "add_pairwise_separation", "update_pairwise_separation"),
+    "observation": ResourceSpec("observations", "register_observation", "update_observation", "transition_observation"),
 }
 """Mapping of canonical resource keys to their ``ResourceSpec`` descriptors.
 

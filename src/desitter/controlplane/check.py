@@ -7,7 +7,7 @@ a filesystem collaborator) live in ``prose.py``.
 from __future__ import annotations
 
 from ..epistemic.ports import EpistemicWebPort
-from ..epistemic.types import Finding
+from ..epistemic.types import Finding, Severity
 
 
 # ── Diagnostics ──────────────────────────────────────────────────
@@ -38,21 +38,73 @@ def check_stale(
 ) -> list[Finding]:
     """Identify analyses that should be reviewed after parameter changes.
 
-    Reports analyses whose recorded results may be stale because one or
-    more referenced parameters changed after the last recorded run.
-    Findings may also include directly affected predictions in the same
-    blast radius.
+    Compares each parameter's ``last_modified`` date against the
+    ``last_result_date`` of analyses that depend on it. When a parameter
+    was modified after an analysis's last recorded run, that analysis
+    (and its downstream predictions) may be stale.
+
+    Also reports analyses that have never been run (``last_result_date``
+    is None) but have parameters with a ``last_modified`` date.
+
+    For each stale analysis, computes the blast radius via
+    ``parameter_impact`` and includes affected predictions in the finding.
 
     Args:
         web: The epistemic web to check.
 
     Returns:
-        list[Finding]: WARNING findings for stale analyses and predictions.
-
-    Raises:
-        NotImplementedError: Not yet implemented.
+        list[Finding]: WARNING findings for stale analyses and their
+            downstream predictions.
     """
-    raise NotImplementedError
+    findings: list[Finding] = []
+    # Build reverse index: analysis → set of stale parameter IDs
+    stale_params_by_analysis: dict[str, set[str]] = {}
+
+    for par_id, param in web.parameters.items():
+        if param.last_modified is None:
+            continue
+        for an_id in param.used_in_analyses:
+            analysis = web.analyses.get(an_id)
+            if analysis is None:
+                continue
+            if analysis.last_result_date is None:
+                # Never run, but parameter has a modification date
+                stale_params_by_analysis.setdefault(an_id, set()).add(par_id)
+            elif param.last_modified > analysis.last_result_date:
+                stale_params_by_analysis.setdefault(an_id, set()).add(par_id)
+
+    for an_id, stale_pars in stale_params_by_analysis.items():
+        analysis = web.analyses.get(an_id)
+        if analysis is None:
+            continue
+        # Find downstream predictions linked to this analysis
+        affected_predictions = {
+            pid for pid, pred in web.predictions.items()
+            if pred.analysis == an_id
+        }
+        # Also find predictions via claims covered by this analysis
+        for cid in analysis.claims_covered:
+            affected_predictions.update(web.predictions_depending_on_claim(cid))
+
+        msg = (
+            f"Analysis {an_id} may be stale: parameter(s) "
+            f"{sorted(stale_pars)} modified after last run"
+        )
+        if analysis.last_result_date is None:
+            msg = (
+                f"Analysis {an_id} has never been run but depends on "
+                f"parameter(s) {sorted(stale_pars)} with recorded modifications"
+            )
+        if affected_predictions:
+            msg += f". Affected predictions: {sorted(affected_predictions)}"
+
+        findings.append(Finding(
+            Severity.WARNING,
+            f"analyses/{an_id}",
+            msg,
+        ))
+
+    return findings
 
 
 __all__ = ["check_refs", "check_stale"]

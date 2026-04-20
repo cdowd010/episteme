@@ -19,6 +19,7 @@ from .model import (
     DeadEnd,
     Discovery,
     IndependenceGroup,
+    Observation,
     PairwiseSeparation,
     Parameter,
     Prediction,
@@ -41,6 +42,8 @@ from .types import (
     DiscoveryId,
     DiscoveryStatus,
     IndependenceGroupId,
+    ObservationId,
+    ObservationStatus,
     ParameterId,
     PairwiseSeparationId,
     PredictionId,
@@ -81,6 +84,7 @@ class EpistemicWeb:
             keyed by ``PairwiseSeparationId``.
         dead_ends: Registry of all dead end records, keyed by ``DeadEndId``.
         parameters: Registry of all parameters, keyed by ``ParameterId``.
+        observations: Registry of all observations, keyed by ``ObservationId``.
         version: Monotonically increasing integer, incremented by the
             repository on each successful save. Zero for in-memory webs.
             Used for optimistic concurrency control when multiple sessions
@@ -99,6 +103,7 @@ class EpistemicWeb:
     pairwise_separations: dict[PairwiseSeparationId, PairwiseSeparation] = field(default_factory=dict)
     dead_ends: dict[DeadEndId, DeadEnd] = field(default_factory=dict)
     parameters: dict[ParameterId, Parameter] = field(default_factory=dict)
+    observations: dict[ObservationId, Observation] = field(default_factory=dict)
 
     # ── Queries ───────────────────────────────────────────────────
 
@@ -457,6 +462,7 @@ class EpistemicWeb:
         self._check_refs_exist(claim.depends_on, self.claims, "claim")
         self._check_refs_exist(claim.analyses, self.analyses, "analysis")
         self._check_refs_exist(set(claim.parameter_constraints.keys()), self.parameters, "parameter")
+        self._check_refs_exist(claim.theories, self.theories, "theory")
         self._check_no_cycle_with(claim)
 
         new = self._copy()
@@ -474,6 +480,11 @@ class EpistemicWeb:
         for anid in claim.analyses:
             new.analyses[anid] = copy.deepcopy(new.analyses[anid])
             new.analyses[anid].claims_covered.add(claim.id)
+
+        # Maintain bidirectional: theory.motivates_claims
+        for tid in claim.theories:
+            new.theories[tid] = copy.deepcopy(new.theories[tid])
+            new.theories[tid].motivates_claims.add(claim.id)
 
         return new
 
@@ -592,8 +603,9 @@ class EpistemicWeb:
     def register_theory(self, theory: Theory) -> EpistemicWeb:
         """Register a new theory in the web.
 
-        Validates that all ``related_claims`` and ``related_predictions``
-        IDs exist.
+        Validates that all ``related_predictions`` IDs exist.
+        ``motivates_claims`` is a backlink maintained by claim
+        operations and starts empty.
 
         Args:
             theory: The theory to register. Must have a unique ``id``.
@@ -607,10 +619,11 @@ class EpistemicWeb:
         """
         if theory.id in self.theories:
             raise DuplicateIdError(f"Theory {theory.id} already exists")
-        self._check_refs_exist(theory.related_claims, self.claims, "claim")
         self._check_refs_exist(theory.related_predictions, self.predictions, "prediction")
         new = self._copy()
-        new.theories[theory.id] = copy.deepcopy(theory)
+        stored = copy.deepcopy(theory)
+        stored.motivates_claims = set()
+        new.theories[theory.id] = stored
         return new
 
     def register_independence_group(self, group: IndependenceGroup) -> EpistemicWeb:
@@ -915,6 +928,7 @@ class EpistemicWeb:
         self._check_refs_exist(new_claim.depends_on, self.claims, "claim")
         self._check_refs_exist(new_claim.analyses, self.analyses, "analysis")
         self._check_refs_exist(set(new_claim.parameter_constraints.keys()), self.parameters, "parameter")
+        self._check_refs_exist(new_claim.theories, self.theories, "theory")
         self._check_no_cycle_with(new_claim)
 
         new = self._copy()
@@ -935,6 +949,14 @@ class EpistemicWeb:
         for anid in new_claim.analyses - old.analyses:
             new.analyses[anid] = copy.deepcopy(new.analyses[anid])
             new.analyses[anid].claims_covered.add(new_claim.id)
+
+        # Diff theory.motivates_claims
+        for tid in old.theories - new_claim.theories:
+            new.theories[tid] = copy.deepcopy(new.theories[tid])
+            new.theories[tid].motivates_claims.discard(new_claim.id)
+        for tid in new_claim.theories - old.theories:
+            new.theories[tid] = copy.deepcopy(new.theories[tid])
+            new.theories[tid].motivates_claims.add(new_claim.id)
 
         return new
 
@@ -1095,8 +1117,9 @@ class EpistemicWeb:
     def update_theory(self, new_theory: Theory) -> EpistemicWeb:
         """Replace a theory's fields.
 
-        Validates that all ``related_claims`` and ``related_predictions``
-        IDs exist.
+        Validates that all ``related_predictions`` IDs exist.
+        ``motivates_claims`` is a backlink maintained by claim operations
+        and is preserved from the existing theory.
 
         Args:
             new_theory: The updated theory. Must have the same ``id``
@@ -1111,10 +1134,12 @@ class EpistemicWeb:
         """
         if new_theory.id not in self.theories:
             raise BrokenReferenceError(f"Theory {new_theory.id} does not exist")
-        self._check_refs_exist(new_theory.related_claims, self.claims, "claim")
+        old = self.theories[new_theory.id]
         self._check_refs_exist(new_theory.related_predictions, self.predictions, "prediction")
         new = self._copy()
-        new.theories[new_theory.id] = copy.deepcopy(new_theory)
+        updated = copy.deepcopy(new_theory)
+        updated.motivates_claims = copy.deepcopy(old.motivates_claims)
+        new.theories[new_theory.id] = updated
         return new
 
     def update_independence_group(self, new_group: IndependenceGroup) -> EpistemicWeb:
@@ -1270,6 +1295,11 @@ class EpistemicWeb:
             if pid in discovery.related_predictions:
                 new.discoveries[disc_id] = copy.deepcopy(discovery)
                 new.discoveries[disc_id].related_predictions.discard(pid)
+        # Scrub observation.predictions links (observation owns the forward link)
+        for oid, obs in list(new.observations.items()):
+            if pid in obs.predictions:
+                new.observations[oid] = copy.deepcopy(obs)
+                new.observations[oid].predictions.discard(pid)
         return new
 
     def remove_claim(self, cid: ClaimId) -> EpistemicWeb:
@@ -1319,11 +1349,12 @@ class EpistemicWeb:
             if anid in new.analyses:
                 new.analyses[anid] = copy.deepcopy(new.analyses[anid])
                 new.analyses[anid].claims_covered.discard(cid)
-        # Scrub soft references in theories, dead ends, and discoveries
-        for tid, theory in list(new.theories.items()):
-            if cid in theory.related_claims:
-                new.theories[tid] = copy.deepcopy(theory)
-                new.theories[tid].related_claims.discard(cid)
+        # Tear down bidirectional: theory.motivates_claims
+        for tid in claim.theories:
+            if tid in new.theories:
+                new.theories[tid] = copy.deepcopy(new.theories[tid])
+                new.theories[tid].motivates_claims.discard(cid)
+        # Scrub soft references in dead ends and discoveries
         for de_id, dead_end in list(new.dead_ends.items()):
             if cid in dead_end.related_claims:
                 new.dead_ends[de_id] = copy.deepcopy(dead_end)
@@ -1332,6 +1363,11 @@ class EpistemicWeb:
             if cid in discovery.related_claims:
                 new.discoveries[disc_id] = copy.deepcopy(discovery)
                 new.discoveries[disc_id].related_claims.discard(cid)
+        # Scrub soft references in observations
+        for oid, obs in list(new.observations.items()):
+            if cid in obs.related_claims:
+                new.observations[oid] = copy.deepcopy(obs)
+                new.observations[oid].related_claims.discard(cid)
         # Scrub claim_lineage annotations in independence groups
         for gid, group in list(new.independence_groups.items()):
             if cid in group.claim_lineage:
@@ -1382,6 +1418,11 @@ class EpistemicWeb:
             if aid in group.assumption_lineage:
                 new.independence_groups[gid] = copy.deepcopy(group)
                 new.independence_groups[gid].assumption_lineage.discard(aid)
+        # Scrub soft references in observations
+        for oid, obs in list(new.observations.items()):
+            if aid in obs.related_assumptions:
+                new.observations[oid] = copy.deepcopy(obs)
+                new.observations[oid].related_assumptions.discard(aid)
         return new
 
     def remove_parameter(self, pid: ParameterId) -> EpistemicWeb:
@@ -1497,8 +1538,9 @@ class EpistemicWeb:
     def remove_theory(self, tid: TheoryId) -> EpistemicWeb:
         """Remove a theory from the web.
 
-        Theories are leaf entities — nothing references them by ID, so
-        removal is always safe.
+        Scrubs ``Claim.theories`` references on any claims that were
+        motivated by this theory. Does not block on claims — a claim
+        can survive without its motivating theory.
 
         Args:
             tid: The theory ID to remove.
@@ -1513,6 +1555,11 @@ class EpistemicWeb:
             raise BrokenReferenceError(f"Theory {tid} does not exist")
         new = self._copy()
         del new.theories[tid]
+        # Scrub Claim.theories backlinks
+        for cid, claim in list(new.claims.items()):
+            if tid in claim.theories:
+                new.claims[cid] = copy.deepcopy(claim)
+                new.claims[cid].theories.discard(tid)
         return new
 
     def remove_discovery(self, did: DiscoveryId) -> EpistemicWeb:
@@ -1573,6 +1620,125 @@ class EpistemicWeb:
             raise BrokenReferenceError(f"PairwiseSeparation {sid} does not exist")
         new = self._copy()
         del new.pairwise_separations[sid]
+        return new
+
+    def register_observation(self, observation: Observation) -> EpistemicWeb:
+        """Register a new observation in the web.
+
+        Validates that all referenced predictions, claims, and assumptions
+        exist. Updates bidirectional ``Prediction.observations`` backlinks.
+
+        Args:
+            observation: The observation to register. Must have a unique ``id``.
+
+        Returns:
+            EpistemicWeb: A new web instance containing the registered observation.
+
+        Raises:
+            DuplicateIdError: If ``observation.id`` already exists.
+            BrokenReferenceError: If any referenced ID does not exist.
+        """
+        if observation.id in self.observations:
+            raise DuplicateIdError(f"Observation {observation.id} already exists")
+        self._check_refs_exist(observation.predictions, self.predictions, "prediction")
+        self._check_refs_exist(observation.related_claims, self.claims, "claim")
+        self._check_refs_exist(observation.related_assumptions, self.assumptions, "assumption")
+
+        new = self._copy()
+        new.observations[observation.id] = copy.deepcopy(observation)
+
+        # Maintain bidirectional: prediction.observations
+        for pid in observation.predictions:
+            new.predictions[pid] = copy.deepcopy(new.predictions[pid])
+            new.predictions[pid].observations.add(observation.id)
+
+        return new
+
+    def update_observation(self, new_observation: Observation) -> EpistemicWeb:
+        """Replace an observation's fields while maintaining bidirectional links.
+
+        Diffs old vs new ``predictions`` sets and updates
+        ``Prediction.observations`` backlinks accordingly.
+
+        Args:
+            new_observation: The updated observation. Must have the same
+                ``id`` as an existing observation.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated observation.
+
+        Raises:
+            BrokenReferenceError: If the observation does not exist or if
+                any referenced ID does not exist.
+        """
+        if new_observation.id not in self.observations:
+            raise BrokenReferenceError(f"Observation {new_observation.id} does not exist")
+        old = self.observations[new_observation.id]
+        self._check_refs_exist(new_observation.predictions, self.predictions, "prediction")
+        self._check_refs_exist(new_observation.related_claims, self.claims, "claim")
+        self._check_refs_exist(new_observation.related_assumptions, self.assumptions, "assumption")
+
+        new = self._copy()
+        new.observations[new_observation.id] = copy.deepcopy(new_observation)
+
+        # Diff prediction.observations backlinks
+        for pid in old.predictions - new_observation.predictions:
+            if pid in new.predictions:
+                new.predictions[pid] = copy.deepcopy(new.predictions[pid])
+                new.predictions[pid].observations.discard(new_observation.id)
+        for pid in new_observation.predictions - old.predictions:
+            new.predictions[pid] = copy.deepcopy(new.predictions[pid])
+            new.predictions[pid].observations.add(new_observation.id)
+
+        return new
+
+    def remove_observation(self, oid: ObservationId) -> EpistemicWeb:
+        """Remove an observation from the web.
+
+        Tears down ``Prediction.observations`` backlinks. Observations
+        are provenance records — nothing else hard-blocks their removal.
+
+        Args:
+            oid: The observation ID to remove.
+
+        Returns:
+            EpistemicWeb: A new web instance without the observation.
+
+        Raises:
+            BrokenReferenceError: If the observation does not exist.
+        """
+        if oid not in self.observations:
+            raise BrokenReferenceError(f"Observation {oid} does not exist")
+        obs = self.observations[oid]
+        new = self._copy()
+        del new.observations[oid]
+        # Tear down prediction.observations backlinks
+        for pid in obs.predictions:
+            if pid in new.predictions:
+                new.predictions[pid] = copy.deepcopy(new.predictions[pid])
+                new.predictions[pid].observations.discard(oid)
+        return new
+
+    def transition_observation(
+        self, oid: ObservationId, new_status: ObservationStatus
+    ) -> EpistemicWeb:
+        """Change an observation's lifecycle status.
+
+        Args:
+            oid: The observation ID to transition.
+            new_status: The new status to assign.
+
+        Returns:
+            EpistemicWeb: A new web instance with the updated status.
+
+        Raises:
+            BrokenReferenceError: If the observation does not exist.
+        """
+        if oid not in self.observations:
+            raise BrokenReferenceError(f"Observation {oid} does not exist")
+        new = self._copy()
+        new.observations[oid] = copy.deepcopy(new.observations[oid])
+        new.observations[oid].status = new_status
         return new
 
     # ── Invariant checks ──────────────────────────────────────────
@@ -1676,6 +1842,7 @@ class EpistemicWeb:
             pairwise_separations=dict(self.pairwise_separations),
             dead_ends=dict(self.dead_ends),
             parameters=dict(self.parameters),
+            observations=dict(self.observations),
         )
 
 

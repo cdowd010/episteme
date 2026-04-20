@@ -43,6 +43,9 @@ DeadEndId = NewType("DeadEndId", str)
 PairwiseSeparationId = NewType("PairwiseSeparationId", str)
 """Nominal identifier for a :class:`~desitter.epistemic.model.PairwiseSeparation`."""
 
+ObservationId = NewType("ObservationId", str)
+"""Nominal identifier for an :class:`~desitter.epistemic.model.Observation`."""
+
 
 
 # ── Severity ──────────────────────────────────────────────────────
@@ -273,3 +276,44 @@ class AssumptionType(Enum):
 
     EMPIRICAL = "E"        # can in principle be falsified by observation
     METHODOLOGICAL = "M"   # a choice of method or modelling convention
+
+
+class Criticality(Enum):
+    """How load-bearing an assumption is within the epistemic web.
+
+    LOW:
+        Assumption supports a narrow or peripheral part of the project.
+    MODERATE:
+        Assumption underpins a meaningful portion of the reasoning chain.
+    HIGH:
+        Assumption is a major structural dependency — many claims and
+        predictions rest on it.
+    LOAD_BEARING:
+        Assumption is a single point of failure — if it falls, a large
+        fraction of the project's conclusions are invalidated.
+    """
+
+    LOW = "low"
+    MODERATE = "moderate"
+    HIGH = "high"
+    LOAD_BEARING = "load_bearing"
+
+
+class ObservationStatus(Enum):
+    """Lifecycle state of an empirical observation.
+
+    PRELIMINARY:
+        Initial observation that has not yet been validated or replicated.
+    VALIDATED:
+        Observation has been checked, replicated, or confirmed by
+        independent means.
+    DISPUTED:
+        The observation's validity or interpretation is contested.
+    RETRACTED:
+        Observation has been withdrawn due to error or fraud.
+    """
+
+    PRELIMINARY = "preliminary"
+    VALIDATED = "validated"
+    DISPUTED = "disputed"
+    RETRACTED = "retracted"
