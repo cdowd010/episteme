@@ -23,7 +23,7 @@ class _EpistemeClientResourceHelpers(
     constituent mixin classes.
 
     Families:
-    - ``_EpistemeClientHypothesisHelpers``: claims, assumptions,
+    - ``_EpistemeClientHypothesisHelpers``: hypotheses, assumptions,
       predictions, analyses.
     - ``_EpistemeClientRegistryHelpers``: theories, discoveries, dead ends.
     - ``_EpistemeClientStructureHelpers``: parameters, independence groups,

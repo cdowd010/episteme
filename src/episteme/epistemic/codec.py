@@ -18,7 +18,7 @@ from typing import Any, Mapping, Union, get_args, get_origin, get_type_hints
 from .model import (
     Analysis,
     Assumption,
-    Claim,
+    Hypothesis,
     DeadEnd,
     Discovery,
     IndependenceGroup,
@@ -31,7 +31,7 @@ from .model import (
 
 
 ENTITY_TYPES: dict[str, type[object]] = {
-    "claim": Claim,
+    "hypothesis": Hypothesis,
     "assumption": Assumption,
     "prediction": Prediction,
     "analysis": Analysis,
@@ -54,12 +54,12 @@ def get_entity_class(resource: str) -> type[object]:
     """Return the model dataclass for a canonical resource name.
 
     Args:
-        resource: A canonical resource key such as ``"claim"``,
+        resource: A canonical resource key such as ``"hypothesis"``,
             ``"prediction"``, or ``"independence_group"``.
 
     Returns:
         type[object]: The corresponding dataclass type (e.g.
-            ``Claim``, ``Prediction``).
+            ``Hypothesis``, ``Prediction``).
 
     Raises:
         KeyError: If ``resource`` is not a recognized resource key.
@@ -77,10 +77,10 @@ def entity_id_type(resource: str) -> object:
     for the given resource and returns the NewType callable.
 
     Args:
-        resource: A canonical resource key (e.g. ``"claim"``).
+        resource: A canonical resource key (e.g. ``"hypothesis"``).
 
     Returns:
-        object: The NewType constructor (e.g. ``ClaimId``) that can
+        object: The NewType constructor (e.g. ``HypothesisId``) that can
             be called with a string to produce a typed identifier.
 
     Raises:
@@ -141,7 +141,7 @@ def build_entity(resource: str, payload: Mapping[str, object]) -> object:
     enums, lists to sets, ISO date strings to ``date`` objects).
 
     Args:
-        resource: A canonical resource key (e.g. ``"claim"``).
+        resource: A canonical resource key (e.g. ``"hypothesis"``).
         payload: A mapping of field names to primitive values. Fields
             not present in the payload are omitted from construction
             and must have defaults on the dataclass.
@@ -175,7 +175,7 @@ def deserialize_entity(resource: str, payload: Mapping[str, object]) -> object:
     responses back into typed domain objects on the client side.
 
     Args:
-        resource: A canonical resource key (e.g. ``"claim"``).
+        resource: A canonical resource key (e.g. ``"hypothesis"``).
         payload: A mapping of field names to primitive values.
 
     Returns:

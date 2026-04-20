@@ -25,7 +25,7 @@ class PredictionMetrics:
             ``CONFIRMED`` status.
         tier_a_total: Total number of Tier-A predictions.
         stressed: IDs of predictions under epistemic stress (e.g.
-            assumptions retracted or claims refuted).
+            assumptions retracted or hypotheses refuted).
     """
 
     total: int = 0
@@ -44,7 +44,7 @@ class GraphMetrics:
     metrics and coverage gap lists.
 
     Attributes:
-        claim_count: Number of claims.
+        hypothesis_count: Number of hypotheses.
         assumption_count: Number of assumptions.
         analysis_count: Number of analyses.
         theory_count: Number of theories.
@@ -54,13 +54,13 @@ class GraphMetrics:
         independence_group_count: Number of independence groups.
         pairwise_separation_count: Number of pairwise separations.
         prediction_metrics: Detailed prediction aggregate stats.
-        uncovered_numerical_claims: IDs of numerical claims that
+        uncovered_quantitative_hypotheses: IDs of numerical hypotheses that
             lack a covering prediction.
         empirical_assumptions_without_consequence: IDs of empirical
             assumptions that have no falsifiable consequence.
     """
 
-    claim_count: int = 0
+    hypothesis_count: int = 0
     assumption_count: int = 0
     analysis_count: int = 0
     theory_count: int = 0
@@ -70,7 +70,7 @@ class GraphMetrics:
     independence_group_count: int = 0
     pairwise_separation_count: int = 0
     prediction_metrics: PredictionMetrics = field(default_factory=PredictionMetrics)
-    uncovered_numerical_claims: list[str] = field(default_factory=list)
+    uncovered_quantitative_hypotheses: list[str] = field(default_factory=list)
     empirical_assumptions_without_consequence: list[str] = field(default_factory=list)
 
 

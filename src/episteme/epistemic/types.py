@@ -10,11 +10,11 @@ from typing import NewType
 
 
 # ── Typed identifiers ─────────────────────────────────────────────
-# NewType gives nominal typing: ClaimId and AnalysisId are both str at
+# NewType gives nominal typing: HypothesisId and AnalysisId are both str at
 # runtime, but the type checker treats them as distinct types.
 
-ClaimId = NewType("ClaimId", str)
-"""Nominal identifier for a :class:`~episteme.epistemic.model.Claim`."""
+HypothesisId = NewType("HypothesisId", str)
+"""Nominal identifier for a :class:`~episteme.epistemic.model.Hypothesis`."""
 
 AssumptionId = NewType("AssumptionId", str)
 """Nominal identifier for an :class:`~episteme.epistemic.model.Assumption`."""
@@ -81,7 +81,7 @@ class Finding:
             CRITICAL). CRITICAL findings block mutations; WARNING and INFO
             are advisory.
         source: A slash-delimited path identifying where the issue was
-            detected, e.g. ``"predictions/P-001"`` or ``"payload/claim"``.
+            detected, e.g. ``"predictions/P-001"`` or ``"payload/hypothesis"``.
         message: A human-readable description of what was found and why
             it matters.
     """
@@ -211,25 +211,25 @@ class DiscoveryStatus(Enum):
     NEW:
         Recently recorded and not yet integrated into formal structures.
     INTEGRATED:
-        Mapped into claims/predictions or otherwise incorporated into the graph.
+        Mapped into hypotheses/predictions or otherwise incorporated into the graph.
     ARCHIVED:
         Retained for provenance, with no active integration work.
     """
 
     NEW = "new"                    # recently found, not yet integrated into the graph
-    INTEGRATED = "integrated"      # incorporated as claims or predictions
+    INTEGRATED = "integrated"      # incorporated as hypotheses or predictions
     ARCHIVED = "archived"          # historical record only
 
 
-class ClaimStatus(Enum):
-    """Lifecycle state of an individual claim.
+class HypothesisStatus(Enum):
+    """Lifecycle state of an individual hypothesis.
 
     ACTIVE:
-        Claim is current and considered usable by downstream artifacts.
+        Hypothesis is current and considered usable by downstream artifacts.
     REVISED:
-        Claim text/semantics changed; dependent entities may require review.
+        Hypothesis text/semantics changed; dependent entities may require review.
     RETRACTED:
-        Claim is invalidated and should not be relied upon.
+        Hypothesis is invalidated and should not be relied upon.
     """
 
     ACTIVE = "active"        # normal, in-use
@@ -237,30 +237,30 @@ class ClaimStatus(Enum):
     RETRACTED = "retracted"  # found to be wrong; predictions citing it are broken
 
 
-class ClaimType(Enum):
-    """Structural role a claim plays in derivation graphs.
+class HypothesisType(Enum):
+    """Structural role a hypothesis plays in derivation graphs.
 
     FOUNDATIONAL:
-        A base claim that should not depend on other claims.
+        A base hypothesis that should not depend on other hypotheses.
     DERIVED:
-        A claim whose justification depends on one or more other claims.
+        A hypothesis whose justification depends on one or more other hypotheses.
     """
 
-    FOUNDATIONAL = "foundational"  # axiomatic starting point; must not depend on other claims
-    DERIVED = "derived"            # follows from other claims via depends_on
+    FOUNDATIONAL = "foundational"  # axiomatic starting point; must not depend on other hypotheses
+    DERIVED = "derived"            # follows from other hypotheses via depends_on
 
 
-class ClaimCategory(Enum):
-    """High-level semantic category of a claim.
+class HypothesisCategory(Enum):
+    """High-level semantic category of a hypothesis.
 
-    NUMERICAL:
-        Claim makes a quantitative statement and is typically tied to
+    QUANTITATIVE:
+        Hypothesis makes a quantitative statement and is typically tied to
         analyses, parameters, or thresholds.
     QUALITATIVE:
-        Claim is conceptual, structural, or descriptive rather than numeric.
+        Hypothesis is conceptual, structural, or descriptive rather than numeric.
     """
 
-    NUMERICAL = "numerical"    # a quantitative assertion; should have linked analyses
+    QUANTITATIVE = "numerical"    # a quantitative assertion; should have linked analyses
     QUALITATIVE = "qualitative"
 
 
@@ -286,7 +286,7 @@ class Criticality(Enum):
     MODERATE:
         Assumption underpins a meaningful portion of the reasoning chain.
     HIGH:
-        Assumption is a major structural dependency — many claims and
+        Assumption is a major structural dependency — many hypotheses and
         predictions rest on it.
     LOAD_BEARING:
         Assumption is a single point of failure — if it falls, a large

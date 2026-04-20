@@ -18,13 +18,13 @@ class ResourceSpec:
 
     Attributes:
         collection_attr: Name of the ``EpistemicGraphPort`` attribute that
-            holds all entities of this type, e.g. ``"claims"``.
+            holds all entities of this type, e.g. ``"hypotheses"``.
         register_method: Method name on ``EpistemicGraphPort`` to call when
-            registering a new entity, e.g. ``"register_claim"``.
+            registering a new entity, e.g. ``"register_hypothesis"``.
         update_method: Method name on ``EpistemicGraphPort`` to call when
-            updating an existing entity, e.g. ``"update_claim"``.
+            updating an existing entity, e.g. ``"update_hypothesis"``.
         transition_method: Method name on ``EpistemicGraphPort`` to call
-            when transitioning entity status, e.g. ``"transition_claim"``.
+            when transitioning entity status, e.g. ``"transition_hypothesis"``.
             ``None`` for resource types that do not support status transitions.
     """
 
@@ -44,11 +44,11 @@ class QuerySpec:
 
     Attributes:
         method_name: Name of the ``EpistemicGraphPort`` method to call,
-            e.g. ``"claim_lineage"``.
+            e.g. ``"hypothesis_lineage"``.
         parameter_resources: Mapping of parameter name to resource key
             for parameters that must be coerced to typed IDs before the
-            call. For example ``{"cid": "claim"}`` means the ``cid``
-            parameter should be coerced to a ``ClaimId``.
+            call. For example ``{"cid": "hypothesis"}`` means the ``cid``
+            parameter should be coerced to a ``HypothesisId``.
     """
 
     method_name: str
@@ -56,7 +56,7 @@ class QuerySpec:
 
 
 RESOURCE_SPECS: dict[str, ResourceSpec] = {
-    "claim": ResourceSpec("claims", "register_claim", "update_claim", "transition_claim"),
+    "hypothesis": ResourceSpec("hypotheses", "register_hypothesis", "update_hypothesis", "transition_hypothesis"),
     "assumption": ResourceSpec("assumptions", "register_assumption", "update_assumption"),
     "prediction": ResourceSpec("predictions", "register_prediction", "update_prediction", "transition_prediction"),
     "analysis": ResourceSpec("analyses", "register_analysis", "update_analysis"),
@@ -76,8 +76,8 @@ Covers all ten built-in entity types. The gateway resolves operations
 
 
 QUERY_SPECS: dict[str, QuerySpec] = {
-    "claim_lineage": QuerySpec("claim_lineage", {"cid": "claim"}),
-    "assumption_lineage": QuerySpec("assumption_lineage", {"cid": "claim"}),
+    "hypothesis_lineage": QuerySpec("hypothesis_lineage", {"cid": "hypothesis"}),
+    "assumption_lineage": QuerySpec("assumption_lineage", {"cid": "hypothesis"}),
     "prediction_implicit_assumptions": QuerySpec(
         "prediction_implicit_assumptions",
         {"pid": "prediction"},
@@ -87,9 +87,9 @@ QUERY_SPECS: dict[str, QuerySpec] = {
         "assumption_support_status",
         {"aid": "assumption"},
     ),
-    "predictions_depending_on_claim": QuerySpec(
-        "predictions_depending_on_claim",
-        {"cid": "claim"},
+    "predictions_depending_on_hypothesis": QuerySpec(
+        "predictions_depending_on_hypothesis",
+        {"cid": "hypothesis"},
     ),
     "parameter_impact": QuerySpec("parameter_impact", {"pid": "parameter"}),
 }

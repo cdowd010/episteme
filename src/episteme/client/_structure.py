@@ -53,7 +53,7 @@ class _EpistemeClientStructureHelpers:
         label: str,
         *,
         dry_run: bool = False,
-        claim_lineage: Iterable[str] | None = None,
+        hypothesis_lineage: Iterable[str] | None = None,
         assumption_lineage: Iterable[str] | None = None,
         measurement_regime: MeasurementRegime | str | None = None,
         notes: str | None = None,
@@ -68,7 +68,7 @@ class _EpistemeClientStructureHelpers:
             id: Unique identifier for the group.
             label: Human-readable descriptive label.
             dry_run: Simulate without committing.
-            claim_lineage: IDs of claims that define the conceptual scope of
+            hypothesis_lineage: IDs of hypotheses that define the conceptual scope of
                 this independence group.
             assumption_lineage: IDs of assumptions shared by members of this
                 group.

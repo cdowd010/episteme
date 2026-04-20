@@ -15,7 +15,7 @@ from datetime import date
 from .model import (
     Analysis,
     Assumption,
-    Claim,
+    Hypothesis,
     DeadEnd,
     Discovery,
     IndependenceGroup,
@@ -35,8 +35,8 @@ from .errors import (
 from .types import (
     AnalysisId,
     AssumptionId,
-    ClaimId,
-    ClaimStatus,
+    HypothesisId,
+    HypothesisStatus,
     DeadEndId,
     DeadEndStatus,
     DiscoveryId,
@@ -66,13 +66,13 @@ class EpistemicGraph:
     eliminating state corruption from partial mutations.
 
     All bidirectional links between entities (e.g.
-    ``Assumption.used_in_claims`` ↔ ``Claim.assumptions``,
+    ``Assumption.used_in_hypotheses`` ↔ ``Hypothesis.assumptions``,
     ``Parameter.used_in_analyses`` ↔ ``Analysis.uses_parameters``)
     are maintained automatically by the graph's register/update/remove
     methods.
 
     Attributes:
-        claims: Registry of all claims, keyed by ``ClaimId``.
+        hypotheses: Registry of all hypotheses, keyed by ``HypothesisId``.
         assumptions: Registry of all assumptions, keyed by ``AssumptionId``.
         predictions: Registry of all predictions, keyed by ``PredictionId``.
         theories: Registry of all theories, keyed by ``TheoryId``.
@@ -91,7 +91,7 @@ class EpistemicGraph:
             share the same backing store.
     """
     version: int = 0
-    claims: dict[ClaimId, Claim] = field(default_factory=dict)
+    hypotheses: dict[HypothesisId, Hypothesis] = field(default_factory=dict)
     assumptions: dict[AssumptionId, Assumption] = field(default_factory=dict)
     predictions: dict[PredictionId, Prediction] = field(default_factory=dict)
     theories: dict[TheoryId, Theory] = field(default_factory=dict)
@@ -107,16 +107,16 @@ class EpistemicGraph:
 
     # ── Queries ───────────────────────────────────────────────────
 
-    def get_claim(self, cid: ClaimId) -> Claim | None:
-        """Return a claim by ID, or ``None`` when the claim does not exist.
+    def get_hypothesis(self, cid: HypothesisId) -> Hypothesis | None:
+        """Return a hypothesis by ID, or ``None`` when the hypothesis does not exist.
 
         Args:
-            cid: The unique identifier of the claim to look up.
+            cid: The unique identifier of the hypothesis to look up.
 
         Returns:
-            Claim | None: The claim instance, or ``None`` if not found.
+            Hypothesis | None: The hypothesis instance, or ``None`` if not found.
         """
-        return self.claims.get(cid)
+        return self.hypotheses.get(cid)
 
     def get_assumption(self, aid: AssumptionId) -> Assumption | None:
         """Return an assumption by ID, or ``None`` when absent from the graph.
@@ -142,68 +142,68 @@ class EpistemicGraph:
         """
         return self.predictions.get(pid)
 
-    def claims_using_assumption(self, aid: AssumptionId) -> set[ClaimId]:
-        """Return all claims that reference this assumption in their assumptions set.
+    def hypotheses_using_assumption(self, aid: AssumptionId) -> set[HypothesisId]:
+        """Return all hypotheses that reference this assumption in their assumptions set.
 
-        Performs a full scan of all claims. The returned set contains only
+        Performs a full scan of all hypotheses. The returned set contains only
         direct references, not transitive ones.
 
         Args:
             aid: The assumption ID to search for.
 
         Returns:
-            set[ClaimId]: IDs of all claims whose ``assumptions`` field
+            set[HypothesisId]: IDs of all hypotheses whose ``assumptions`` field
                 contains ``aid``.
         """
-        return {cid for cid, c in self.claims.items() if aid in c.assumptions}
+        return {cid for cid, c in self.hypotheses.items() if aid in c.assumptions}
 
-    def claim_lineage(self, cid: ClaimId) -> set[ClaimId]:
-        """Compute the transitive closure of a claim's ``depends_on`` chain.
+    def hypothesis_lineage(self, cid: HypothesisId) -> set[HypothesisId]:
+        """Compute the transitive closure of a hypothesis's ``depends_on`` chain.
 
-        Returns all ancestor claims reachable through the ``depends_on``
-        DAG. The input claim itself is NOT included in the result.
+        Returns all ancestor hypotheses reachable through the ``depends_on``
+        DAG. The input hypothesis itself is NOT included in the result.
         Uses an iterative depth-first traversal.
 
         Args:
-            cid: The claim ID whose ancestors to compute.
+            cid: The hypothesis ID whose ancestors to compute.
 
         Returns:
-            set[ClaimId]: All ancestor claim IDs (transitive ``depends_on``
+            set[HypothesisId]: All ancestor hypothesis IDs (transitive ``depends_on``
                 closure), excluding ``cid`` itself.
         """
-        visited: set[ClaimId] = set()
+        visited: set[HypothesisId] = set()
         stack = [cid]
         while stack:
             current = stack.pop()
-            claim = self.claims.get(current)
-            if claim is None:
+            hypothesis = self.hypotheses.get(current)
+            if hypothesis is None:
                 continue
-            for dep in claim.depends_on:
+            for dep in hypothesis.depends_on:
                 if dep not in visited:
                     visited.add(dep)
                     stack.append(dep)
         return visited
 
-    def assumption_lineage(self, cid: ClaimId) -> set[AssumptionId]:
-        """Return all assumptions reachable through a claim and its ancestors.
+    def assumption_lineage(self, cid: HypothesisId) -> set[AssumptionId]:
+        """Return all assumptions reachable through a hypothesis and its ancestors.
 
-        Collects assumptions from the claim and all its transitive
+        Collects assumptions from the hypothesis and all its transitive
         ancestors (via ``depends_on``), then expands through assumption
         ``depends_on`` chains to capture presupposed assumptions.
 
         Args:
-            cid: The claim ID whose full assumption lineage to compute.
+            cid: The hypothesis ID whose full assumption lineage to compute.
 
         Returns:
             set[AssumptionId]: All assumption IDs transitively reachable
-                through claim and assumption dependency chains.
+                through hypothesis and assumption dependency chains.
         """
-        all_claims = self.claim_lineage(cid) | {cid}
+        all_hypotheses = self.hypothesis_lineage(cid) | {cid}
         direct: set[AssumptionId] = set()
-        for ancestor_id in all_claims:
-            claim = self.claims.get(ancestor_id)
-            if claim:
-                direct.update(claim.assumptions)
+        for ancestor_id in all_hypotheses:
+            hypothesis = self.hypotheses.get(ancestor_id)
+            if hypothesis:
+                direct.update(hypothesis.assumptions)
         # Expand through assumption.depends_on chains
         result: set[AssumptionId] = set()
         stack = list(direct)
@@ -225,7 +225,7 @@ class EpistemicGraph:
         Computes the complete set of assumptions the prediction silently
         rests on by combining:
 
-        1. Assumptions from each claim in ``claim_ids`` and their ancestors
+        1. Assumptions from each hypothesis in ``hypothesis_ids`` and their ancestors
            (via ``assumption_lineage``).
         2. Assumptions presupposed by those assumptions (``depends_on``
            chains).
@@ -243,7 +243,7 @@ class EpistemicGraph:
         if pred is None:
             return set()
         result: set[AssumptionId] = set()
-        for cid in pred.claim_ids:
+        for cid in pred.hypothesis_ids:
             result.update(self.assumption_lineage(cid))
         # Expand conditional_on through depends_on chains
         stack = list(pred.conditional_on)
@@ -271,10 +271,10 @@ class EpistemicGraph:
         Returns:
             dict[str, set]: A dictionary with three keys:
 
-            - ``claim_ids``: Direct claims jointly implying this prediction
-              (copy of ``Prediction.claim_ids``).
-            - ``claim_ancestors``: All ancestor claims via transitive
-              ``depends_on`` closure, EXCLUDING the direct ``claim_ids``.
+            - ``hypothesis_ids``: Direct hypotheses jointly implying this prediction
+              (copy of ``Prediction.hypothesis_ids``).
+            - ``hypothesis_ancestors``: All ancestor hypotheses via transitive
+              ``depends_on`` closure, EXCLUDING the direct ``hypothesis_ids``.
             - ``implicit_assumptions``: All assumptions in the full
               derivation chain (same as ``prediction_implicit_assumptions``).
 
@@ -282,13 +282,13 @@ class EpistemicGraph:
         """
         pred = self.predictions.get(pid)
         if pred is None:
-            return {"claim_ids": set(), "claim_ancestors": set(), "implicit_assumptions": set()}
-        ancestors: set[ClaimId] = set()
-        for cid in pred.claim_ids:
-            ancestors.update(self.claim_lineage(cid))
+            return {"hypothesis_ids": set(), "hypothesis_ancestors": set(), "implicit_assumptions": set()}
+        ancestors: set[HypothesisId] = set()
+        for cid in pred.hypothesis_ids:
+            ancestors.update(self.hypothesis_lineage(cid))
         return {
-            "claim_ids": pred.claim_ids.copy(),
-            "claim_ancestors": ancestors - pred.claim_ids,
+            "hypothesis_ids": pred.hypothesis_ids.copy(),
+            "hypothesis_ancestors": ancestors - pred.hypothesis_ids,
             "implicit_assumptions": self.prediction_implicit_assumptions(pid),
         }
 
@@ -303,7 +303,7 @@ class EpistemicGraph:
         Returns:
             dict[str, set]: A dictionary with three keys:
 
-            - ``direct_claims``: Claims that directly reference this
+            - ``direct_hypotheses``: Claims that directly reference this
               assumption in their ``assumptions`` set.
             - ``dependent_predictions``: Predictions whose full derivation
               chain includes this assumption (via implicit assumptions).
@@ -314,7 +314,7 @@ class EpistemicGraph:
         """
         assumption = self.assumptions.get(aid)
         if assumption is None:
-            return {"direct_claims": set(), "dependent_predictions": set(), "tested_by": set()}
+            return {"direct_hypotheses": set(), "dependent_predictions": set(), "tested_by": set()}
         # Build inverse index once: {AssumptionId: set[PredictionId]}
         implicit_dependents: dict[AssumptionId, set[PredictionId]] = {}
         for pid in self.predictions:
@@ -322,30 +322,30 @@ class EpistemicGraph:
                 implicit_dependents.setdefault(dep_aid, set()).add(pid)
         dependent = implicit_dependents.get(aid, set())
         return {
-            "direct_claims": assumption.used_in_claims.copy(),
+            "direct_hypotheses": assumption.used_in_hypotheses.copy(),
             "dependent_predictions": dependent,
             "tested_by": assumption.tested_by.copy(),
         }
 
-    def claims_depending_on_claim(self, cid: ClaimId) -> set[ClaimId]:
-        """Return all claims that transitively depend on this claim.
+    def hypotheses_depending_on_hypothesis(self, cid: HypothesisId) -> set[HypothesisId]:
+        """Return all hypotheses that transitively depend on this hypothesis.
 
         Performs a forward traversal from ``cid`` using a reverse
-        ``depends_on`` index: "if this claim is wrong, which downstream
-        claims are built on it?" The input claim itself is NOT included.
+        ``depends_on`` index: "if this hypothesis is wrong, which downstream
+        hypotheses are built on it?" The input hypothesis itself is NOT included.
 
         Args:
-            cid: The claim ID to trace forward from.
+            cid: The hypothesis ID to trace forward from.
 
         Returns:
-            set[ClaimId]: All downstream claim IDs that directly or
+            set[HypothesisId]: All downstream hypothesis IDs that directly or
                 transitively depend on ``cid``.
         """
-        reverse: dict[ClaimId, set[ClaimId]] = {}
-        for other_id, claim in self.claims.items():
-            for dep in claim.depends_on:
+        reverse: dict[HypothesisId, set[HypothesisId]] = {}
+        for other_id, hypothesis in self.hypotheses.items():
+            for dep in hypothesis.depends_on:
                 reverse.setdefault(dep, set()).add(other_id)
-        result: set[ClaimId] = set()
+        result: set[HypothesisId] = set()
         stack = list(reverse.get(cid, set()))
         while stack:
             current = stack.pop()
@@ -355,31 +355,31 @@ class EpistemicGraph:
             stack.extend(reverse.get(current, set()))
         return result
 
-    def predictions_depending_on_claim(self, cid: ClaimId) -> set[PredictionId]:
-        """Return all predictions whose derivation chain includes this claim.
+    def predictions_depending_on_hypothesis(self, cid: HypothesisId) -> set[PredictionId]:
+        """Return all predictions whose derivation chain includes this hypothesis.
 
-        Answers "if this claim is retracted, which predictions are now
-        suspect?" Considers both direct and downstream claim dependencies.
+        Answers "if this hypothesis is retracted, which predictions are now
+        suspect?" Considers both direct and downstream hypothesis dependencies.
 
         Args:
-            cid: The claim ID to trace forward from.
+            cid: The hypothesis ID to trace forward from.
 
         Returns:
-            set[PredictionId]: All prediction IDs whose ``claim_ids``
+            set[PredictionId]: All prediction IDs whose ``hypothesis_ids``
                 intersect with ``cid`` or any of its downstream dependents.
         """
-        affected_claims = self.claims_depending_on_claim(cid) | {cid}
+        affected_hypotheses = self.hypotheses_depending_on_hypothesis(cid) | {cid}
         return {
             pid for pid, pred in self.predictions.items()
-            if pred.claim_ids & affected_claims
+            if pred.hypothesis_ids & affected_hypotheses
         }
 
     def parameter_impact(self, pid: ParameterId) -> dict[str, set]:
         """Compute the full blast radius of a parameter change.
 
-        Walks the dependency chain: parameter → stale analyses → claims
-        covered by those analyses → predictions depending on those claims.
-        Also includes claims with ``parameter_constraints`` annotations
+        Walks the dependency chain: parameter → stale analyses → hypotheses
+        covered by those analyses → predictions depending on those hypotheses.
+        Also includes hypotheses with ``parameter_constraints`` annotations
         for this parameter and predictions directly linked to stale analyses.
 
         Args:
@@ -389,12 +389,12 @@ class EpistemicGraph:
             dict[str, set]: A dictionary with four keys:
 
             - ``stale_analyses``: Analysis IDs that use this parameter.
-            - ``constrained_claims``: Claim IDs with a threshold annotation
+            - ``constrained_hypotheses``: Hypothesis IDs with a threshold annotation
               on this parameter.
-            - ``affected_claims``: Union of claims covered by stale analyses
-              and constrained claims.
+            - ``affected_hypotheses``: Union of hypotheses covered by stale analyses
+              and constrained hypotheses.
             - ``affected_predictions``: All predictions in the downstream
-              chain of affected claims, plus predictions directly linked
+              chain of affected hypotheses, plus predictions directly linked
               to stale analyses.
 
             Returns empty sets for all keys if the parameter does not exist.
@@ -402,43 +402,43 @@ class EpistemicGraph:
         param = self.parameters.get(pid)
         if param is None:
             return {
-                "stale_analyses": set(), "constrained_claims": set(),
-                "affected_claims": set(), "affected_predictions": set(),
+                "stale_analyses": set(), "constrained_hypotheses": set(),
+                "affected_hypotheses": set(), "affected_predictions": set(),
             }
         stale_analyses = param.used_in_analyses.copy()
         # Claims covered by stale analyses
-        affected_claims: set[ClaimId] = set()
+        affected_hypotheses: set[HypothesisId] = set()
         for anid in stale_analyses:
             analysis = self.analyses.get(anid)
             if analysis:
-                affected_claims.update(analysis.claims_covered)
+                affected_hypotheses.update(analysis.hypotheses_covered)
         # Claims with explicit threshold constraints on this parameter
-        constrained_claims = {
-            cid for cid, c in self.claims.items()
+        constrained_hypotheses = {
+            cid for cid, c in self.hypotheses.items()
             if pid in c.parameter_constraints
         }
-        affected_claims.update(constrained_claims)
-        # Predictions depending on affected claims (direct + downstream)
+        affected_hypotheses.update(constrained_hypotheses)
+        # Predictions depending on affected hypotheses (direct + downstream)
         affected_predictions: set[PredictionId] = set()
-        for cid in affected_claims:
-            affected_predictions.update(self.predictions_depending_on_claim(cid))
+        for cid in affected_hypotheses:
+            affected_predictions.update(self.predictions_depending_on_hypothesis(cid))
         # Also predictions directly linked to stale analyses
         for pred_id, pred in self.predictions.items():
             if pred.analysis in stale_analyses:
                 affected_predictions.add(pred_id)
         return {
             "stale_analyses": stale_analyses,
-            "constrained_claims": constrained_claims,
-            "affected_claims": affected_claims,
+            "constrained_hypotheses": constrained_hypotheses,
+            "affected_hypotheses": affected_hypotheses,
             "affected_predictions": affected_predictions,
         }
 
     # ── Mutations (return new graph) ────────────────────────────────
 
-    def register_claim(self, claim: Claim) -> EpistemicGraph:
-        """Register a new claim in the graph.
+    def register_hypothesis(self, hypothesis: Hypothesis) -> EpistemicGraph:
+        """Register a new hypothesis in the graph.
 
-        Enforces: no duplicate IDs, all referenced assumptions/claims/analyses/
+        Enforces: no duplicate IDs, all referenced assumptions/hypotheses/analyses/
         parameters exist, no dependency cycles in ``depends_on``, and
         bidirectional backlinks are updated on assumptions and analyses.
 
@@ -446,45 +446,45 @@ class EpistemicGraph:
         mutate the graph's stored copy after registration.
 
         Args:
-            claim: The claim to register. Must have a unique ``id``.
+            hypothesis: The hypothesis to register. Must have a unique ``id``.
 
         Returns:
-            EpistemicGraph: A new graph instance containing the registered claim.
+            EpistemicGraph: A new graph instance containing the registered hypothesis.
 
         Raises:
-            DuplicateIdError: If ``claim.id`` already exists.
+            DuplicateIdError: If ``hypothesis.id`` already exists.
             BrokenReferenceError: If any referenced ID does not exist.
             CycleError: If ``depends_on`` would create a dependency cycle.
         """
-        if claim.id in self.claims:
-            raise DuplicateIdError(f"Claim {claim.id} already exists")
-        self._check_refs_exist(claim.assumptions, self.assumptions, "assumption")
-        self._check_refs_exist(claim.depends_on, self.claims, "claim")
-        self._check_refs_exist(claim.analyses, self.analyses, "analysis")
-        self._check_refs_exist(set(claim.parameter_constraints.keys()), self.parameters, "parameter")
-        self._check_refs_exist(claim.theories, self.theories, "theory")
-        self._check_no_cycle_with(claim)
+        if hypothesis.id in self.hypotheses:
+            raise DuplicateIdError(f"Hypothesis {hypothesis.id} already exists")
+        self._check_refs_exist(hypothesis.assumptions, self.assumptions, "assumption")
+        self._check_refs_exist(hypothesis.depends_on, self.hypotheses, "hypothesis")
+        self._check_refs_exist(hypothesis.analyses, self.analyses, "analysis")
+        self._check_refs_exist(set(hypothesis.parameter_constraints.keys()), self.parameters, "parameter")
+        self._check_refs_exist(hypothesis.theories, self.theories, "theory")
+        self._check_no_cycle_with(hypothesis)
 
         new = self._copy()
         # Deep-copy the incoming entity so a caller who keeps a reference
         # cannot mutate the graph's stored copy after registration. All
         # register_* methods follow this same pattern.
-        new.claims[claim.id] = copy.deepcopy(claim)
+        new.hypotheses[hypothesis.id] = copy.deepcopy(hypothesis)
 
-        # Maintain bidirectional: assumption.used_in_claims
-        for aid in claim.assumptions:
+        # Maintain bidirectional: assumption.used_in_hypotheses
+        for aid in hypothesis.assumptions:
             new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
-            new.assumptions[aid].used_in_claims.add(claim.id)
+            new.assumptions[aid].used_in_hypotheses.add(hypothesis.id)
 
-        # Maintain bidirectional: analysis.claims_covered
-        for anid in claim.analyses:
+        # Maintain bidirectional: analysis.hypotheses_covered
+        for anid in hypothesis.analyses:
             new.analyses[anid] = copy.deepcopy(new.analyses[anid])
-            new.analyses[anid].claims_covered.add(claim.id)
+            new.analyses[anid].hypotheses_covered.add(hypothesis.id)
 
-        # Maintain bidirectional: theory.motivates_claims
-        for tid in claim.theories:
+        # Maintain bidirectional: theory.motivates_hypotheses
+        for tid in hypothesis.theories:
             new.theories[tid] = copy.deepcopy(new.theories[tid])
-            new.theories[tid].motivates_claims.add(claim.id)
+            new.theories[tid].motivates_hypotheses.add(hypothesis.id)
 
         return new
 
@@ -492,9 +492,9 @@ class EpistemicGraph:
         """Register a new assumption in the graph.
 
         Validates that all ``depends_on`` references exist and that no
-        cycle would be introduced. Backlinks ``used_in_claims`` and
+        cycle would be introduced. Backlinks ``used_in_hypotheses`` and
         ``tested_by`` are intentionally initialized to empty sets —
-        they are owned by claim and prediction operations respectively.
+        they are owned by hypothesis and prediction operations respectively.
 
         Args:
             assumption: The assumption to register. Must have a unique ``id``.
@@ -513,7 +513,7 @@ class EpistemicGraph:
         self._check_no_assumption_cycle_with(assumption)
         new = self._copy()
         stored = copy.deepcopy(assumption)
-        stored.used_in_claims = set()
+        stored.used_in_hypotheses = set()
         stored.tested_by = set()
         new.assumptions[assumption.id] = stored
         return new
@@ -521,7 +521,7 @@ class EpistemicGraph:
     def register_prediction(self, prediction: Prediction) -> EpistemicGraph:
         """Register a new prediction in the graph.
 
-        Validates that all referenced claims, assumptions, analysis, and
+        Validates that all referenced hypotheses, assumptions, analysis, and
         independence group exist. Updates bidirectional backlinks:
         ``Assumption.tested_by`` and ``IndependenceGroup.member_predictions``.
 
@@ -537,7 +537,7 @@ class EpistemicGraph:
         """
         if prediction.id in self.predictions:
             raise DuplicateIdError(f"Prediction {prediction.id} already exists")
-        self._check_refs_exist(prediction.claim_ids, self.claims, "claim")
+        self._check_refs_exist(prediction.hypothesis_ids, self.hypotheses, "hypothesis")
         self._check_refs_exist(prediction.tests_assumptions, self.assumptions, "assumption")
         self._check_refs_exist(prediction.conditional_on, self.assumptions, "assumption")
         if prediction.analysis and prediction.analysis not in self.analyses:
@@ -571,7 +571,7 @@ class EpistemicGraph:
 
         Validates that all ``uses_parameters`` IDs exist and updates the
         bidirectional ``Parameter.used_in_analyses`` backlink.
-        ``claims_covered`` is a backlink owned by claim operations and
+        ``hypotheses_covered`` is a backlink owned by hypothesis operations and
         starts empty.
 
         Args:
@@ -590,7 +590,7 @@ class EpistemicGraph:
 
         new = self._copy()
         stored = copy.deepcopy(analysis)
-        stored.claims_covered = set()
+        stored.hypotheses_covered = set()
         new.analyses[analysis.id] = stored
 
         # Maintain bidirectional: parameter.used_in_analyses
@@ -604,7 +604,7 @@ class EpistemicGraph:
         """Register a new theory in the graph.
 
         Validates that all ``related_predictions`` IDs exist.
-        ``motivates_claims`` is a backlink maintained by claim
+        ``motivates_hypotheses`` is a backlink maintained by hypothesis
         operations and starts empty.
 
         Args:
@@ -622,14 +622,14 @@ class EpistemicGraph:
         self._check_refs_exist(theory.related_predictions, self.predictions, "prediction")
         new = self._copy()
         stored = copy.deepcopy(theory)
-        stored.motivates_claims = set()
+        stored.motivates_hypotheses = set()
         new.theories[theory.id] = stored
         return new
 
     def register_independence_group(self, group: IndependenceGroup) -> EpistemicGraph:
         """Register a new independence group in the graph.
 
-        Validates that all ``claim_lineage`` and ``assumption_lineage`` IDs
+        Validates that all ``hypothesis_lineage`` and ``assumption_lineage`` IDs
         exist. ``member_predictions`` is a backlink owned by prediction
         operations and starts empty.
 
@@ -645,7 +645,7 @@ class EpistemicGraph:
         """
         if group.id in self.independence_groups:
             raise DuplicateIdError(f"Independence group {group.id} already exists")
-        self._check_refs_exist(group.claim_lineage, self.claims, "claim")
+        self._check_refs_exist(group.hypothesis_lineage, self.hypotheses, "hypothesis")
         self._check_refs_exist(group.assumption_lineage, self.assumptions, "assumption")
         new = self._copy()
         stored = copy.deepcopy(group)
@@ -656,7 +656,7 @@ class EpistemicGraph:
     def register_discovery(self, discovery: Discovery) -> EpistemicGraph:
         """Register a new discovery in the graph.
 
-        Validates that all ``related_claims`` and ``related_predictions``
+        Validates that all ``related_hypotheses`` and ``related_predictions``
         IDs exist.
 
         Args:
@@ -671,7 +671,7 @@ class EpistemicGraph:
         """
         if discovery.id in self.discoveries:
             raise DuplicateIdError(f"Discovery {discovery.id} already exists")
-        self._check_refs_exist(discovery.related_claims, self.claims, "claim")
+        self._check_refs_exist(discovery.related_hypotheses, self.hypotheses, "hypothesis")
         self._check_refs_exist(discovery.related_predictions, self.predictions, "prediction")
         new = self._copy()
         new.discoveries[discovery.id] = copy.deepcopy(discovery)
@@ -680,7 +680,7 @@ class EpistemicGraph:
     def register_dead_end(self, dead_end: DeadEnd) -> EpistemicGraph:
         """Register a new dead end record in the graph.
 
-        Validates that all ``related_claims`` and ``related_predictions``
+        Validates that all ``related_hypotheses`` and ``related_predictions``
         IDs exist.
 
         Args:
@@ -695,7 +695,7 @@ class EpistemicGraph:
         """
         if dead_end.id in self.dead_ends:
             raise DuplicateIdError(f"DeadEnd {dead_end.id} already exists")
-        self._check_refs_exist(dead_end.related_claims, self.claims, "claim")
+        self._check_refs_exist(dead_end.related_hypotheses, self.hypotheses, "hypothesis")
         self._check_refs_exist(dead_end.related_predictions, self.predictions, "prediction")
         new = self._copy()
         new.dead_ends[dead_end.id] = copy.deepcopy(dead_end)
@@ -799,24 +799,24 @@ class EpistemicGraph:
         new.dead_ends[did].status = new_status
         return new
 
-    def transition_claim(self, cid: ClaimId, new_status: ClaimStatus) -> EpistemicGraph:
-        """Change a claim's lifecycle status.
+    def transition_hypothesis(self, cid: HypothesisId, new_status: HypothesisStatus) -> EpistemicGraph:
+        """Change a hypothesis's lifecycle status.
 
         Args:
-            cid: The claim ID to transition.
+            cid: The hypothesis ID to transition.
             new_status: The new status (ACTIVE, REVISED, or RETRACTED).
 
         Returns:
             EpistemicGraph: A new graph instance with the updated status.
 
         Raises:
-            BrokenReferenceError: If the claim does not exist.
+            BrokenReferenceError: If the hypothesis does not exist.
         """
-        if cid not in self.claims:
-            raise BrokenReferenceError(f"Claim {cid} does not exist")
+        if cid not in self.hypotheses:
+            raise BrokenReferenceError(f"Hypothesis {cid} does not exist")
         new = self._copy()
-        new.claims[cid] = copy.deepcopy(new.claims[cid])
-        new.claims[cid].status = new_status
+        new.hypotheses[cid] = copy.deepcopy(new.hypotheses[cid])
+        new.hypotheses[cid].status = new_status
         return new
 
     def transition_theory(self, tid: TheoryId, new_status: TheoryStatus) -> EpistemicGraph:
@@ -871,7 +871,7 @@ class EpistemicGraph:
 
         Sets ``last_result``, ``last_result_sha``, and ``last_result_date``
         on the analysis while preserving every other field (path, command,
-        uses_parameters, claims_covered) exactly as-is.
+        uses_parameters, hypotheses_covered) exactly as-is.
 
         This is intentionally a narrow mutation — the researcher records
         what came out of running the analysis without touching any of the
@@ -900,70 +900,70 @@ class EpistemicGraph:
 
     # ── Update mutations — re-links bidirectional relationships ───
 
-    def update_claim(self, new_claim: Claim) -> EpistemicGraph:
-        """Replace a claim's fields while maintaining all bidirectional links.
+    def update_hypothesis(self, new_hypothesis: Hypothesis) -> EpistemicGraph:
+        """Replace a hypothesis's fields while maintaining all bidirectional links.
 
-        The new claim must have the same ID as an existing claim. Diffs
+        The new hypothesis must have the same ID as an existing hypothesis. Diffs
         old vs new link sets for assumptions and analyses, removing stale
         backlinks and adding new ones. Validates new refs exist and that
         no dependency cycle is introduced.
 
         Args:
-            new_claim: The updated claim. Must have the same ``id`` as
-                an existing claim in the graph.
+            new_hypothesis: The updated hypothesis. Must have the same ``id`` as
+                an existing hypothesis in the graph.
 
         Returns:
-            EpistemicGraph: A new graph instance with the updated claim and
+            EpistemicGraph: A new graph instance with the updated hypothesis and
                 corrected bidirectional links.
 
         Raises:
-            BrokenReferenceError: If the claim does not exist or if any
+            BrokenReferenceError: If the hypothesis does not exist or if any
                 newly referenced ID does not exist.
             CycleError: If the updated ``depends_on`` would create a cycle.
         """
-        if new_claim.id not in self.claims:
-            raise BrokenReferenceError(f"Claim {new_claim.id} does not exist")
-        old = self.claims[new_claim.id]
-        self._check_refs_exist(new_claim.assumptions, self.assumptions, "assumption")
-        self._check_refs_exist(new_claim.depends_on, self.claims, "claim")
-        self._check_refs_exist(new_claim.analyses, self.analyses, "analysis")
-        self._check_refs_exist(set(new_claim.parameter_constraints.keys()), self.parameters, "parameter")
-        self._check_refs_exist(new_claim.theories, self.theories, "theory")
-        self._check_no_cycle_with(new_claim)
+        if new_hypothesis.id not in self.hypotheses:
+            raise BrokenReferenceError(f"Hypothesis {new_hypothesis.id} does not exist")
+        old = self.hypotheses[new_hypothesis.id]
+        self._check_refs_exist(new_hypothesis.assumptions, self.assumptions, "assumption")
+        self._check_refs_exist(new_hypothesis.depends_on, self.hypotheses, "hypothesis")
+        self._check_refs_exist(new_hypothesis.analyses, self.analyses, "analysis")
+        self._check_refs_exist(set(new_hypothesis.parameter_constraints.keys()), self.parameters, "parameter")
+        self._check_refs_exist(new_hypothesis.theories, self.theories, "theory")
+        self._check_no_cycle_with(new_hypothesis)
 
         new = self._copy()
-        new.claims[new_claim.id] = copy.deepcopy(new_claim)
+        new.hypotheses[new_hypothesis.id] = copy.deepcopy(new_hypothesis)
 
-        # Diff assumption.used_in_claims
-        for aid in old.assumptions - new_claim.assumptions:
+        # Diff assumption.used_in_hypotheses
+        for aid in old.assumptions - new_hypothesis.assumptions:
             new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
-            new.assumptions[aid].used_in_claims.discard(new_claim.id)
-        for aid in new_claim.assumptions - old.assumptions:
+            new.assumptions[aid].used_in_hypotheses.discard(new_hypothesis.id)
+        for aid in new_hypothesis.assumptions - old.assumptions:
             new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
-            new.assumptions[aid].used_in_claims.add(new_claim.id)
+            new.assumptions[aid].used_in_hypotheses.add(new_hypothesis.id)
 
-        # Diff analysis.claims_covered
-        for anid in old.analyses - new_claim.analyses:
+        # Diff analysis.hypotheses_covered
+        for anid in old.analyses - new_hypothesis.analyses:
             new.analyses[anid] = copy.deepcopy(new.analyses[anid])
-            new.analyses[anid].claims_covered.discard(new_claim.id)
-        for anid in new_claim.analyses - old.analyses:
+            new.analyses[anid].hypotheses_covered.discard(new_hypothesis.id)
+        for anid in new_hypothesis.analyses - old.analyses:
             new.analyses[anid] = copy.deepcopy(new.analyses[anid])
-            new.analyses[anid].claims_covered.add(new_claim.id)
+            new.analyses[anid].hypotheses_covered.add(new_hypothesis.id)
 
-        # Diff theory.motivates_claims
-        for tid in old.theories - new_claim.theories:
+        # Diff theory.motivates_hypotheses
+        for tid in old.theories - new_hypothesis.theories:
             new.theories[tid] = copy.deepcopy(new.theories[tid])
-            new.theories[tid].motivates_claims.discard(new_claim.id)
-        for tid in new_claim.theories - old.theories:
+            new.theories[tid].motivates_hypotheses.discard(new_hypothesis.id)
+        for tid in new_hypothesis.theories - old.theories:
             new.theories[tid] = copy.deepcopy(new.theories[tid])
-            new.theories[tid].motivates_claims.add(new_claim.id)
+            new.theories[tid].motivates_hypotheses.add(new_hypothesis.id)
 
         return new
 
     def update_assumption(self, new_assumption: Assumption) -> EpistemicGraph:
         """Replace an assumption's fields, preserving owned backlinks.
 
-        ``used_in_claims`` and ``tested_by`` are maintained by claim and
+        ``used_in_hypotheses`` and ``tested_by`` are maintained by hypothesis and
         prediction operations respectively — they are preserved from the
         old assumption. Only ``depends_on`` chain changes need validation.
 
@@ -988,7 +988,7 @@ class EpistemicGraph:
         new = self._copy()
         # Preserve backlinks that are owned by other entities
         updated = copy.deepcopy(new_assumption)
-        updated.used_in_claims = copy.deepcopy(old.used_in_claims)
+        updated.used_in_hypotheses = copy.deepcopy(old.used_in_hypotheses)
         updated.tested_by = copy.deepcopy(old.tested_by)
         new.assumptions[new_assumption.id] = updated
         return new
@@ -1015,7 +1015,7 @@ class EpistemicGraph:
         if new_prediction.id not in self.predictions:
             raise BrokenReferenceError(f"Prediction {new_prediction.id} does not exist")
         old = self.predictions[new_prediction.id]
-        self._check_refs_exist(new_prediction.claim_ids, self.claims, "claim")
+        self._check_refs_exist(new_prediction.hypothesis_ids, self.hypotheses, "hypothesis")
         self._check_refs_exist(new_prediction.tests_assumptions, self.assumptions, "assumption")
         self._check_refs_exist(new_prediction.conditional_on, self.assumptions, "assumption")
         if new_prediction.analysis and new_prediction.analysis not in self.analyses:
@@ -1076,7 +1076,7 @@ class EpistemicGraph:
     def update_analysis(self, new_analysis: Analysis) -> EpistemicGraph:
         """Replace an analysis's fields while maintaining bidirectional links.
 
-        ``claims_covered`` is a backlink maintained by claim operations and
+        ``hypotheses_covered`` is a backlink maintained by hypothesis operations and
         is preserved as-is. Diffs ``uses_parameters`` and updates
         ``Parameter.used_in_analyses`` accordingly.
 
@@ -1099,8 +1099,8 @@ class EpistemicGraph:
 
         new = self._copy()
         updated = copy.deepcopy(new_analysis)
-        # Preserve backlink owned by claim operations
-        updated.claims_covered = copy.deepcopy(old.claims_covered)
+        # Preserve backlink owned by hypothesis operations
+        updated.hypotheses_covered = copy.deepcopy(old.hypotheses_covered)
         new.analyses[new_analysis.id] = updated
 
         # Diff parameter.used_in_analyses
@@ -1118,7 +1118,7 @@ class EpistemicGraph:
         """Replace a theory's fields.
 
         Validates that all ``related_predictions`` IDs exist.
-        ``motivates_claims`` is a backlink maintained by claim operations
+        ``motivates_hypotheses`` is a backlink maintained by hypothesis operations
         and is preserved from the existing theory.
 
         Args:
@@ -1138,7 +1138,7 @@ class EpistemicGraph:
         self._check_refs_exist(new_theory.related_predictions, self.predictions, "prediction")
         new = self._copy()
         updated = copy.deepcopy(new_theory)
-        updated.motivates_claims = copy.deepcopy(old.motivates_claims)
+        updated.motivates_hypotheses = copy.deepcopy(old.motivates_hypotheses)
         new.theories[new_theory.id] = updated
         return new
 
@@ -1147,7 +1147,7 @@ class EpistemicGraph:
 
         ``member_predictions`` is a backlink maintained by prediction
         operations — preserved from the existing group. Validates
-        ``claim_lineage`` and ``assumption_lineage`` refs.
+        ``hypothesis_lineage`` and ``assumption_lineage`` refs.
 
         Args:
             new_group: The updated independence group. Must have the same
@@ -1163,7 +1163,7 @@ class EpistemicGraph:
         if new_group.id not in self.independence_groups:
             raise BrokenReferenceError(f"IndependenceGroup {new_group.id} does not exist")
         old = self.independence_groups[new_group.id]
-        self._check_refs_exist(new_group.claim_lineage, self.claims, "claim")
+        self._check_refs_exist(new_group.hypothesis_lineage, self.hypotheses, "hypothesis")
         self._check_refs_exist(new_group.assumption_lineage, self.assumptions, "assumption")
 
         new = self._copy()
@@ -1203,7 +1203,7 @@ class EpistemicGraph:
     def update_discovery(self, new_discovery: Discovery) -> EpistemicGraph:
         """Replace a discovery's fields.
 
-        Validates that all ``related_claims`` and ``related_predictions``
+        Validates that all ``related_hypotheses`` and ``related_predictions``
         IDs exist.
 
         Args:
@@ -1219,7 +1219,7 @@ class EpistemicGraph:
         """
         if new_discovery.id not in self.discoveries:
             raise BrokenReferenceError(f"Discovery {new_discovery.id} does not exist")
-        self._check_refs_exist(new_discovery.related_claims, self.claims, "claim")
+        self._check_refs_exist(new_discovery.related_hypotheses, self.hypotheses, "hypothesis")
         self._check_refs_exist(new_discovery.related_predictions, self.predictions, "prediction")
         new = self._copy()
         new.discoveries[new_discovery.id] = copy.deepcopy(new_discovery)
@@ -1228,7 +1228,7 @@ class EpistemicGraph:
     def update_dead_end(self, new_dead_end: DeadEnd) -> EpistemicGraph:
         """Replace a dead end's fields.
 
-        Validates that all ``related_claims`` and ``related_predictions``
+        Validates that all ``related_hypotheses`` and ``related_predictions``
         IDs exist.
 
         Args:
@@ -1244,7 +1244,7 @@ class EpistemicGraph:
         """
         if new_dead_end.id not in self.dead_ends:
             raise BrokenReferenceError(f"DeadEnd {new_dead_end.id} does not exist")
-        self._check_refs_exist(new_dead_end.related_claims, self.claims, "claim")
+        self._check_refs_exist(new_dead_end.related_hypotheses, self.hypotheses, "hypothesis")
         self._check_refs_exist(new_dead_end.related_predictions, self.predictions, "prediction")
         new = self._copy()
         new.dead_ends[new_dead_end.id] = copy.deepcopy(new_dead_end)
@@ -1302,83 +1302,83 @@ class EpistemicGraph:
                 new.observations[oid].predictions.discard(pid)
         return new
 
-    def remove_claim(self, cid: ClaimId) -> EpistemicGraph:
-        """Remove a claim from the graph.
+    def remove_hypothesis(self, cid: HypothesisId) -> EpistemicGraph:
+        """Remove a hypothesis from the graph.
 
-        Raises if any other claim's ``depends_on`` or any prediction's
-        ``claim_ids`` still references this claim. Callers must first
+        Raises if any other hypothesis's ``depends_on`` or any prediction's
+        ``hypothesis_ids`` still references this hypothesis. Callers must first
         update or remove all referencing entities.
 
         On success, tears down backlinks on assumptions and analyses,
         scrubs soft references in theories, dead ends, discoveries,
-        and independence group ``claim_lineage`` annotations.
+        and independence group ``hypothesis_lineage`` annotations.
 
         Args:
-            cid: The claim ID to remove.
+            cid: The hypothesis ID to remove.
 
         Returns:
-            EpistemicGraph: A new graph instance without the claim.
+            EpistemicGraph: A new graph instance without the hypothesis.
 
         Raises:
-            BrokenReferenceError: If the claim does not exist or is still
-                referenced by other claims or predictions.
+            BrokenReferenceError: If the hypothesis does not exist or is still
+                referenced by other hypotheses or predictions.
         """
-        if cid not in self.claims:
-            raise BrokenReferenceError(f"Claim {cid} does not exist")
-        blocking_claims = [
-            c_id for c_id, c in self.claims.items()
+        if cid not in self.hypotheses:
+            raise BrokenReferenceError(f"Hypothesis {cid} does not exist")
+        blocking_hypotheses = [
+            c_id for c_id, c in self.hypotheses.items()
             if cid in c.depends_on and c_id != cid
         ]
         blocking_preds = [
             p_id for p_id, p in self.predictions.items()
-            if cid in p.claim_ids
+            if cid in p.hypothesis_ids
         ]
-        if blocking_claims or blocking_preds:
+        if blocking_hypotheses or blocking_preds:
             raise BrokenReferenceError(
-                f"Claim {cid} is still referenced by "
-                f"claims {blocking_claims} and predictions {blocking_preds}"
+                f"Hypothesis {cid} is still referenced by "
+                f"hypotheses {blocking_hypotheses} and predictions {blocking_preds}"
             )
-        claim = self.claims[cid]
+        hypothesis = self.hypotheses[cid]
         new = self._copy()
-        del new.claims[cid]
-        for aid in claim.assumptions:
+        del new.hypotheses[cid]
+        for aid in hypothesis.assumptions:
             if aid in new.assumptions:
                 new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
-                new.assumptions[aid].used_in_claims.discard(cid)
-        for anid in claim.analyses:
+                new.assumptions[aid].used_in_hypotheses.discard(cid)
+        for anid in hypothesis.analyses:
             if anid in new.analyses:
                 new.analyses[anid] = copy.deepcopy(new.analyses[anid])
-                new.analyses[anid].claims_covered.discard(cid)
-        # Tear down bidirectional: theory.motivates_claims
-        for tid in claim.theories:
+                new.analyses[anid].hypotheses_covered.discard(cid)
+        # Tear down bidirectional: theory.motivates_hypotheses
+        for tid in hypothesis.theories:
             if tid in new.theories:
                 new.theories[tid] = copy.deepcopy(new.theories[tid])
-                new.theories[tid].motivates_claims.discard(cid)
+                new.theories[tid].motivates_hypotheses.discard(cid)
         # Scrub soft references in dead ends and discoveries
         for de_id, dead_end in list(new.dead_ends.items()):
-            if cid in dead_end.related_claims:
+            if cid in dead_end.related_hypotheses:
                 new.dead_ends[de_id] = copy.deepcopy(dead_end)
-                new.dead_ends[de_id].related_claims.discard(cid)
+                new.dead_ends[de_id].related_hypotheses.discard(cid)
         for disc_id, discovery in list(new.discoveries.items()):
-            if cid in discovery.related_claims:
+            if cid in discovery.related_hypotheses:
                 new.discoveries[disc_id] = copy.deepcopy(discovery)
-                new.discoveries[disc_id].related_claims.discard(cid)
+                new.discoveries[disc_id].related_hypotheses.discard(cid)
         # Scrub soft references in observations
         for oid, obs in list(new.observations.items()):
-            if cid in obs.related_claims:
+            if cid in obs.related_hypotheses:
                 new.observations[oid] = copy.deepcopy(obs)
-                new.observations[oid].related_claims.discard(cid)
-        # Scrub claim_lineage annotations in independence groups
+                new.observations[oid].related_hypotheses.discard(cid)
+        # Scrub hypothesis_lineage annotations in independence groups
         for gid, group in list(new.independence_groups.items()):
-            if cid in group.claim_lineage:
+            if cid in group.hypothesis_lineage:
                 new.independence_groups[gid] = copy.deepcopy(group)
-                new.independence_groups[gid].claim_lineage.discard(cid)
+                new.independence_groups[gid].hypothesis_lineage.discard(cid)
         return new
 
     def remove_assumption(self, aid: AssumptionId) -> EpistemicGraph:
         """Remove an assumption from the graph.
 
-        Raises if any claim, prediction, or other assumption still
+        Raises if any hypothesis, prediction, or other assumption still
         references this assumption. Scrubs ``assumption_lineage``
         annotations in independence groups on success.
 
@@ -1390,12 +1390,12 @@ class EpistemicGraph:
 
         Raises:
             BrokenReferenceError: If the assumption does not exist or is
-                still referenced by claims, predictions, or other assumptions.
+                still referenced by hypotheses, predictions, or other assumptions.
         """
         if aid not in self.assumptions:
             raise BrokenReferenceError(f"Assumption {aid} does not exist")
-        blocking_claims = [
-            c_id for c_id, c in self.claims.items() if aid in c.assumptions
+        blocking_hypotheses = [
+            c_id for c_id, c in self.hypotheses.items() if aid in c.assumptions
         ]
         blocking_preds = [
             p_id for p_id, p in self.predictions.items()
@@ -1405,10 +1405,10 @@ class EpistemicGraph:
             a_id for a_id, a in self.assumptions.items()
             if aid in a.depends_on and a_id != aid
         ]
-        if blocking_claims or blocking_preds or blocking_assumptions:
+        if blocking_hypotheses or blocking_preds or blocking_assumptions:
             raise BrokenReferenceError(
                 f"Assumption {aid} is still referenced by "
-                f"claims {blocking_claims}, predictions {blocking_preds}, "
+                f"hypotheses {blocking_hypotheses}, predictions {blocking_preds}, "
                 f"assumptions {blocking_assumptions}"
             )
         new = self._copy()
@@ -1430,7 +1430,7 @@ class EpistemicGraph:
 
         Raises if any analysis still references this parameter via
         ``uses_parameters``. On success, cleans up dangling
-        ``parameter_constraints`` annotations on claims.
+        ``parameter_constraints`` annotations on hypotheses.
 
         Args:
             pid: The parameter ID to remove.
@@ -1454,17 +1454,17 @@ class EpistemicGraph:
             )
         new = self._copy()
         del new.parameters[pid]
-        # Clean up dangling constraint annotations on claims
-        for cid, claim in list(new.claims.items()):
-            if pid in claim.parameter_constraints:
-                new.claims[cid] = copy.deepcopy(claim)
-                new.claims[cid].parameter_constraints.pop(pid, None)
+        # Clean up dangling constraint annotations on hypotheses
+        for cid, hypothesis in list(new.hypotheses.items()):
+            if pid in hypothesis.parameter_constraints:
+                new.hypotheses[cid] = copy.deepcopy(hypothesis)
+                new.hypotheses[cid].parameter_constraints.pop(pid, None)
         return new
 
     def remove_analysis(self, anid: AnalysisId) -> EpistemicGraph:
         """Remove an analysis from the graph.
 
-        Raises if any claim's ``analyses`` or any prediction's ``analysis``
+        Raises if any hypothesis's ``analyses`` or any prediction's ``analysis``
         still references this analysis. Tears down
         ``Parameter.used_in_analyses`` backlinks on success.
 
@@ -1476,20 +1476,20 @@ class EpistemicGraph:
 
         Raises:
             BrokenReferenceError: If the analysis does not exist or is
-                still referenced by claims or predictions.
+                still referenced by hypotheses or predictions.
         """
         if anid not in self.analyses:
             raise BrokenReferenceError(f"Analysis {anid} does not exist")
-        blocking_claims = [
-            cid for cid, c in self.claims.items() if anid in c.analyses
+        blocking_hypotheses = [
+            cid for cid, c in self.hypotheses.items() if anid in c.analyses
         ]
         blocking_preds = [
             pid for pid, p in self.predictions.items() if p.analysis == anid
         ]
-        if blocking_claims or blocking_preds:
+        if blocking_hypotheses or blocking_preds:
             raise BrokenReferenceError(
                 f"Analysis {anid} is still referenced by "
-                f"claims {blocking_claims} and predictions {blocking_preds}"
+                f"hypotheses {blocking_hypotheses} and predictions {blocking_preds}"
             )
         analysis = self.analyses[anid]
         new = self._copy()
@@ -1538,8 +1538,8 @@ class EpistemicGraph:
     def remove_theory(self, tid: TheoryId) -> EpistemicGraph:
         """Remove a theory from the graph.
 
-        Scrubs ``Claim.theories`` references on any claims that were
-        motivated by this theory. Does not block on claims — a claim
+        Scrubs ``Hypothesis.theories`` references on any hypotheses that were
+        motivated by this theory. Does not block on hypotheses — a hypothesis
         can survive without its motivating theory.
 
         Args:
@@ -1555,11 +1555,11 @@ class EpistemicGraph:
             raise BrokenReferenceError(f"Theory {tid} does not exist")
         new = self._copy()
         del new.theories[tid]
-        # Scrub Claim.theories backlinks
-        for cid, claim in list(new.claims.items()):
-            if tid in claim.theories:
-                new.claims[cid] = copy.deepcopy(claim)
-                new.claims[cid].theories.discard(tid)
+        # Scrub Hypothesis.theories backlinks
+        for cid, hypothesis in list(new.hypotheses.items()):
+            if tid in hypothesis.theories:
+                new.hypotheses[cid] = copy.deepcopy(hypothesis)
+                new.hypotheses[cid].theories.discard(tid)
         return new
 
     def remove_discovery(self, did: DiscoveryId) -> EpistemicGraph:
@@ -1625,7 +1625,7 @@ class EpistemicGraph:
     def register_observation(self, observation: Observation) -> EpistemicGraph:
         """Register a new observation in the graph.
 
-        Validates that all referenced predictions, claims, and assumptions
+        Validates that all referenced predictions, hypotheses, and assumptions
         exist. Updates bidirectional ``Prediction.observations`` backlinks.
 
         Args:
@@ -1641,7 +1641,7 @@ class EpistemicGraph:
         if observation.id in self.observations:
             raise DuplicateIdError(f"Observation {observation.id} already exists")
         self._check_refs_exist(observation.predictions, self.predictions, "prediction")
-        self._check_refs_exist(observation.related_claims, self.claims, "claim")
+        self._check_refs_exist(observation.related_hypotheses, self.hypotheses, "hypothesis")
         self._check_refs_exist(observation.related_assumptions, self.assumptions, "assumption")
 
         new = self._copy()
@@ -1675,7 +1675,7 @@ class EpistemicGraph:
             raise BrokenReferenceError(f"Observation {new_observation.id} does not exist")
         old = self.observations[new_observation.id]
         self._check_refs_exist(new_observation.predictions, self.predictions, "prediction")
-        self._check_refs_exist(new_observation.related_claims, self.claims, "claim")
+        self._check_refs_exist(new_observation.related_hypotheses, self.hypotheses, "hypothesis")
         self._check_refs_exist(new_observation.related_assumptions, self.assumptions, "assumption")
 
         new = self._copy()
@@ -1759,31 +1759,31 @@ class EpistemicGraph:
         if missing:
             raise BrokenReferenceError(f"Non-existent {label}(s): {missing}")
 
-    def _check_no_cycle_with(self, claim: Claim) -> None:
-        """Verify that adding this claim would not create a dependency cycle.
+    def _check_no_cycle_with(self, hypothesis: Hypothesis) -> None:
+        """Verify that adding this hypothesis would not create a dependency cycle.
 
-        Walks the ``depends_on`` chain starting from the claim's
-        dependencies. If the walk encounters the claim's own ID,
+        Walks the ``depends_on`` chain starting from the hypothesis's
+        dependencies. If the walk encounters the hypothesis's own ID,
         a cycle would result.
 
         Args:
-            claim: The claim about to be registered or updated.
+            hypothesis: The hypothesis about to be registered or updated.
 
         Raises:
-            CycleError: If adding this claim would create a dependency cycle.
+            CycleError: If adding this hypothesis would create a dependency cycle.
         """
-        visited: set[ClaimId] = set()
-        stack = list(claim.depends_on)
+        visited: set[HypothesisId] = set()
+        stack = list(hypothesis.depends_on)
         while stack:
             current = stack.pop()
-            if current == claim.id:
+            if current == hypothesis.id:
                 raise CycleError(
-                    f"Adding {claim.id} would create a dependency cycle"
+                    f"Adding {hypothesis.id} would create a dependency cycle"
                 )
             if current in visited:
                 continue
             visited.add(current)
-            upstream = self.claims.get(current)
+            upstream = self.hypotheses.get(current)
             if upstream:
                 stack.extend(upstream.depends_on)
 
@@ -1832,7 +1832,7 @@ class EpistemicGraph:
         """
         return EpistemicGraph(
             version=self.version,
-            claims=dict(self.claims),
+            hypotheses=dict(self.hypotheses),
             assumptions=dict(self.assumptions),
             predictions=dict(self.predictions),
             theories=dict(self.theories),

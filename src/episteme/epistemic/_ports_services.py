@@ -83,7 +83,7 @@ class TransactionLog(Protocol):
 
         Args:
             operation: Human-readable operation name, e.g.
-                ``"register_claim"``.
+                ``"register_hypothesis"``.
             identifier: The primary entity ID affected by the operation.
 
         Returns:
@@ -106,7 +106,7 @@ class PayloadValidator(Protocol):
         """Return findings describing schema or structural issues, if any.
 
         Args:
-            resource: Canonical resource key (e.g. ``"claim"``,
+            resource: Canonical resource key (e.g. ``"hypothesis"``,
                 ``"prediction"``).
             payload: The inbound mutation payload to validate.
 

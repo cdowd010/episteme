@@ -12,9 +12,9 @@ from episteme.epistemic.model import (
     Assumption,
     AssumptionId,
     AssumptionType,
-    Claim,
-    ClaimId,
-    ClaimType,
+    Hypothesis,
+    HypothesisId,
+    HypothesisType,
     Observation,
     ObservationId,
     ObservationStatus,
@@ -40,7 +40,7 @@ def base_graph() -> EpistemicGraph:
     """EpistemicGraph populated with the standard set of test entities.
 
     Entity graph:
-        Theory T-001  ←→  Claim C-001  →  Assumption A-001 (LOAD_BEARING)
+        Theory T-001  ←→  Hypothesis C-001  →  Assumption A-001 (LOAD_BEARING)
                               ↓
                          Prediction P-001 (stress_criteria set)
                               ↑
@@ -65,13 +65,13 @@ def base_graph() -> EpistemicGraph:
         )
     )
 
-    graph = graph.register_claim(
-        Claim(
-            id=ClaimId("C-001"),
+    graph = graph.register_hypothesis(
+        Hypothesis(
+            id=HypothesisId("C-001"),
             statement="Catalyst X increases yield",
-            type=ClaimType.FOUNDATIONAL,
+            type=HypothesisType.FOUNDATIONAL,
             scope="global",
-            falsifiability="Show yield does not increase",
+            refutation_criteria="Show yield does not increase",
             assumptions={AssumptionId("A-001")},
             theories={TheoryId("T-001")},
         )
@@ -86,7 +86,7 @@ def base_graph() -> EpistemicGraph:
             evidence_kind=EvidenceKind.NOVEL_PREDICTION,
             measurement_regime=MeasurementRegime.MEASURED,
             predicted=0.15,
-            claim_ids={ClaimId("C-001")},
+            hypothesis_ids={HypothesisId("C-001")},
             stress_criteria="Yield increase <10% but >5% would be stressed",
         )
     )

@@ -91,7 +91,7 @@ class _EpistemeClientCore:
         ``Gateway.register`` with the resulting dict.
 
         Args:
-            resource: Canonical resource key (e.g. ``"claim"``).
+            resource: Canonical resource key (e.g. ``"hypothesis"``).
             dry_run: When ``True``, validate without mutating the graph.
             **payload: Entity attributes as keyword arguments.
 
@@ -142,7 +142,7 @@ class _EpistemeClientCore:
         ``Gateway.set``.
 
         Args:
-            resource: Canonical resource key (e.g. ``"claim"``).
+            resource: Canonical resource key (e.g. ``"hypothesis"``).
             identifier: String form of the entity's ID.
             dry_run: When ``True``, validate without mutating the graph.
             **payload: Fields to update as keyword arguments.
@@ -182,7 +182,7 @@ class _EpistemeClientCore:
 
         Args:
             query_type: One of the keys in ``QUERY_SPECS`` (e.g.
-                ``"claim_lineage"``, ``"parameter_impact"``).
+                ``"hypothesis_lineage"``, ``"parameter_impact"``).
             **params: Named query parameters as declared by the
                 ``QuerySpec`` (e.g. ``cid="C-001"``).
 

@@ -79,7 +79,7 @@ class Gateway:
         """Validate and return a canonical resource key.
 
         Args:
-            resource: Canonical resource key such as ``"claim"`` or
+            resource: Canonical resource key such as ``"hypothesis"`` or
                 ``"dead_end"``.
 
         Returns:
@@ -209,7 +209,7 @@ class Gateway:
         """Look up the ``ResourceSpec`` for a canonical resource key.
 
         Args:
-            resource: Canonical resource key (e.g. ``"claim"``).
+            resource: Canonical resource key (e.g. ``"hypothesis"``).
 
         Returns:
             ResourceSpec: The metadata descriptor for the resource.
@@ -223,11 +223,11 @@ class Gateway:
         """Coerce a string identifier to the resource's typed ID NewType.
 
         Args:
-            resource: Canonical resource key (e.g. ``"claim"``).
+            resource: Canonical resource key (e.g. ``"hypothesis"``).
             identifier: Raw string form of the entity ID.
 
         Returns:
-            object: The typed NewType instance (e.g. ``ClaimId("C-001")``).
+            object: The typed NewType instance (e.g. ``HypothesisId("C-001")``).
 
         Raises:
             KeyError: If ``resource`` is not recognized.
@@ -258,7 +258,7 @@ class Gateway:
         returns an empty list (validation is skipped).
 
         Args:
-            resource: Canonical resource key (e.g. ``"claim"``).
+            resource: Canonical resource key (e.g. ``"hypothesis"``).
             payload: Inbound mutation payload to validate.
 
         Returns:

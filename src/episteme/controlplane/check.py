@@ -18,8 +18,8 @@ def check_refs(
 ) -> list[Finding]:
     """Verify all cross-references in the epistemic graph are consistent.
 
-    Checks that every ID reference in the graph (e.g. ``Claim.assumptions``,
-    ``Prediction.claims``) points to an existing entity.
+    Checks that every ID reference in the graph (e.g. ``Hypothesis.assumptions``,
+    ``Prediction.hypotheses``) points to an existing entity.
 
     Args:
         graph: The epistemic graph to check.
@@ -82,9 +82,9 @@ def check_stale(
             pid for pid, pred in graph.predictions.items()
             if pred.analysis == an_id
         }
-        # Also find predictions via claims covered by this analysis
-        for cid in analysis.claims_covered:
-            affected_predictions.update(graph.predictions_depending_on_claim(cid))
+        # Also find predictions via hypotheses covered by this analysis
+        for cid in analysis.hypotheses_covered:
+            affected_predictions.update(graph.predictions_depending_on_hypothesis(cid))
 
         msg = (
             f"Analysis {an_id} may be stale: parameter(s) "

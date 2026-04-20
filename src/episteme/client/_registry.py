@@ -25,10 +25,10 @@ class _EpistemeClientRegistryHelpers:
     ) -> ClientResult[Theory]:
         """Register a theory in the epistemic graph.
 
-        A theory is a high-level narrative construct that groups related claims
+        A theory is a high-level narrative construct that groups related hypotheses
         and predictions into a coherent explanatory framework. Claims declare
-        which theories motivate them via ``Claim.theories``; the theory's
-        ``motivates_claims`` backlink is auto-maintained.
+        which theories motivate them via ``Hypothesis.theories``; the theory's
+        ``motivates_hypotheses`` backlink is auto-maintained.
 
         Args:
             id: Unique identifier for the theory.
@@ -60,7 +60,7 @@ class _EpistemeClientRegistryHelpers:
         status: DiscoveryStatus | str,
         *,
         dry_run: bool = False,
-        related_claims: Iterable[str] | None = None,
+        related_hypotheses: Iterable[str] | None = None,
         related_predictions: Iterable[str] | None = None,
         references: Iterable[str] | None = None,
         source: str | None = None,
@@ -79,7 +79,7 @@ class _EpistemeClientRegistryHelpers:
             status: Initial lifecycle status (``DiscoveryStatus`` enum or
                 string key).
             dry_run: Simulate without committing.
-            related_claims: IDs of claims that this discovery supports or
+            related_hypotheses: IDs of hypotheses that this discovery supports or
                 refines.
             related_predictions: IDs of predictions that this discovery
                 confirms or falsifies.
@@ -104,7 +104,7 @@ class _EpistemeClientRegistryHelpers:
         *,
         dry_run: bool = False,
         related_predictions: Iterable[str] | None = None,
-        related_claims: Iterable[str] | None = None,
+        related_hypotheses: Iterable[str] | None = None,
         references: Iterable[str] | None = None,
         source: str | None = None,
     ) -> ClientResult[DeadEnd]:
@@ -123,7 +123,7 @@ class _EpistemeClientRegistryHelpers:
             dry_run: Simulate without committing.
             related_predictions: IDs of predictions that were falsified or
                 superseded by this dead end.
-            related_claims: IDs of claims this dead end is connected to.
+            related_hypotheses: IDs of hypotheses this dead end is connected to.
             references: Citations or URLs documenting the failed approach.
             source: General citation or reference.
 

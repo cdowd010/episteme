@@ -29,12 +29,12 @@ class EpistemeClient(_EpistemeClientResourceHelpers, _EpistemeClientCore):
         import episteme as ds
 
         with ds.connect() as client:
-            result = client.register_claim(
+            result = client.register_hypothesis(
                 id="C-001",
                 statement="...",
                 type="foundational",
                 scope="global",
-                falsifiability="...",
+                refutation_criteria="...",
             )
     """
 

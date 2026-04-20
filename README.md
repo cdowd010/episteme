@@ -13,22 +13,22 @@
 
 ## What It Is
 
-The scientific method has a structure: you make **claims**, ground them in
+The scientific method has a structure: you make **hypotheses**, ground them in
 **assumptions**, derive **predictions**, run **analyses** to test those
 predictions, and record what the evidence shows. That structure exists in every
 research project, but it almost never gets tracked. It lives in documents, email
 threads, and researcher memory, and it breaks silently.
 
-A refuted prediction doesn't update the claims that depend on it. A revised
+A refuted prediction doesn't update the hypotheses that depend on it. A revised
 assumption doesn't propagate to its consequences. Predictions accumulate that
-still cite retracted claims. Assumptions go untested because nobody can see
+still cite retracted hypotheses. Assumptions go untested because nobody can see
 they're load-bearing. Six months later, nobody can trace why a conclusion was
 drawn or whether the underlying support was ever intact. There's no standard
 tooling for this — it's a gap that version control, lab notebooks, and project
 management software all sidestep.
 
 deSitter fills that gap. It is a versioned, graph-structured registry of your
-**epistemic chain** — every claim, assumption, prediction, analysis, and theory
+**epistemic chain** — every hypothesis, assumption, prediction, analysis, and theory
 — with hard invariants that keep the graph consistent as research evolves. It
 surfaces structural facts about the graph: missing links, untested assumptions,
 stale analyses, uncovered predictions.
@@ -52,7 +52,7 @@ external tools can watch, index, and react to directly.
 
 ## Core Capabilities
 
-- **Register** claims, assumptions, predictions, analyses, theories, and
+- **Register** hypotheses, assumptions, predictions, analyses, theories, and
   parameters in a typed, versioned graph
 - **Enforce** referential integrity, DAG acyclicity, bidirectional links, and
   tier constraints at write time, not after the fact
@@ -87,7 +87,7 @@ client.register_claim(
     statement="Catalyst X increases yield.",
     type="foundational",
     scope="global",
-    falsifiability="A replicated null result would falsify this claim.",
+    refutation_criteria="A replicated null result would falsify this hypothesis.",
 )
 ```
 
@@ -125,10 +125,10 @@ client.register_claim(
     statement="Catalyst X increases yield.",
     type="foundational",
     scope="global",
-    falsifiability="A replicated null result would falsify this claim.",
+    refutation_criteria="A replicated null result would falsify this hypothesis.",
 )
 
-claims = client.list_claims().data or []
+hypotheses = client.list_claims().data or []
 ```
 
 ```bash
@@ -204,7 +204,7 @@ src/desitter/
 ├── config.py               # ProjectContext, ProjectPaths, runtime configuration
 ├── epistemic/              # Epistemic kernel — pure Python, zero I/O
 │   ├── types.py            # Typed IDs, enums, Finding, Severity
-│   ├── model.py            # Entity dataclasses: Claim, Assumption, Prediction, …
+│   ├── model.py            # Entity dataclasses: Hypothesis, Assumption, Prediction, …
 │   ├── graph.py              # EpistemicGraph, aggregate root, all mutations
 │   ├── invariants.py       # Ten pure validator functions
 │   ├── codec.py            # Serialization between entities and primitive payloads

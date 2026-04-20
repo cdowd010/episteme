@@ -46,8 +46,8 @@ These are execution constraints. Work that violates them should be rejected.
 ### Invariants
 
 - [ ] `validate_adjudicated_prediction_no_analysis` — WARNING: CONFIRMED/STRESSED/REFUTED prediction with `analysis = None` — `invariants.py`
-- [ ] `validate_revised_claim_downstream_impact` — WARNING: predictions or claims that cite a REVISED claim — `invariants.py`
-- [ ] `validate_active_theory_claims_retracted` — WARNING: ACTIVE theory whose entire `related_claims` set is RETRACTED or REVISED — `invariants.py`
+- [ ] `validate_revised_claim_downstream_impact` — WARNING: predictions or hypotheses that cite a REVISED hypothesis — `invariants.py`
+- [ ] `validate_active_theory_claims_retracted` — WARNING: ACTIVE theory whose entire `related_hypotheses` set is RETRACTED or REVISED — `invariants.py`
 - [ ] `validate_deprecated_dataset_usage` — WARNING: analysis using a DEPRECATED or SUPERSEDED dataset — `invariants.py`
 - [ ] `validate_research_objective_status_consistency` — WARNING: TARGETED with no viable theories; INFO: OPEN with candidate theories — `invariants.py`
 - [ ] `validate_abandoned_objective_active_theories` — INFO: ABANDONED objective with ACTIVE or REFINED candidate theories — `invariants.py`
@@ -178,7 +178,7 @@ All three helper mixins have signatures but raise `NotImplementedError`. Impleme
 
 > requires: Gateway, Client, Typed Helpers, Views
 
-- [ ] Gateway: register round-trip for at least one entity (claim)
+- [ ] Gateway: register round-trip for at least one entity (hypothesis)
 - [ ] Gateway: get / list / set / transition round-trips
 - [ ] Gateway: query round-trips (claim_lineage, refutation_impact, parameter_impact)
 - [ ] Gateway: CRITICAL finding blocks mutation, graph unchanged
@@ -196,8 +196,8 @@ All three helper mixins have signatures but raise `NotImplementedError`. Impleme
 - [ ] Health: run_health_check returns HEALTHY on a clean graph
 - [ ] Health: run_health_check returns WARNING / CRITICAL on a graph with violations
 - [ ] Invariants: validate_adjudicated_prediction_no_analysis fires on adjudicated prediction with no analysis
-- [ ] Invariants: validate_revised_claim_downstream_impact fires on prediction/claim citing a REVISED claim
-- [ ] Invariants: validate_active_theory_claims_retracted fires on ACTIVE theory with all claims retracted
+- [ ] Invariants: validate_revised_claim_downstream_impact fires on prediction/hypothesis citing a REVISED hypothesis
+- [ ] Invariants: validate_active_theory_claims_retracted fires on ACTIVE theory with all hypotheses retracted
 - [ ] Invariants: validate_deprecated_dataset_usage fires on analysis using a DEPRECATED dataset
 - [ ] Invariants: validate_research_objective_status_consistency fires on TARGETED objective with no viable theories
 - [ ] Invariants: validate_abandoned_objective_active_theories fires on ABANDONED objective with ACTIVE theories

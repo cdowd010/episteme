@@ -16,10 +16,10 @@ from .types import (
     AnalysisId,
     AssumptionId,
     AssumptionType,
-    ClaimCategory,
-    ClaimId,
-    ClaimStatus,
-    ClaimType,
+    HypothesisCategory,
+    HypothesisId,
+    HypothesisStatus,
+    HypothesisType,
     ConfidenceTier,
     Criticality,
     DeadEndId,
@@ -41,37 +41,37 @@ from .types import (
 
 
 @dataclass
-class Claim:
+class Hypothesis:
     """An atomic, falsifiable assertion in the epistemic graph.
 
-    Claims are the fundamental building blocks of the knowledge graph.
+    Hypotheses are the fundamental building blocks of the knowledge graph.
     They form a directed acyclic graph via ``depends_on``, where derived
-    claims reference the foundational claims they rest upon.
+    hypotheses reference the foundational hypotheses they rest upon.
 
-    The EpistemicGraph maintains bidirectional links between claims and
-    their assumptions (``Assumption.used_in_claims``) and analyses
-    (``Analysis.claims_covered``). These backlinks are updated
+    The EpistemicGraph maintains bidirectional links between hypotheses and
+    their assumptions (``Assumption.used_in_hypotheses``) and analyses
+    (``Analysis.hypotheses_covered``). These backlinks are updated
     automatically during registration and updates — callers should
     never modify them directly.
 
     Attributes:
-        id: Unique identifier for this claim (e.g. ``"C-001"``).
+        id: Unique identifier for this hypothesis (e.g. ``"H-001"``).
         statement: The human-readable text of the assertion.
         type: Structural role — ``FOUNDATIONAL`` (axiomatic base) or
-            ``DERIVED`` (depends on other claims).
+            ``DERIVED`` (depends on other hypotheses).
         scope: Applicability scope, e.g. ``"global"`` or ``"domain-specific"``.
-        falsifiability: Description of what evidence would refute this claim.
+        refutation_criteria: Description of what evidence would refute this hypothesis.
         status: Lifecycle state — ``ACTIVE``, ``REVISED``, or ``RETRACTED``.
-        category: Whether the claim is ``NUMERICAL`` (quantitative) or
+        category: Whether the hypothesis is ``QUANTITATIVE`` (quantitative) or
             ``QUALITATIVE`` (conceptual/structural).
-        assumptions: IDs of assumptions this claim depends on. Bidirectional
-            with ``Assumption.used_in_claims``.
-        depends_on: IDs of other claims this claim is derived from. Forms a
+        assumptions: IDs of assumptions this hypothesis depends on. Bidirectional
+            with ``Assumption.used_in_hypotheses``.
+        depends_on: IDs of other hypotheses this hypothesis is derived from. Forms a
             DAG enforced by the graph's cycle-detection logic.
-        analyses: IDs of analyses linked to this claim. Bidirectional with
-            ``Analysis.claims_covered``.
-        theories: IDs of theories that motivate this claim. Bidirectional
-            with ``Theory.motivates_claims``.
+        analyses: IDs of analyses linked to this hypothesis. Bidirectional with
+            ``Analysis.hypotheses_covered``.
+        theories: IDs of theories that motivate this hypothesis. Bidirectional
+            with ``Theory.motivates_hypotheses``.
         parameter_constraints: Annotation map ``{ParameterId: constraint_str}``
             where the constraint string is human-readable (e.g. ``"< 0.05"``.
             Episteme does not evaluate these — it surfaces them when a
@@ -79,15 +79,15 @@ class Claim:
         source: Provenance string — DOI, arXiv ID, URL, citation, or
             ``"derived from ..."``.
     """
-    id: ClaimId
+    id: HypothesisId
     statement: str
-    type: ClaimType
+    type: HypothesisType
     scope: str                                   # "global", "domain-specific"
-    falsifiability: str
-    status: ClaimStatus = ClaimStatus.ACTIVE
-    category: ClaimCategory = ClaimCategory.QUALITATIVE
+    refutation_criteria: str
+    status: HypothesisStatus = HypothesisStatus.ACTIVE
+    category: HypothesisCategory = HypothesisCategory.QUALITATIVE
     assumptions: set[AssumptionId] = field(default_factory=set)
-    depends_on: set[ClaimId] = field(default_factory=set)
+    depends_on: set[HypothesisId] = field(default_factory=set)
     analyses: set[AnalysisId] = field(default_factory=set)
     theories: set[TheoryId] = field(default_factory=set)
     parameter_constraints: dict[ParameterId, str] = field(default_factory=dict)
@@ -98,15 +98,15 @@ class Claim:
 class Assumption:
     """A premise taken as given within the epistemic graph.
 
-    Assumptions underpin claims and may themselves form presupposition
+    Assumptions underpin hypotheses and may themselves form presupposition
     chains via ``depends_on``. For example, "the detector is linear"
     depends on "the detector is calibrated." This chain allows
     ``assumption_lineage`` to perform a full transitive closure through
-    both claim chains AND assumption chains, ensuring no silent
+    both hypothesis chains AND assumption chains, ensuring no silent
     dependency is missed.
 
-    Backlinks ``used_in_claims`` and ``tested_by`` are maintained by
-    claim and prediction registration operations respectively. They
+    Backlinks ``used_in_hypotheses`` and ``tested_by`` are maintained by
+    hypothesis and prediction registration operations respectively. They
     are intentionally initialized to empty sets on registration.
 
     Attributes:
@@ -119,8 +119,8 @@ class Assumption:
             ``MODERATE``, ``HIGH``, or ``LOAD_BEARING``. Defaults to
             ``MODERATE`` — researchers should explicitly upgrade assumptions
             that are single points of failure.
-        used_in_claims: IDs of claims that reference this assumption.
-            Backlink maintained by claim operations — not set by callers.
+        used_in_hypotheses: IDs of hypotheses that reference this assumption.
+            Backlink maintained by hypothesis operations — not set by callers.
         depends_on: IDs of other assumptions this one presupposes.
             Forms a DAG enforced by the graph's cycle-detection logic.
         falsifiable_consequence: A description of what evidence would
@@ -136,7 +136,7 @@ class Assumption:
     type: AssumptionType
     scope: str
     criticality: Criticality = Criticality.MODERATE
-    used_in_claims: set[ClaimId] = field(default_factory=set)
+    used_in_hypotheses: set[HypothesisId] = field(default_factory=set)
     depends_on: set[AssumptionId] = field(default_factory=set)
     falsifiable_consequence: str | None = None
     tested_by: set[PredictionId] = field(default_factory=set)
@@ -146,18 +146,18 @@ class Assumption:
 
 @dataclass
 class Prediction:
-    """A testable consequence of one or more claims.
+    """A testable consequence of one or more hypotheses.
 
     Predictions are the empirical interface between the epistemic graph
-    and the real world. Each prediction derives from a set of claims
-    (``claim_ids``), carries a confidence tier and evidence
+    and the real world. Each prediction derives from a set of hypotheses
+    (``hypothesis_ids``), carries a confidence tier and evidence
     classification, and tracks lifecycle status as evidence accumulates.
 
     Key semantic distinctions:
 
-    - ``claim_ids``: The claims that jointly imply this prediction (the
+    - ``hypothesis_ids``: The hypotheses that jointly imply this prediction (the
       logical derivation chain). Most non-trivial predictions require
-      multiple claims. No backlink exists on Claim — the graph validates
+      multiple hypotheses. No backlink exists on Hypothesis — the graph validates
       existence only.
     - ``tests_assumptions``: Assumptions this prediction was explicitly
       designed to test — its outcome bears on whether those assumptions
@@ -166,7 +166,7 @@ class Prediction:
       it is valid only if these assumptions hold. Unlike
       ``tests_assumptions``, these are taken as given. A prediction
       cannot both test and condition on the same assumption.
-    - ``derivation``: Prose explaining *why* ``claim_ids`` imply this
+    - ``derivation``: Prose explaining *why* ``hypothesis_ids`` imply this
       prediction (the logical reasoning). Distinct from ``specification``
       (the formula or relationship being tested).
 
@@ -183,8 +183,8 @@ class Prediction:
             or ``UNMEASURED``.
         predicted: The predicted value or outcome (type varies).
         specification: The formula or relationship being tested (the "what").
-        derivation: Why ``claim_ids`` jointly imply this prediction (the "why").
-        claim_ids: IDs of claims forming the derivation chain.
+        derivation: Why ``hypothesis_ids`` jointly imply this prediction (the "why").
+        hypothesis_ids: IDs of hypotheses forming the derivation chain.
         tests_assumptions: IDs of assumptions under active test.
         analysis: Optional analysis ID linked to this prediction.
         independence_group: Optional group ID. Bidirectional with
@@ -197,10 +197,10 @@ class Prediction:
         free_params: Number of free parameters. Must be 0 for
             ``FULLY_SPECIFIED`` tier.
         conditional_on: IDs of assumptions taken as given for validity.
-        falsifier: Description of what evidence would refute this prediction.
+        refutation_criteria: Description of what evidence would refute this prediction.
         stress_criteria: Description of what evidence would move this
             prediction from CONFIRMED to STRESSED — the threshold for
-            tension without full refutation. Together with ``falsifier``,
+            tension without full refutation. Together with ``refutation_criteria``,
             this makes the adjudication boundaries explicit and auditable.
         observations: IDs of observations that bear on this prediction.
             Backlink maintained by observation operations — not set by
@@ -217,8 +217,8 @@ class Prediction:
     measurement_regime: MeasurementRegime
     predicted: Any                               # the predicted value/outcome
     specification: str | None = None             # formula/relationship being tested (the "what")
-    derivation: str | None = None                # why claim_ids jointly imply this prediction (the "why")
-    claim_ids: set[ClaimId] = field(default_factory=set)
+    derivation: str | None = None                # why hypothesis_ids jointly imply this prediction (the "why")
+    hypothesis_ids: set[HypothesisId] = field(default_factory=set)
     tests_assumptions: set[AssumptionId] = field(default_factory=set)
     analysis: AnalysisId | None = None
     independence_group: IndependenceGroupId | None = None
@@ -227,7 +227,7 @@ class Prediction:
     observed_bound: Any = None
     free_params: int = 0
     conditional_on: set[AssumptionId] = field(default_factory=set)
-    falsifier: str | None = None
+    refutation_criteria: str | None = None
     stress_criteria: str | None = None
     observations: set[ObservationId] = field(default_factory=set)
     benchmark_source: str | None = None
@@ -251,7 +251,7 @@ class IndependenceGroup:
     Attributes:
         id: Unique identifier (e.g. ``"IG-001"``).
         label: Human-readable name for the group.
-        claim_lineage: IDs of claims in the common derivation chain.
+        hypothesis_lineage: IDs of hypotheses in the common derivation chain.
             Caller-maintained annotation — the kernel validates existence
             only, not semantic completeness.
         assumption_lineage: IDs of assumptions in the common chain.
@@ -263,7 +263,7 @@ class IndependenceGroup:
     """
     id: IndependenceGroupId
     label: str
-    claim_lineage: set[ClaimId] = field(default_factory=set)
+    hypothesis_lineage: set[HypothesisId] = field(default_factory=set)
     assumption_lineage: set[AssumptionId] = field(default_factory=set)
     member_predictions: set[PredictionId] = field(default_factory=set)
     measurement_regime: MeasurementRegime | None = None
@@ -309,16 +309,16 @@ class Analysis:
     ``health_check`` can identify which analyses (and therefore which
     predictions) need to be re-run.
 
-    ``claims_covered`` is a backlink maintained by claim operations — it
-    starts empty on registration and is populated when claims reference
+    ``hypotheses_covered`` is a backlink maintained by hypothesis operations — it
+    starts empty on registration and is populated when hypotheses reference
     this analysis.
 
     Attributes:
         id: Unique identifier (e.g. ``"AN-001"``).
         command: Shell command to invoke the analysis (documentation only).
         path: File path relative to the workspace root.
-        claims_covered: IDs of claims linked to this analysis. Backlink
-            maintained by claim operations — not set by callers.
+        hypotheses_covered: IDs of hypotheses linked to this analysis. Backlink
+            maintained by hypothesis operations — not set by callers.
         uses_parameters: IDs of parameters this analysis depends on.
             Bidirectional with ``Parameter.used_in_analyses``.
         notes: Free-form notes for the researcher.
@@ -329,7 +329,7 @@ class Analysis:
     id: AnalysisId
     command: str | None = None                   # how to invoke it (documentation)
     path: str | None = None                      # path to the file, relative to workspace root
-    claims_covered: set[ClaimId] = field(default_factory=set)
+    hypotheses_covered: set[HypothesisId] = field(default_factory=set)
     uses_parameters: set[ParameterId] = field(default_factory=set)
     notes: str | None = None
     # Result fields — populated by record_analysis_result once the researcher
@@ -343,14 +343,14 @@ class Analysis:
 class Theory:
     """A higher-level explanatory framework being explored.
 
-    A theory motivates and organises claims. Claims declare which theories
-    motivate them via ``Claim.theories``, and this entity's
-    ``motivates_claims`` backlink is maintained automatically by the graph.
+    A theory motivates and organises hypotheses. Claims declare which theories
+    motivate them via ``Hypothesis.theories``, and this entity's
+    ``motivates_hypotheses`` backlink is maintained automatically by the graph.
     This makes the relationship structural: when a theory is abandoned,
-    the system can answer "which claims lose their theoretical motivation?"
+    the system can answer "which hypotheses lose their theoretical motivation?"
 
     ``related_predictions`` remains a soft navigational link — predictions
-    relate to theories indirectly through claims.
+    relate to theories indirectly through hypotheses.
 
     Attributes:
         id: Unique identifier (e.g. ``"T-001"``).
@@ -358,8 +358,8 @@ class Theory:
         status: Lifecycle state — ``ACTIVE``, ``REFINED``, ``ABANDONED``,
             or ``SUPERSEDED``.
         summary: Optional prose description of the theory.
-        motivates_claims: IDs of claims this theory motivates. Backlink
-            maintained by claim operations — not set by callers.
+        motivates_hypotheses: IDs of hypotheses this theory motivates. Backlink
+            maintained by hypothesis operations — not set by callers.
         related_predictions: IDs of predictions this theory generates.
             Soft navigational link — scrubbed on prediction removal.
         source: Provenance string — DOI, arXiv ID, URL, or citation.
@@ -368,7 +368,7 @@ class Theory:
     title: str
     status: TheoryStatus
     summary: str | None = None
-    motivates_claims: set[ClaimId] = field(default_factory=set)
+    motivates_hypotheses: set[HypothesisId] = field(default_factory=set)
     related_predictions: set[PredictionId] = field(default_factory=set)
     source: str | None = None                    # doi:..., arxiv:..., url, citation
 
@@ -378,8 +378,8 @@ class Discovery:
     """A significant finding during research.
 
     Discoveries capture noteworthy results, breakthroughs, or
-    observations that may drive new claims or predictions. They
-    are leaf entities with soft navigational links to claims and
+    observations that may drive new hypotheses or predictions. They
+    are leaf entities with soft navigational links to hypotheses and
     predictions that are automatically scrubbed on removal.
 
     Attributes:
@@ -389,8 +389,8 @@ class Discovery:
         summary: Prose description of what was found.
         impact: Description of the discovery's significance.
         status: Progress state — ``NEW``, ``INTEGRATED``, or ``ARCHIVED``.
-        related_claims: IDs of claims connected to this discovery.
-            Soft navigational link — scrubbed on claim removal.
+        related_hypotheses: IDs of hypotheses connected to this discovery.
+            Soft navigational link — scrubbed on hypothesis removal.
         related_predictions: IDs of predictions connected to this discovery.
             Soft navigational link — scrubbed on prediction removal.
         references: List of external reference strings (DOIs, URLs, etc.).
@@ -402,7 +402,7 @@ class Discovery:
     summary: str
     impact: str
     status: DiscoveryStatus
-    related_claims: set[ClaimId] = field(default_factory=set)
+    related_hypotheses: set[HypothesisId] = field(default_factory=set)
     related_predictions: set[PredictionId] = field(default_factory=set)
     references: list[str] = field(default_factory=list)
     source: str | None = None                    # doi:..., arxiv:..., url, citation
@@ -426,8 +426,8 @@ class DeadEnd:
             or ``ARCHIVED`` (historical only).
         related_predictions: IDs of predictions connected to this dead end.
             Soft navigational link — scrubbed on prediction removal.
-        related_claims: IDs of claims connected to this dead end.
-            Soft navigational link — scrubbed on claim removal.
+        related_hypotheses: IDs of hypotheses connected to this dead end.
+            Soft navigational link — scrubbed on hypothesis removal.
         references: List of external reference strings.
         source: Provenance string — DOI, arXiv ID, URL, or analysis reference.
     """
@@ -436,7 +436,7 @@ class DeadEnd:
     description: str
     status: DeadEndStatus
     related_predictions: set[PredictionId] = field(default_factory=set)
-    related_claims: set[ClaimId] = field(default_factory=set)
+    related_hypotheses: set[HypothesisId] = field(default_factory=set)
     references: list[str] = field(default_factory=list)
     source: str | None = None                    # doi:..., arxiv:..., url, or analysis reference
 
@@ -487,7 +487,7 @@ class Observation:
     """A recorded empirical observation or measurement.
 
     Observations capture raw empirical data that may exist before any
-    prediction or claim is formulated. This supports inductive and
+    prediction or hypothesis is formulated. This supports inductive and
     exploratory workflows where observation precedes hypothesis
     formation, a common pattern in real science that the
     hypothetico-deductive model alone cannot capture.
@@ -499,7 +499,7 @@ class Observation:
     An observation without any linked predictions represents an
     exploratory finding that has not yet been connected to the
     reasoning chain. The researcher (or agent) may later formulate
-    claims and predictions that reference it.
+    hypotheses and predictions that reference it.
 
     Attributes:
         id: Unique identifier (e.g. ``"OBS-001"``).
@@ -513,8 +513,8 @@ class Observation:
             protocol, instrument, data pipeline, etc.
         predictions: IDs of predictions this observation bears on.
             Bidirectional with ``Prediction.observations``.
-        related_claims: IDs of claims this observation is relevant to.
-            Soft navigational link scrubbed on claim removal.
+        related_hypotheses: IDs of hypotheses this observation is relevant to.
+            Soft navigational link scrubbed on hypothesis removal.
         related_assumptions: IDs of assumptions this observation is
             relevant to. Soft navigational link scrubbed on assumption
             removal.
@@ -528,7 +528,7 @@ class Observation:
     status: ObservationStatus
     methodology: str | None = None
     predictions: set[PredictionId] = field(default_factory=set)
-    related_claims: set[ClaimId] = field(default_factory=set)
+    related_hypotheses: set[HypothesisId] = field(default_factory=set)
     related_assumptions: set[AssumptionId] = field(default_factory=set)
     source: str | None = None
     notes: str | None = None

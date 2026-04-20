@@ -12,7 +12,7 @@ Each example shows a sequence of gateway calls and annotates what the graph does
 
 ```python
 # Call format
-gateway.register("claim", { ... payload ... })
+gateway.register("hypothesis", { ... payload ... })
 # → GatewayResult(status="ok", changed=True, transaction_id="abc-123")
 
 gateway.set("parameter", "PAR-001", { ... updated fields ... })
@@ -38,36 +38,36 @@ gateway.query("refutation_impact", pid="P-001")
 
 | You set this… | Graph automatically maintains… |
 |---|---|
-| `Claim.assumptions` | `Assumption.used_in_claims` |
-| `Claim.analyses` | `Analysis.claims_covered` |
+| `Hypothesis.assumptions` | `Assumption.used_in_hypotheses` |
+| `Hypothesis.analyses` | `Analysis.hypotheses_covered` |
 | `Analysis.uses_parameters` | `Parameter.used_in_analyses` |
 | `Prediction.independence_group` | `IndependenceGroup.member_predictions` |
 | `Prediction.tests_assumptions` | `Assumption.tested_by` |
 
 **Registration order rules** (you cannot reference an entity that does not yet exist):
 - Register `Parameter` before the `Analysis` that uses it.
-- Register `Assumption` before the `Claim` that lists it.
-- Register `Claim` before the `Prediction` that names it in `claim_ids`.
+- Register `Assumption` before the `Hypothesis` that lists it.
+- Register `Hypothesis` before the `Prediction` that names it in `hypothesis_ids`.
 - Register `IndependenceGroup` before the `Prediction` that joins it.
 - Register both `IndependenceGroup`s before the `PairwiseSeparation` that connects them.
-- Register `Analysis` before the `Claim` that lists it in `analyses`.
+- Register `Analysis` before the `Hypothesis` that lists it in `analyses`.
 
 ---
 
 ## Section 1: Foundational Patterns
 
-### 1.1 — Minimal Chain: One Claim, One Prediction, One Analysis
+### 1.1 — Minimal Chain: One Hypothesis, One Prediction, One Analysis
 
-**Scenario:** A chemist claims that catalyst X increases reaction yield above 50%. They have one empirical assumption, one parameter, one analysis, and one prediction.
+**Scenario:** A chemist hypotheses that catalyst X increases reaction yield above 50%. They have one empirical assumption, one parameter, one analysis, and one prediction.
 
 **Population sequence — registration order and auto-wired backlinks:**
 
 | Step | Entity registered | Backlinks auto-wired by the graph |
 |------|------------------|--------------------------------|
 | 1 | `PAR-001` parameter | (none — `used_in_analyses=∅` until AN-001 arrives) |
-| 2 | `A-001` assumption | (none — `used_in_claims=∅`, `tested_by=∅`) |
+| 2 | `A-001` assumption | (none — `used_in_hypotheses=∅`, `tested_by=∅`) |
 | 3 | `AN-001` analysis | `PAR-001.used_in_analyses ← {AN-001}` |
-| 4 | `C-001` claim | `A-001.used_in_claims ← {C-001}` · `AN-001.claims_covered ← {C-001}` |
+| 4 | `C-001` hypothesis | `A-001.used_in_hypotheses ← {C-001}` · `AN-001.hypotheses_covered ← {C-001}` |
 | 5 | `IG-001` independence group | (none — `member_predictions=∅` until P-001 joins) |
 | 6 | `P-001` prediction | `IG-001.member_predictions ← {P-001}` |
 | 7 | transition `P-001 → CONFIRMED` | (status change only, no new structural links) |
@@ -81,14 +81,14 @@ classDef bigText font-size:18px,color:#111111;
     PAR001["PAR-001\nα = 0.05\n[Parameter]"]
     A001["A-001\nConditions controlled\n[Assumption · Methodological]"]
     AN001["AN-001\nyield_experiment.py\n[Analysis]"]
-    C001["C-001\nCatalyst X raises yield > 0.50\n[Claim · Foundational · Numerical]"]
+    C001["C-001\nCatalyst X raises yield > 0.50\n[Hypothesis · Foundational · Numerical]"]
     IG001["IG-001\n2024-06 batch\n[IndependenceGroup]"]
     P001["P-001\npredict yield > 0.50\n✅ CONFIRMED  observed=0.57\n[Prediction]"]
 
     PAR001 -->|"used_in_analyses"| AN001
-    AN001 -->|"claims_covered"| C001
-    A001 -->|"used_in_claims"| C001
-    C001 -->|"claim_ids"| P001
+    AN001 -->|"hypotheses_covered"| C001
+    A001 -->|"used_in_hypotheses"| C001
+    C001 -->|"hypothesis_ids"| P001
     P001 -->|"independence_group"| IG001
     IG001 -.->|"member_predictions"| P001
 
@@ -107,7 +107,7 @@ classDef bigText font-size:18px,color:#111111;
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FF0000;border:1px solid #FFA500;"></span> | Parameter |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#64B5F6;border:1px solid #1565C0;"></span> | Analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#B0BEC5;border:1px solid #546E7A;"></span> | Independence group |
 
@@ -137,11 +137,11 @@ gateway.register("assumption", {
                                "were held constant across all experimental runs.",
     "type":                    "M",                   # AssumptionType.METHODOLOGICAL
     "scope":                   "Yield experiment batch 2024-06",
-    "falsifiable_consequence": None,                  # Methodological — no direct falsifier
+    "falsifiable_consequence": None,                  # Methodological — no direct refutation_criteria
 })
 # → ok | A-001 registered
-# Graph state: Assumption(used_in_claims=set(), tested_by=set())
-# Backlinks start empty; they will be filled by the Claim and Prediction that reference this assumption.
+# Graph state: Assumption(used_in_hypotheses=set(), tested_by=set())
+# Backlinks start empty; they will be filled by the Hypothesis and Prediction that reference this assumption.
 ```
 
 **Step 3: Register the analysis.**
@@ -156,29 +156,29 @@ gateway.register("analysis", {
 })
 # → ok | AN-001 registered
 # Graph auto-update: PAR-001.used_in_analyses now includes AN-001.
-# Analysis.claims_covered starts empty — it will be auto-populated by the Claim.
+# Analysis.hypotheses_covered starts empty — it will be auto-populated by the Hypothesis.
 ```
 
-**Step 4: Register the claim.**
+**Step 4: Register the hypothesis.**
 
 ```python
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":                    "C-001",
     "statement":             "Catalyst X increases mean reaction yield above 0.50 "
                              "under standard laboratory conditions.",
-    "type":                  "foundational",          # ClaimType.FOUNDATIONAL
+    "type":                  "foundational",          # HypothesisType.FOUNDATIONAL
     "scope":                 "Aqueous organic synthesis, batch process",
-    "falsifiability":        "A controlled experiment showing mean yield ≤ 0.50 under "
-                             "identical conditions would falsify this claim.",
-    "category":              "numerical",             # ClaimCategory.NUMERICAL
+    "refutation_criteria":        "A controlled experiment showing mean yield ≤ 0.50 under "
+                             "identical conditions would falsify this hypothesis.",
+    "category":              "numerical",             # HypothesisCategory.QUANTITATIVE
     "assumptions":           ["A-001"],               # takes A-001 as given
     "analyses":              ["AN-001"],              # covered by AN-001
     "parameter_constraints": {"PAR-001": "< 0.05"},  # the t-test must be significant
 })
 # → ok | C-001 registered
 # Graph auto-updates:
-#   A-001.used_in_claims now includes C-001
-#   AN-001.claims_covered now includes C-001
+#   A-001.used_in_hypotheses now includes C-001
+#   AN-001.hypotheses_covered now includes C-001
 ```
 
 **Step 5: Register the independence group.**
@@ -210,26 +210,26 @@ gateway.register("prediction", {
     "specification":    "mean(yield_treated) > 0.50 with p < 0.05",
     "derivation":       "C-001 directly states yield exceeds 0.50; A-001 ensures the "
                         "difference is attributable to the catalyst.",
-    "claim_ids":         ["C-001"],
+    "hypothesis_ids":         ["C-001"],
     "tests_assumptions": [],                       # not testing A-001 — taking it as given
     "independence_group": "IG-001",
     "free_params":       0,                        # zero free parameters — pure forecast
-    "falsifier":        "Mean yield ≤ 0.50 or p ≥ 0.05 would falsify.",
+    "refutation_criteria":        "Mean yield ≤ 0.50 or p ≥ 0.05 would falsify.",
     "analysis":         "AN-001",
 })
 # → ok | P-001 registered
 # Graph auto-updates:
 #   IG-001.member_predictions now includes P-001
 # Validator runs: no CRITICAL findings.
-#   INFO: C-001 is NUMERICAL with AN-001 linked — coverage is satisfied.
+#   INFO: C-001 is QUANTITATIVE with AN-001 linked — coverage is satisfied.
 ```
 
 > **Graph state after step 6:**
 > ```
 > parameters:  PAR-001 [used_in_analyses={AN-001}]:::bigText
-> assumptions: A-001   [used_in_claims={C-001}, tested_by=∅]:::bigText
-> analyses:    AN-001  [claims_covered={C-001}]:::bigText
-> claims:      C-001   [assumptions={A-001}, analyses={AN-001}]:::bigText
+> assumptions: A-001   [used_in_hypotheses={C-001}, tested_by=∅]:::bigText
+> analyses:    AN-001  [hypotheses_covered={C-001}]:::bigText
+> hypotheses:      C-001   [assumptions={A-001}, analyses={AN-001}]:::bigText
 > ind_groups:  IG-001  [member_predictions={P-001}]  ← auto-wired
 > predictions: P-001   [PENDING, tier=FULLY_SPECIFIED, free_params=0]:::bigText
 > ```
@@ -251,11 +251,11 @@ gateway.set("prediction", "P-001", {
     "specification":    "mean(yield_treated) > 0.50 with p < 0.05",
     "derivation":       "C-001 directly states yield exceeds 0.50; A-001 ensures the "
                         "difference is attributable to the catalyst.",
-    "claim_ids":         ["C-001"],
+    "hypothesis_ids":         ["C-001"],
     "tests_assumptions": [],
     "independence_group": "IG-001",
     "free_params":       0,
-    "falsifier":        "Mean yield ≤ 0.50 or p ≥ 0.05 would falsify.",
+    "refutation_criteria":        "Mean yield ≤ 0.50 or p ≥ 0.05 would falsify.",
     "analysis":         "AN-001",
 })
 # → ok | P-001 updated
@@ -277,13 +277,13 @@ gateway.query("assumption_support_status", aid="A-001")
 
 gateway.query("refutation_impact", pid="P-001")
 # data = {
-#   "claim_ids":             {"C-001"},
+#   "hypothesis_ids":             {"C-001"},
 #   "claim_ancestors":       set(),        # C-001 is FOUNDATIONAL — no ancestors
 #   "implicit_assumptions":  {"A-001"},    # the full assumption set behind C-001
 # }
 ```
 
-The full chain is intact: one parameter, one assumption, one analysis, one claim, one prediction — confirmed by a single independent experiment.
+The full chain is intact: one parameter, one assumption, one analysis, one hypothesis, one prediction — confirmed by a single independent experiment.
 
 **Conclusion chain — how the epistemic path leads to the outcome:**
 
@@ -297,7 +297,7 @@ classDef bigText font-size:18px,color:#111111;
     C001["C-001\nCatalyst X raises reaction yield above 0.50"]:::bigText
     P001["P-001\nPredict: mean yield > 0.50  free_params=0"]:::bigText
     OBS["Observation\nmean yield = 0.57,  p = 0.02"]:::bigText
-    OUT["✅ CONFIRMED\nThe claim is grounded.\nOne independent experimental run supports it."]:::bigText
+    OUT["✅ CONFIRMED\nThe hypothesis is grounded.\nOne independent experimental run supports it."]:::bigText
 
     A001 -->|"underpins"| C001
     PAR001 -->|"parameterises"| AN001
@@ -321,18 +321,18 @@ classDef bigText font-size:18px,color:#111111;
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#64B5F6;border:1px solid #1565C0;"></span> | Analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #C62828;"></span> | Observation |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:2px solid #2E7D32;"></span> | Confirmed outcome |
 
 ---
 
-### 1.2 — Claim DAG: Derived Claims and Dependency Traversal
+### 1.2 — Hypothesis DAG: Derived Claims and Dependency Traversal
 
-**Scenario:** A materials scientist has three claims. Two are foundational observations; the third is derived from both. A prediction tests the derived claim.
+**Scenario:** A materials scientist has three hypotheses. Two are foundational observations; the third is derived from both. A prediction tests the derived hypothesis.
 
-**Claim dependency graph:**
+**Hypothesis dependency graph:**
 ```
 C-001 (FOUNDATIONAL): alloy composition determines grain size
 C-002 (FOUNDATIONAL): grain size determines tensile strength
@@ -342,40 +342,40 @@ C-003 (DERIVED):      alloy composition predicts tensile strength
 ```
 
 ```python
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-001",
     "statement":     "The ratio of chromium to nickel in the alloy determines "
                      "the average grain size after annealing.",
     "type":          "foundational",
     "scope":         "Cr-Ni alloy series, 800°C anneal",
-    "falsifiability": "Different Cr:Ni ratios producing identical grain size distributions "
+    "refutation_criteria": "Different Cr:Ni ratios producing identical grain size distributions "
                       "would falsify this.",
     "category":      "qualitative",
 })
 # → ok
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-002",
     "statement":     "Smaller grain size increases tensile strength through the "
                      "Hall-Petch mechanism.",
     "type":          "foundational",
     "scope":         "Polycrystalline metals, ambient temperature",
-    "falsifiability": "A metal with smaller grains showing equivalent or lower tensile "
+    "refutation_criteria": "A metal with smaller grains showing equivalent or lower tensile "
                       "strength than a coarser-grained sample would falsify this.",
     "category":      "numerical",
 })
 # → ok
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-003",
     "statement":     "Increasing the chromium fraction in Cr-Ni alloys above 18% "
                      "increases tensile strength above 650 MPa after standard annealing.",
     "type":          "derived",
     "scope":         "Cr-Ni alloys, 18–25% Cr range, 800°C anneal",
-    "falsifiability": "A Cr fraction above 18% producing tensile strength ≤ 650 MPa "
+    "refutation_criteria": "A Cr fraction above 18% producing tensile strength ≤ 650 MPa "
                       "under identical conditions would falsify this.",
     "category":      "numerical",
-    "depends_on":    ["C-001", "C-002"],    # derives from both foundational claims
+    "depends_on":    ["C-001", "C-002"],    # derives from both foundational hypotheses
 })
 # → ok | C-003 registered
 # Graph validates: DFS from C-003 checks C-001 and C-002 — no cycle.
@@ -393,7 +393,7 @@ gateway.query("claims_depending_on_claim", cid="C-001")
 # "If C-001 is retracted, C-003 is immediately downstream."
 ```
 
-**Claim dependency graph and traversal results:**
+**Hypothesis dependency graph and traversal results:**
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"fontSize": "18px", "primaryTextColor": "#111111", "secondaryTextColor": "#111111", "tertiaryTextColor": "#111111", "textColor": "#111111", "lineColor": "#616161"}}}%%
@@ -406,7 +406,7 @@ classDef bigText font-size:18px,color:#111111;
     C001 -->|"depends_on"| C003
     C002 -->|"depends_on"| C003
 
-    LIN["claim_lineage(C-003)\n= {C-001, C-002}\n'C-003 rests on both foundational claims'"]:::bigText
+    LIN["claim_lineage(C-003)\n= {C-001, C-002}\n'C-003 rests on both foundational hypotheses'"]:::bigText
     DEP["claims_depending_on(C-001)\n= {C-003}\n'Retract C-001 → C-003 is downstream'"]:::bigText
     style LIN color:#000
     style DEP color:#000
@@ -425,33 +425,33 @@ classDef bigText font-size:18px,color:#111111;
 
 | Swatch | Represents |
 |---|---|
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:2px solid #2E7D32;"></span> | Foundational claim |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:2px solid #2E7D32;"></span> | Foundational hypothesis |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#E0E0E0;border:1px solid #757575;"></span> | Query result |
 
 **Cycle detection: what happens if you try to create a cycle.**
 
-After these three claims exist, this registration is attempted:
+After these three hypotheses exist, this registration is attempted:
 
 ```python
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":         "C-004",
     "statement":  "Tensile strength feeds back into grain size during work hardening.",
     "type":       "derived",
     "scope":      "...",
-    "falsifiability": "...",
+    "refutation_criteria": "...",
     "depends_on": ["C-002", "C-003"],
 })
 # → ok (C-004 is not a cycle — it depends on C-002 and C-003, but nothing depends on C-004 yet)
 
 # Now attempt a problematic update that would make C-002 depend on C-004,
 # which already transitively depends on C-002:
-gateway.set("claim", "C-002", {
+gateway.set("hypothesis", "C-002", {
     "id":            "C-002",
     "statement":     "Smaller grain size increases tensile strength through the Hall-Petch mechanism.",
     "type":          "foundational",
     "scope":         "Polycrystalline metals, ambient temperature",
-    "falsifiability": "...",
+    "refutation_criteria": "...",
     "category":      "numerical",
     "depends_on":    ["C-004"],   # C-004 → C-003 → C-002: this would be a cycle
 })
@@ -474,7 +474,7 @@ gateway.register("assumption", {
     "type":                    "E",               # AssumptionType.EMPIRICAL
     "scope":                   "LHC Run 3 dataset",
     "falsifiable_consequence": "Known-mass particle resonances reconstructed with a mean "
-                               "energy offset > 2% would falsify this calibration claim.",
+                               "energy offset > 2% would falsify this calibration hypothesis.",
 })
 # → ok | A-001 registered. tested_by is empty — no predictions yet.
 ```
@@ -491,10 +491,10 @@ gateway.register("prediction", {
     "measurement_regime": "measured",
     "predicted":        91.188,            # known Z mass in GeV
     "specification":    "Reconstructed Z mass within ±2% of 91.188 GeV",
-    "claim_ids":        [],                # tests the assumption directly, not a downstream claim
+    "hypothesis_ids":        [],                # tests the assumption directly, not a downstream hypothesis
     "tests_assumptions": ["A-001"],        # THIS prediction tests the calibration
     "free_params":      0,
-    "falsifier":        "Reconstructed Z mass offset > 2% of nominal would falsify A-001.",
+    "refutation_criteria":        "Reconstructed Z mass offset > 2% of nominal would falsify A-001.",
 })
 # → ok | P-001 registered
 # Graph auto-update: A-001.tested_by now includes P-001.
@@ -503,12 +503,12 @@ gateway.register("prediction", {
 **P-002 takes A-001 as a given (conditional_on):**
 
 ```python
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-001",
     "statement":     "The Higgs boson couples to the Z boson with strength predicted by the SM.",
     "type":          "foundational",
     "scope":         "Standard Model predictions",
-    "falsifiability": "A measured HZZ coupling deviating > 3σ from SM prediction.",
+    "refutation_criteria": "A measured HZZ coupling deviating > 3σ from SM prediction.",
     "assumptions":   ["A-001"],            # takes calibration as given
 })
 
@@ -521,11 +521,11 @@ gateway.register("prediction", {
     "measurement_regime": "measured",
     "predicted":        1.0,               # SM predicts exactly 1.0
     "specification":    "κ_Z within 1.0 ± 0.15 (current experimental precision)",
-    "claim_ids":        ["C-001"],
+    "hypothesis_ids":        ["C-001"],
     "conditional_on":   ["A-001"],         # prediction only valid IF calibration holds
     "tests_assumptions": [],
     "free_params":      0,
-    "falsifier":        "κ_Z deviating > 3σ from 1.0.",
+    "refutation_criteria":        "κ_Z deviating > 3σ from 1.0.",
 })
 # → ok | P-002 registered
 # P-002 takes A-001 as a given. If A-001 is later falsified, P-002's results are suspect.
@@ -572,7 +572,7 @@ gateway.register("prediction", {
     "evidence_kind":    "novel_prediction",
     "measurement_regime": "measured",
     "predicted":        42.0,
-    "claim_ids":        ["C-001"],
+    "hypothesis_ids":        ["C-001"],
     "conditional_on":   ["A-001"],         # takes A-001 as given...
     "tests_assumptions": ["A-001"],        # ...AND tests A-001 simultaneously — contradiction
     "free_params":      0,
@@ -626,27 +626,27 @@ gateway.register("analysis", {
 })
 # → ok | PAR-001.used_in_analyses auto-updated to {AN-001}
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":                    "C-001",
     "statement":             "BRCA1 expression is significantly downregulated in "
                              "triple-negative breast cancer samples relative to controls.",
     "type":                  "foundational",
     "scope":                 "TCGA BRCA cohort, n=120",
-    "falsifiability":        "A well-powered study finding no significant differential "
+    "refutation_criteria":        "A well-powered study finding no significant differential "
                              "expression at FDR < 0.05 would falsify this.",
     "category":              "numerical",
     "analyses":              ["AN-001"],
-    "parameter_constraints": {"PAR-001": "< 0.05"},  # this claim has a threshold on PAR-001
+    "parameter_constraints": {"PAR-001": "< 0.05"},  # this hypothesis has a threshold on PAR-001
 })
-# → ok | AN-001.claims_covered auto-updated to {C-001}
+# → ok | AN-001.hypotheses_covered auto-updated to {C-001}
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":                    "C-002",
     "statement":             "ATM expression is significantly upregulated in "
                              "triple-negative breast cancer samples relative to controls.",
     "type":                  "foundational",
     "scope":                 "TCGA BRCA cohort, n=120",
-    "falsifiability":        "...",
+    "refutation_criteria":        "...",
     "category":              "numerical",
     "analyses":              ["AN-001"],
     "parameter_constraints": {"PAR-001": "< 0.05"},
@@ -670,7 +670,7 @@ gateway.register("prediction", {
     "measurement_regime": "measured",
     "predicted":        -1.5,
     "observed":          -1.7,
-    "claim_ids":        ["C-001"],
+    "hypothesis_ids":        ["C-001"],
     "independence_group": "IG-001",
     "analysis":         "AN-001",
     "free_params":      0,
@@ -686,7 +686,7 @@ gateway.register("prediction", {
     "measurement_regime": "measured",
     "predicted":        1.2,
     "observed":          1.1,
-    "claim_ids":        ["C-002"],
+    "hypothesis_ids":        ["C-002"],
     "independence_group": "IG-001",
     "analysis":         "AN-001",
     "free_params":      0,
@@ -702,17 +702,17 @@ graph LR
 classDef bigText font-size:18px,color:#111111;
     PAR001["PAR-001\nfdr_threshold = 0.05\n[Parameter]"]
     AN001["AN-001\nrna_seq_deg.py\n[Analysis]"]
-    C001["C-001\nBRCA1 downregulated\n[Claim · Foundational]"]
-    C002["C-002\nATM upregulated\n[Claim · Foundational]"]
+    C001["C-001\nBRCA1 downregulated\n[Hypothesis · Foundational]"]
+    C002["C-002\nATM upregulated\n[Hypothesis · Foundational]"]
     IG001["IG-001\nTCGA BRCA cohort\n[IndependenceGroup]"]
     P001["P-001\nBRCA1 log2FC\nCONFIRMED  observed=−1.7\n[Prediction]"]
     P002["P-002\nATM log2FC\nCONFIRMED  observed=1.1\n[Prediction]"]
 
     PAR001 -->|"used_in_analyses"| AN001
-    AN001 -->|"claims_covered"| C001
-    AN001 -->|"claims_covered"| C002
-    C001 -->|"claim_ids"| P001
-    C002 -->|"claim_ids"| P002
+    AN001 -->|"hypotheses_covered"| C001
+    AN001 -->|"hypotheses_covered"| C002
+    C001 -->|"hypothesis_ids"| P001
+    C002 -->|"hypothesis_ids"| P002
     P001 -->|"independence_group"| IG001
     P002 -->|"independence_group"| IG001
 
@@ -731,7 +731,7 @@ classDef bigText font-size:18px,color:#111111;
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FF0000;border:1px solid #ff9100;"></span> | Parameter |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#64B5F6;border:1px solid #1565C0;"></span> | Analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#B0BEC5;border:1px solid #546E7A;"></span> | Independence group |
 
@@ -802,7 +802,7 @@ classDef bigText font-size:18px,color:#111111;
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#F44336;border:2px solid #C62828;"></span> | Changed parameter |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #E57373;"></span> | Stale analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCC80;border:1px solid #EF6C00;"></span> | Affected claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCC80;border:1px solid #EF6C00;"></span> | Affected hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#E1BEE7;border:1px solid #8E24AA;"></span> | Affected prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFF176;border:1px solid #F9A825;"></span> | Required action |
 
@@ -817,42 +817,42 @@ The graph has not made any of these decisions. It has surfaced the complete stru
 
 **What `check_stale` will report:**
 
-Once `check_stale` is implemented, it will report that `AN-001` is stale because it depends on `PAR-001`, and it will surface the dependent predictions and claims in that blast radius for review. This is an analysis-staleness check, not a rendered-view fingerprint check.
+Once `check_stale` is implemented, it will report that `AN-001` is stale because it depends on `PAR-001`, and it will surface the dependent predictions and hypotheses in that blast radius for review. This is an analysis-staleness check, not a rendered-view fingerprint check.
 
 ---
 
-### 2.2 — Claim Retraction and the Downstream Block
+### 2.2 — Hypothesis Retraction and the Downstream Block
 
-**Scenario:** Three claims in a dependency chain. A foundational claim is found to be wrong. Naively retract it — get blocked. Understand why, then do it correctly.
+**Scenario:** Three hypotheses in a dependency chain. A foundational hypothesis is found to be wrong. Naively retract it — get blocked. Understand why, then do it correctly.
 
 ```python
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-001",
     "statement":     "Aspirin irreversibly inhibits COX-1 and COX-2 enzymes.",
     "type":          "foundational",
     "scope":         "In vitro and in vivo pharmacological studies",
-    "falsifiability": "Reversal of platelet aggregation inhibition after aspirin "
+    "refutation_criteria": "Reversal of platelet aggregation inhibition after aspirin "
                       "cessation within 24 hours would falsify irreversibility.",
     "category":      "qualitative",
 })
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-002",
     "statement":     "COX inhibition by aspirin reduces thromboxane A2 synthesis.",
     "type":          "derived",
     "scope":         "Platelet function studies",
-    "falsifiability": "...",
+    "refutation_criteria": "...",
     "category":      "qualitative",
     "depends_on":    ["C-001"],
 })
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-003",
     "statement":     "Low-dose aspirin reduces secondary cardiovascular event risk "
                      "through sustained platelet inhibition.",
     "type":          "derived",
     "scope":         "Secondary prevention population, 81mg daily",
-    "falsifiability": "...",
+    "refutation_criteria": "...",
     "category":      "qualitative",
     "depends_on":    ["C-002"],
 })
@@ -866,7 +866,7 @@ gateway.register("prediction", {
     "measurement_regime": "measured",
     "predicted":        0.75,
     "observed":          0.72,
-    "claim_ids":        ["C-001", "C-002", "C-003"],
+    "hypothesis_ids":        ["C-001", "C-002", "C-003"],
     "free_params":      0,
 })
 ```
@@ -880,8 +880,8 @@ classDef bigText font-size:18px,color:#111111;
     C001["C-001\nAspirin inhibits COX-1 & COX-2\n[Attempting: RETRACT]"]
     C002["C-002\nCOX inhibition reduces TXA2\n[depends_on C-001]"]
     C003["C-003\nAspirin reduces CV risk\n[depends_on C-002]"]
-    P001["P-001\nRR of MI = 0.75\nCONFIRMED\n[claim_ids: C-001, C-002, C-003]"]
-    BLOCK["❌ BLOCKED\nCRITICAL: P-001.claim_ids ∋ C-001\nCRITICAL: C-002.depends_on ∋ C-001\nDisk untouched. Must clear downstream first."]:::bigText
+    P001["P-001\nRR of MI = 0.75\nCONFIRMED\n[hypothesis_ids: C-001, C-002, C-003]"]
+    BLOCK["❌ BLOCKED\nCRITICAL: P-001.hypothesis_ids ∋ C-001\nCRITICAL: C-002.depends_on ∋ C-001\nDisk untouched. Must clear downstream first."]:::bigText
 
     C001 -->|"depends_on"| C002
     C002 -->|"depends_on"| C003
@@ -902,37 +902,37 @@ classDef bigText font-size:18px,color:#111111;
 | Swatch | Represents |
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#F44336;border:2px solid #C62828;"></span> | Being retracted |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Downstream claim |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction citing retracted claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Downstream hypothesis |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction citing retracted hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:2px solid #C62828;"></span> | Blocked |
 
 **Suppose new research suggests COX-2 inhibition is actually reversible in endothelial tissue. The researcher wants to revise C-001 to "REVISED" first, then later retract it entirely.**
 
 ```python
 # Step 1: Transition to REVISED — succeeds because no validator blocks status=REVISED.
-gateway.transition("claim", "C-001", "REVISED")
+gateway.transition("hypothesis", "C-001", "REVISED")
 # → ok | C-001 → REVISED
 
 # Step 2: Attempt full retraction.
-gateway.transition("claim", "C-001", "RETRACTED")
+gateway.transition("hypothesis", "C-001", "RETRACTED")
 # Step 4: graph.transition_claim("C-001", RETRACTED) → new_graph where C-001.status = RETRACTED
 # Step 5: validator.validate(new_graph)
 #   → validate_retracted_claim_citations fires.
-#   → P-001.claim_ids contains C-001. C-001 is now RETRACTED.
-#     CRITICAL: Prediction P-001 still cites retracted claim C-001.
+#   → P-001.hypothesis_ids contains C-001. C-001 is now RETRACTED.
+#     CRITICAL: Prediction P-001 still cites retracted hypothesis C-001.
 #   → C-002.depends_on contains C-001. C-001 is now RETRACTED.
-#     CRITICAL: Claim C-002 still depends on retracted claim C-001.
+#     CRITICAL: Hypothesis C-002 still depends on retracted hypothesis C-001.
 # → GatewayResult(status="BLOCKED", changed=False,
 #                 findings=[
 #                   Finding(CRITICAL, "predictions/P-001", "cites retracted C-001"),
-#                   Finding(CRITICAL, "claims/C-002",      "depends on retracted C-001"),
+#                   Finding(CRITICAL, "hypotheses/C-002",      "depends on retracted C-001"),
 #                 ])
 ```
 
 **The correct sequence — clear the downstream first.**
 
 ```python
-# First: update P-001 to remove C-001 from its claim_ids.
+# First: update P-001 to remove C-001 from its hypothesis_ids.
 # (In practice this would also require updating derivation and specification.)
 gateway.set("prediction", "P-001", {
     "id":               "P-001",
@@ -943,7 +943,7 @@ gateway.set("prediction", "P-001", {
     "measurement_regime": "measured",
     "predicted":        0.75,
     "observed":          0.72,
-    "claim_ids":        ["C-002", "C-003"],   # C-001 removed
+    "hypothesis_ids":        ["C-002", "C-003"],   # C-001 removed
     "derivation":       "Revised: rests on C-002 and C-003 only. The reversibility "
                         "of COX-1 inhibition (C-001) is now under review.",
     "free_params":      0,
@@ -951,24 +951,24 @@ gateway.set("prediction", "P-001", {
 # → ok
 
 # Second: update C-002 to remove depends_on C-001.
-gateway.set("claim", "C-002", {
+gateway.set("hypothesis", "C-002", {
     "id":            "C-002",
     "statement":     "COX inhibition by aspirin reduces thromboxane A2 synthesis.",
     "type":          "foundational",          # promoted to foundational since C-001 is gone
     "scope":         "Platelet function studies",
-    "falsifiability": "...",
+    "refutation_criteria": "...",
     "category":      "qualitative",
     "depends_on":    [],                      # C-001 removed
 })
 # → ok
 
 # Now the retraction succeeds.
-gateway.transition("claim", "C-001", "RETRACTED")
+gateway.transition("hypothesis", "C-001", "RETRACTED")
 # → ok | C-001 → RETRACTED
-# Validator re-runs: no references to C-001 remain in any active prediction or claim.
+# Validator re-runs: no references to C-001 remain in any active prediction or hypothesis.
 ```
 
-**Lesson:** The gateway enforces epistemic hygiene aggressively. You cannot silently break the derivation chain. Every entity that cited a retracted claim must be updated first. This forces the researcher to explicitly acknowledge that downstream conclusions are now ungrounded — the cascade is made visible and unbypassable.
+**Lesson:** The gateway enforces epistemic hygiene aggressively. You cannot silently break the derivation chain. Every entity that cited a retracted hypothesis must be updated first. This forces the researcher to explicitly acknowledge that downstream conclusions are now ungrounded — the cascade is made visible and unbypassable.
 
 ---
 
@@ -1046,7 +1046,7 @@ classDef bigText font-size:18px,color:#111111;
 
 **Context:** Einstein's General Relativity (1915) predicted that light passing near a massive body would be deflected. The predicted angle — 1.75 arcseconds at the solar limb — was exactly twice the Newtonian prediction. In May 1919, Arthur Eddington led expeditions to Sobral (Brazil) to photograph stars near the solar limb during a total eclipse. The Sobral result confirmed the GR prediction.
 
-This example shows: foundational + derived claim chain, FULLY_SPECIFIED prediction from a pure theoretical deduction, NOVEL_PREDICTION evidence kind (prediction made in 1915, measured in 1919), and a parameter carrying the numerical forecast.
+This example shows: foundational + derived hypothesis chain, FULLY_SPECIFIED prediction from a pure theoretical deduction, NOVEL_PREDICTION evidence kind (prediction made in 1915, measured in 1919), and a parameter carrying the numerical forecast.
 
 **Population sequence:**
 
@@ -1058,9 +1058,9 @@ This example shows: foundational + derived claim chain, FULLY_SPECIFIED predicti
 | 4 | `T-001` General Relativity | — |
 | 5 | `C-001` spacetime curvature | — |
 | 6 | `C-002` null geodesics | — |
-| 7 | `C-003` 1.75 arcsec deflection (derived) | `A-001.used_in_claims ← {C-003}` · `A-002.used_in_claims ← {C-003}` |
+| 7 | `C-003` 1.75 arcsec deflection (derived) | `A-001.used_in_hypotheses ← {C-003}` · `A-002.used_in_hypotheses ← {C-003}` |
 | 8 | `AN-001` eddington_sobral_1919.py | `PAR-001.used_in_analyses ← {AN-001}` |
-| 9 | update `C-003` to link `AN-001` | `AN-001.claims_covered ← {C-003}` |
+| 9 | update `C-003` to link `AN-001` | `AN-001.hypotheses_covered ← {C-003}` |
 | 10 | `IG-001` Sobral expedition | — |
 | 11 | `P-001` predict 1.75 arcsec | `IG-001.member_predictions ← {P-001}` · `A-001.tested_by ← {P-001}` |
 | 12 | record observed=1.98, transition `P-001 → CONFIRMED` | — |
@@ -1124,50 +1124,50 @@ gateway.register("theory", {
 
 # --- Claims ---
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-001",
     "statement":     "General Relativity describes gravity as spacetime curvature "
                      "proportional to the local mass-energy density.",
     "type":          "foundational",
     "scope":         "All physical regimes where GR has been tested",
-    "falsifiability": "Any observation inconsistent with the Einstein field equations "
+    "refutation_criteria": "Any observation inconsistent with the Einstein field equations "
                       "at a statistically significant level would falsify this.",
     "category":      "qualitative",
     "source":        "Einstein 1915",
 })
 # → ok
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-002",
     "statement":     "Electromagnetic radiation propagates along null geodesics in "
                      "curved spacetime.",
     "type":          "foundational",
     "scope":         "All physical regimes where GR has been tested",
-    "falsifiability": "Detection of photons following paths inconsistent with null "
+    "refutation_criteria": "Detection of photons following paths inconsistent with null "
                       "geodesic equations in a known gravitational field.",
     "category":      "qualitative",
     "source":        "Einstein 1916",
 })
 # → ok
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-003",
     "statement":     "The gravitational field of the Sun causes a measurable deflection "
                      "of light rays passing near the solar limb, equal to 1.75 arcsec.",
     "type":          "derived",
     "scope":         "Solar limb, passing starlight",
-    "falsifiability": "Measured deflection outside the range 1.75 ± 0.3 arcsec would "
-                      "falsify this claim (within 1919 measurement precision).",
+    "refutation_criteria": "Measured deflection outside the range 1.75 ± 0.3 arcsec would "
+                      "falsify this hypothesis (within 1919 measurement precision).",
     "category":      "numerical",
     "depends_on":    ["C-001", "C-002"],
     "assumptions":   ["A-001", "A-002"],
     "parameter_constraints": {"PAR-001": "== 1.75"},
 })
 # → ok
-# C-001.used_in_claims, C-002... wait — claims do not use other claims as assumptions.
-# The depends_on is between claims.
-# A-001.used_in_claims auto-updated to {C-003}
-# A-002.used_in_claims auto-updated to {C-003}
+# C-001.used_in_hypotheses, C-002... wait — hypotheses do not use other hypotheses as assumptions.
+# The depends_on is between hypotheses.
+# A-001.used_in_hypotheses auto-updated to {C-003}
+# A-002.used_in_hypotheses auto-updated to {C-003}
 
 # --- Analysis ---
 
@@ -1183,21 +1183,21 @@ gateway.register("analysis", {
 
 # Update C-003 to link to the analysis.
 # (We register the analysis first, then link C-003 to it.)
-gateway.set("claim", "C-003", {
+gateway.set("hypothesis", "C-003", {
     "id":            "C-003",
     "statement":     "The gravitational field of the Sun causes a measurable deflection "
                      "of light rays passing near the solar limb, equal to 1.75 arcsec.",
     "type":          "derived",
     "scope":         "Solar limb, passing starlight",
-    "falsifiability": "Measured deflection outside the range 1.75 ± 0.3 arcsec would "
-                      "falsify this claim.",
+    "refutation_criteria": "Measured deflection outside the range 1.75 ± 0.3 arcsec would "
+                      "falsify this hypothesis.",
     "category":      "numerical",
     "depends_on":    ["C-001", "C-002"],
     "assumptions":   ["A-001", "A-002"],
     "analyses":      ["AN-001"],
     "parameter_constraints": {"PAR-001": "== 1.75"},
 })
-# → ok | AN-001.claims_covered auto-updated to {C-003}
+# → ok | AN-001.hypotheses_covered auto-updated to {C-003}
 
 # --- Independence group ---
 
@@ -1230,13 +1230,13 @@ gateway.register("prediction", {
                         "C-003 quantifies the resulting deflection at the solar limb. "
                         "Together they make a unique numerical prediction requiring no "
                         "free parameter adjustments.",
-    "claim_ids":        ["C-001", "C-002", "C-003"],
+    "hypothesis_ids":        ["C-001", "C-002", "C-003"],
     "tests_assumptions": ["A-001"],    # confirmation tests whether the plates were accurate
     "conditional_on":   ["A-002"],     # takes reference star stability as given
     "independence_group": "IG-001",
     "analysis":         "AN-001",
     "free_params":      0,
-    "falsifier":        "Mean deflection < 1.0 or > 2.5 arcsec at the 95% confidence "
+    "refutation_criteria":        "Mean deflection < 1.0 or > 2.5 arcsec at the 95% confidence "
                         "level would falsify the GR prediction.",
     "source":           "Einstein 1916 prediction; Dyson, Eddington, Davidson 1920 result",
 })
@@ -1255,22 +1255,22 @@ classDef bigText font-size:18px,color:#111111;
     A001["A-001\nPlate accuracy sufficient\n[Assumption · Empirical]"]
     A002["A-002\nRef. stars not displaced\n[Assumption · Methodological]"]
     T001["T-001\nGeneral Relativity\n[Theory]"]
-    C001["C-001\nGravity = spacetime curvature\n[Claim · Foundational]"]
-    C002["C-002\nLight follows null geodesics\n[Claim · Foundational]"]
-    C003["C-003\n1.75 arcsec solar limb deflection\n[Claim · Derived · Numerical]"]
+    C001["C-001\nGravity = spacetime curvature\n[Hypothesis · Foundational]"]
+    C002["C-002\nLight follows null geodesics\n[Hypothesis · Foundational]"]
+    C003["C-003\n1.75 arcsec solar limb deflection\n[Hypothesis · Derived · Numerical]"]
     AN001["AN-001\neddington_sobral_1919.py\n[Analysis]"]
     IG001["IG-001\nSobral 1919 expedition\n[IndependenceGroup]"]
     P001["P-001\npredict 1.75 arcsec deflection\n[Prediction · FULLY_SPECIFIED]"]
 
-    T001 -->|"related_claims"| C001
-    T001 -->|"related_claims"| C002
+    T001 -->|"related_hypotheses"| C001
+    T001 -->|"related_hypotheses"| C002
     C001 -->|"depends_on"| C003
     C002 -->|"depends_on"| C003
-    A001 -->|"used_in_claims"| C003
-    A002 -->|"used_in_claims"| C003
+    A001 -->|"used_in_hypotheses"| C003
+    A002 -->|"used_in_hypotheses"| C003
     PAR001 -->|"used_in_analyses"| AN001
-    AN001 -->|"claims_covered"| C003
-    C001 & C002 & C003 -->|"claim_ids"| P001
+    AN001 -->|"hypotheses_covered"| C003
+    C001 & C002 & C003 -->|"hypothesis_ids"| P001
     P001 -->|"tests_assumptions"| A001
     P001 -.->|"conditional_on"| A002
     P001 -->|"independence_group"| IG001
@@ -1296,8 +1296,8 @@ classDef bigText font-size:18px,color:#111111;
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#9FA8DA;border:1px solid #5C6BC0;"></span> | Theory |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#64B5F6;border:1px solid #1565C0;"></span> | Analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Foundational claim |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Foundational hypothesis |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#B0BEC5;border:1px solid #546E7A;"></span> | Independence group |
 
@@ -1322,7 +1322,7 @@ gateway.set("theory", "T-001", {
     "title":               "General Relativity",
     "status":              "active",
     "summary":             "...",
-    "related_claims":      ["C-001", "C-002", "C-003"],
+    "related_hypotheses":      ["C-001", "C-002", "C-003"],
     "related_predictions": ["P-001"],
     "source":              "Einstein 1915",
 })
@@ -1340,7 +1340,7 @@ gateway.register("discovery", {
                 "solar system; established GR as the correct theory of gravity at "
                 "macroscopic scales.",
     "status":   "integrated",
-    "related_claims":      ["C-001", "C-002", "C-003"],
+    "related_hypotheses":      ["C-001", "C-002", "C-003"],
     "related_predictions": ["P-001"],
     "source":   "Dyson, Eddington, Davidson 1920 MNRAS",
 })
@@ -1352,7 +1352,7 @@ gateway.register("discovery", {
 ```python
 gateway.query("claim_lineage", cid="C-003")
 # {"lineage": {"C-001", "C-002"}}
-# C-003 rests on two foundational claims — both must hold.
+# C-003 rests on two foundational hypotheses — both must hold.
 
 gateway.query("assumption_lineage", cid="C-003")
 # {"lineage": {"A-001", "A-002"}}
@@ -1365,11 +1365,11 @@ gateway.query("prediction_implicit_assumptions", pid="P-001")
 
 gateway.query("refutation_impact", pid="P-001")
 # {
-#   "claim_ids":             {"C-001", "C-002", "C-003"},
-#   "claim_ancestors":       set(),                    # ancestors already appear in claim_ids; field excludes direct claim_ids
+#   "hypothesis_ids":             {"C-001", "C-002", "C-003"},
+#   "claim_ancestors":       set(),                    # ancestors already appear in hypothesis_ids; field excludes direct hypothesis_ids
 #   "implicit_assumptions":  {"A-001", "A-002"},
 # }
-# If P-001 were refuted, ALL THREE claims and BOTH assumptions would be called into question.
+# If P-001 were refuted, ALL THREE hypotheses and BOTH assumptions would be called into question.
 ```
 
 **Conclusion chain — how the epistemic path leads to confirmation:**
@@ -1412,8 +1412,8 @@ classDef bigText font-size:18px,color:#111111;
 | Swatch | Represents |
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#9FA8DA;border:1px solid #5C6BC0;"></span> | Theory |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Foundational claim |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Foundational hypothesis |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #C62828;"></span> | Observation |
@@ -1471,33 +1471,33 @@ gateway.register("assumption", {
 
 # --- Claims ---
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-001",
     "statement":     "Light requires a medium (ether) to propagate, and its speed is "
                      "measured relative to that medium.",
     "type":          "foundational",
     "scope":         "Classical wave mechanics of light",
-    "falsifiability": "Detection of a constant speed of light in all inertial frames "
+    "refutation_criteria": "Detection of a constant speed of light in all inertial frames "
                       "would falsify the ether medium requirement.",
     "category":      "qualitative",
     "assumptions":   ["A-001"],
 })
-# → ok | A-001.used_in_claims → {C-001}
+# → ok | A-001.used_in_hypotheses → {C-001}
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-002",
     "statement":     "Earth's orbital motion at ~30 km/s relative to the ether "
                      "produces a measurable ether wind detectable by interferometry.",
     "type":          "derived",
     "scope":         "Earth-based interferometry, 1887",
-    "falsifiability": "An interferometer with sufficient sensitivity showing no fringe "
+    "refutation_criteria": "An interferometer with sufficient sensitivity showing no fringe "
                       "shift through a full rotation would falsify ether wind detectability.",
     "category":      "numerical",
     "depends_on":    ["C-001"],
     "assumptions":   ["A-001", "A-002"],
     "parameter_constraints": {"PAR-001": "~= 0.4"},
 })
-# → ok | A-001.used_in_claims → {C-001, C-002}, A-002.used_in_claims → {C-002}
+# → ok | A-001.used_in_hypotheses → {C-001, C-002}, A-002.used_in_hypotheses → {C-002}
 
 # --- Analysis ---
 
@@ -1522,11 +1522,11 @@ gateway.register("analysis", {
 })
 # → ok
 
-gateway.set("claim", "C-002", {
+gateway.set("hypothesis", "C-002", {
     # ... same as above with:
     "analyses": ["AN-001"],
 })
-# → ok | AN-001.claims_covered → {C-002}
+# → ok | AN-001.hypotheses_covered → {C-002}
 
 # --- Independence group and prediction ---
 
@@ -1553,12 +1553,12 @@ gateway.register("prediction", {
     "derivation":       "C-001 requires light speed to depend on ether frame velocity. "
                         "C-002 quantifies the ether wind at Earth's orbital velocity. "
                         "Together they predict a specific and measurable fringe pattern.",
-    "claim_ids":        ["C-001", "C-002"],
+    "hypothesis_ids":        ["C-001", "C-002"],
     "tests_assumptions": ["A-001", "A-002"],   # this prediction directly tests both
     "independence_group": "IG-001",
     "analysis":         "AN-001",
     "free_params":      0,
-    "falsifier":        "Fringe shift < 0.02 fringes through a full rotation would be "
+    "refutation_criteria":        "Fringe shift < 0.02 fringes through a full rotation would be "
                         "inconsistent with ether wind at any Earth orbital phase.",
     "source":           "Michelson and Morley 1887 Am. J. Sci.",
 })
@@ -1576,20 +1576,20 @@ classDef bigText font-size:18px,color:#111111;
     PAR002["PAR-002\nsensitivity = 0.01 fringes\n[Parameter]"]
     A001["A-001\nEther exists as absolute rest frame\n[Assumption · Empirical  ← central hypothesis]"]
     A002["A-002\nNo local ether drag on apparatus\n[Assumption · Empirical]"]
-    C001["C-001\nLight speed is relative to ether\n[Claim · Foundational]"]
-    C002["C-002\nEarth's motion → detectable ether wind\n[Claim · Derived · Numerical]"]
+    C001["C-001\nLight speed is relative to ether\n[Hypothesis · Foundational]"]
+    C002["C-002\nEarth's motion → detectable ether wind\n[Hypothesis · Derived · Numerical]"]
     AN001["AN-001\nmm_interferometer_1887.py\n[Analysis · 36 observations]"]
     IG001["IG-001\nMichelson-Morley apparatus  July 1887\n[IndependenceGroup]"]
     P001["P-001\npredict 0.4 fringe shift\n[Prediction · FULLY_SPECIFIED · NOVEL]"]
 
     PAR001 -->|"used_in_analyses"| AN001
     PAR002 -->|"used_in_analyses"| AN001
-    A001 -->|"used_in_claims"| C001
-    A001 -->|"used_in_claims"| C002
-    A002 -->|"used_in_claims"| C002
+    A001 -->|"used_in_hypotheses"| C001
+    A001 -->|"used_in_hypotheses"| C002
+    A002 -->|"used_in_hypotheses"| C002
     C001 -->|"depends_on"| C002
-    AN001 -->|"claims_covered"| C002
-    C001 & C002 -->|"claim_ids"| P001
+    AN001 -->|"hypotheses_covered"| C002
+    C001 & C002 -->|"hypothesis_ids"| P001
     P001 -->|"tests_assumptions"| A001
     P001 -->|"tests_assumptions"| A002
     P001 -->|"independence_group"| IG001
@@ -1613,7 +1613,7 @@ classDef bigText font-size:18px,color:#111111;
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:2px solid #D84315;"></span> | Assumption: central hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#64B5F6;border:1px solid #1565C0;"></span> | Analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#B0BEC5;border:1px solid #546E7A;"></span> | Independence group |
 
@@ -1644,15 +1644,15 @@ gateway.transition("prediction", "P-001", "REFUTED")
 ```python
 gateway.query("refutation_impact", pid="P-001")
 # {
-#   "claim_ids":            {"C-001", "C-002"},
-#   "claim_ancestors":      set(),                   # ancestors already appear in claim_ids; field excludes direct claim_ids
+#   "hypothesis_ids":            {"C-001", "C-002"},
+#   "claim_ancestors":      set(),                   # ancestors already appear in hypothesis_ids; field excludes direct hypothesis_ids
 #   "implicit_assumptions": {"A-001", "A-002"},     # both assumptions are in the chain
 # }
-# The refutation of P-001 calls into question both claims and both assumptions.
+# The refutation of P-001 calls into question both hypotheses and both assumptions.
 
 gateway.query("assumption_support_status", aid="A-001")
 # {
-#   "direct_claims":         {"C-001", "C-002"},    # both claims reference A-001
+#   "direct_claims":         {"C-001", "C-002"},    # both hypotheses reference A-001
 #   "dependent_predictions": {"P-001"},             # P-001's chain includes A-001
 #   "tested_by":             {"P-001"},             # P-001 was explicitly testing A-001
 # }
@@ -1683,8 +1683,8 @@ classDef bigText font-size:18px,color:#111111;
 
     DE001["DE-001\nLuminiferous ether abandoned\n[DeadEnd · resolved]"]
 
-    P001 -->|"claim_ids"| C001
-    P001 -->|"claim_ids"| C002
+    P001 -->|"hypothesis_ids"| C001
+    P001 -->|"hypothesis_ids"| C002
     P001 -->|"tests_assumptions"| A001
     P001 -->|"tests_assumptions"| A002
     A001 -.->|"concept abandoned → "| DE001
@@ -1706,7 +1706,7 @@ classDef bigText font-size:18px,color:#111111;
 | Swatch | Represents |
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:2px solid #C62828;"></span> | Refuted prediction |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCC80;border:1px solid #EF6C00;"></span> | Claim under question |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCC80;border:1px solid #EF6C00;"></span> | Hypothesis under question |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FF8A65;border:2px solid #D84315;"></span> | Assumption under pressure |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #C62828;"></span> | Dead end |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#E0E0E0;border:1px dashed #757575;"></span> | Note |
@@ -1719,7 +1719,7 @@ graph TD
 classDef bigText font-size:18px,color:#111111;
     A001["A-001\nEther exists as absolute rest frame\n[Empirical assumption — the central hypothesis]"]
     A002["A-002\nNo local ether drag\n[Empirical — structural control]"]
-    C001["C-001\nLight speed is relative to ether\n[Foundational claim]"]
+    C001["C-001\nLight speed is relative to ether\n[Foundational hypothesis]"]
     C002["C-002\nEarth's orbital velocity → 0.4 fringe shift\n[Derived — PAR-001 = 0.4 fringes]"]
     P001["P-001  FULLY_SPECIFIED  free_params=0\npredict 0.4 fringe shift across full rotation"]:::bigText
     OBS["Measurement\nCase Western Reserve, July 8-12 1887\nobserved = 0.01 fringes\n(apparatus sensitivity = 0.01 — at the noise floor)"]:::bigText
@@ -1750,7 +1750,7 @@ classDef bigText font-size:18px,color:#111111;
 | Swatch | Represents |
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #C62828;"></span> | Observation |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:2px solid #C62828;"></span> | Refuted outcome |
@@ -1771,7 +1771,7 @@ gateway.register("dead_end", {
                    "paper, which explained all results without requiring an ether.",
     "status":      "resolved",
     "related_predictions": ["P-001"],
-    "related_claims":      ["C-001", "C-002"],
+    "related_hypotheses":      ["C-001", "C-002"],
     "references":  [
         "Michelson and Morley 1887 Am. J. Sci. 34:333",
         "Einstein 1905 Ann. Phys. 17:891",
@@ -1849,13 +1849,13 @@ gateway.register("assumption", {
 
 # --- Claims ---
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-001",
     "statement":     "FraudNet v1.0 has learned genuine fraud-indicative patterns "
                      "from the labeled training data.",
     "type":          "foundational",
     "scope":         "FraudNet v1.0, training window Jan–Dec 2023",
-    "falsifiability": "Precision and recall significantly above a random baseline on "
+    "refutation_criteria": "Precision and recall significantly above a random baseline on "
                       "the held-out test set would confirm learning; at or below baseline "
                       "would falsify.",
     "category":      "qualitative",
@@ -1863,17 +1863,17 @@ gateway.register("claim", {
 })
 # → ok
 
-gateway.register("claim", {
+gateway.register("hypothesis", {
     "id":            "C-002",
     "statement":     "The patterns learned by FraudNet v1.0 generalise to unseen "
                      "transactions at precision ≥ 0.85.",
     "type":          "derived",
     "scope":         "FraudNet v1.0, temporal test set from deployment window",
-    "falsifiability": "Observed precision < 0.85 on the held-out test set would falsify.",
+    "refutation_criteria": "Observed precision < 0.85 on the held-out test set would falsify.",
     "category":      "numerical",
     "depends_on":    ["C-001"],
     "assumptions":   ["A-001", "A-002"],
-    "parameter_constraints": {"PAR-002": ">= 0.85"},   # claim threshold references PAR-002
+    "parameter_constraints": {"PAR-002": ">= 0.85"},   # hypothesis threshold references PAR-002
 })
 # → ok
 
@@ -1889,11 +1889,11 @@ gateway.register("analysis", {
 })
 # → ok | PAR-001.used_in_analyses → {AN-001}, PAR-002.used_in_analyses → {AN-001}
 
-gateway.set("claim", "C-002", {
+gateway.set("hypothesis", "C-002", {
     # ... same as above with:
     "analyses": ["AN-001"],
 })
-# → ok | AN-001.claims_covered → {C-002}
+# → ok | AN-001.hypotheses_covered → {C-002}
 
 # --- Independence group and prediction ---
 
@@ -1918,13 +1918,13 @@ gateway.register("prediction", {
     "derivation":       "C-001 asserts that genuine patterns were learned. C-002 asserts "
                         "those patterns generalise at ≥ 0.85 precision. Both require A-001 "
                         "to hold — if distribution has shifted, generalization may not hold.",
-    "claim_ids":        ["C-001", "C-002"],
+    "hypothesis_ids":        ["C-001", "C-002"],
     "conditional_on":   ["A-001", "A-002"],     # prediction only valid if distribution is stable
     "tests_assumptions": [],                    # not explicitly designed to test distribution
     "independence_group": "IG-001",
     "analysis":         "AN-001",
     "free_params":      0,
-    "falsifier":        "Precision < 0.85 on the test set.",
+    "refutation_criteria":        "Precision < 0.85 on the test set.",
 })
 # → ok
 # Validator: CONDITIONAL prediction must have conditional_on — it does. ok.
@@ -1940,19 +1940,19 @@ classDef bigText font-size:18px,color:#111111;
     PAR002["PAR-002\nmin_precision_threshold = 0.85\n[Parameter]"]
     A001["A-001\nDistribution stable: train ≈ deploy\n[Assumption · Empirical]\nfalsifiable_consequence: ✓  tested_by: ∅ ← gap"]
     A002["A-002\nTemporal split is unbiased\n[Assumption · Methodological]"]
-    C001["C-001\nFraudNet learned genuine patterns\n[Claim · Foundational]"]
-    C002["C-002\nPatterns generalise at precision ≥ 0.85\n[Claim · Derived · Numerical]"]
+    C001["C-001\nFraudNet learned genuine patterns\n[Hypothesis · Foundational]"]
+    C002["C-002\nPatterns generalise at precision ≥ 0.85\n[Hypothesis · Derived · Numerical]"]
     AN001["AN-001\nmodel_evaluation.py\n--split 0.20 --threshold 0.85\n[Analysis]"]
     IG001["IG-001\nFraudNet v1.0 temporal split eval\n[IndependenceGroup]"]
     P001["P-001\npredict precision ≥ 0.85\n[Prediction · CONDITIONAL]"]
 
     PAR001 -->|"used_in_analyses"| AN001
     PAR002 -->|"used_in_analyses"| AN001
-    A001 -->|"used_in_claims"| C001
-    A001 & A002 -->|"used_in_claims"| C002
+    A001 -->|"used_in_hypotheses"| C001
+    A001 & A002 -->|"used_in_hypotheses"| C002
     C001 -->|"depends_on"| C002
-    AN001 -->|"claims_covered"| C002
-    C001 & C002 -->|"claim_ids"| P001
+    AN001 -->|"hypotheses_covered"| C002
+    C001 & C002 -->|"hypothesis_ids"| P001
     P001 -.->|"conditional_on"| A001
     P001 -.->|"conditional_on"| A002
     P001 -->|"independence_group"| IG001
@@ -1980,8 +1980,8 @@ graph LR
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:2px solid #D84315;"></span> | Assumption: unmonitored risk |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#64B5F6;border:1px solid #1565C0;"></span> | Analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Foundational claim |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Foundational hypothesis |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #388E3C;"></span> | Derived hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#B0BEC5;border:1px solid #546E7A;"></span> | Independence group |
 
@@ -2025,7 +2025,7 @@ gateway.query("parameter_impact", pid="PAR-002")
 **This change is benign for the current result.** P-001.observed = 0.91 > 0.90, so the prediction still passes the new threshold. But C-002's `parameter_constraints` entry says `{"PAR-002": ">= 0.85"}` — this annotation is now stale. The researcher updates C-002's constraint to reflect the new threshold:
 
 ```python
-gateway.set("claim", "C-002", {
+gateway.set("hypothesis", "C-002", {
     # ... same as above with:
     "parameter_constraints": {"PAR-002": ">= 0.90"},   # updated
 })
@@ -2048,7 +2048,7 @@ gateway.set("parameter", "PAR-001", {
 gateway.query("parameter_impact", pid="PAR-001")
 # {
 #   "stale_analyses":       {"AN-001"},       # AN-001 was run with --split 0.20
-#   "constrained_claims":   set(),            # no claims annotate PAR-001 constraints
+#   "constrained_claims":   set(),            # no hypotheses annotate PAR-001 constraints
 #   "affected_claims":      {"C-002"},        # C-002 is covered by the now-stale AN-001
 #   "affected_predictions": {"P-001"},        # P-001 depends on C-002
 # }
@@ -2128,7 +2128,7 @@ graph LR
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#F44336;border:1px solid #C62828;"></span> | Changed parameter |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #E57373;"></span> | Stale analysis |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCC80;border:1px solid #EF6C00;"></span> | Affected claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCC80;border:1px solid #EF6C00;"></span> | Affected hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Affected prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#A5D6A7;border:1px solid #2E7D32;"></span> | Benign: result still passes |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFE082;border:2px solid #F9A825;"></span> | Warning: result now fails threshold |
@@ -2162,7 +2162,7 @@ gateway.query("assumption_support_status", aid="A-001")
 # Validator: validate_assumption_testability will flag A-001 as WARNING.
 ```
 
-**Full epistemic chain — from initial claim to stressed conclusion:**
+**Full epistemic chain — from initial hypothesis to stressed conclusion:**
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"fontSize": "18px", "primaryTextColor": "#111111", "secondaryTextColor": "#111111", "tertiaryTextColor": "#111111", "textColor": "#111111", "lineColor": "#616161"}}}%%
@@ -2204,7 +2204,7 @@ graph LR
 | Swatch | Represents |
 |---|---|
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFB74D;border:1px solid #E65100;"></span> | Assumption |
-| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Claim |
+| <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#66BB6A;border:1px solid #2E7D32;"></span> | Hypothesis |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#CE93D8;border:1px solid #8E24AA;"></span> | Prediction |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#F44336;border:2px solid #C62828;"></span> | Changed parameter |
 | <span style="display:inline-block;width:0.95em;height:0.95em;border-radius:3px;background:#FFCDD2;border:1px solid #C62828;"></span> | Rerun / observation |
@@ -2226,9 +2226,9 @@ These are not bugs introduced by the examples. They are real design gaps that th
 | Situation | What happens |
 |---|---|
 | Register entity with reference to non-existent ID | `status="error"` immediately (graph raises `BrokenReferenceError`) |
-| Register claim with `depends_on` that creates a cycle | `status="error"` immediately |
+| Register hypothesis with `depends_on` that creates a cycle | `status="error"` immediately |
 | Register duplicate ID | `status="error"` immediately |
-| Transition claim to RETRACTED while predictions still cite it | `status="BLOCKED"` (CRITICAL finding) |
+| Transition hypothesis to RETRACTED while predictions still cite it | `status="BLOCKED"` (CRITICAL finding) |
 | Prediction has same assumption in both `tests_assumptions` and `conditional_on` | `status="BLOCKED"` (CRITICAL finding) |
 | `FULLY_SPECIFIED` prediction with `free_params != 0` | `status="BLOCKED"` (CRITICAL finding) |
 | Both independence groups have member predictions but no pairwise separation exists | `status="BLOCKED"` (CRITICAL finding) |
@@ -2238,7 +2238,7 @@ These are not bugs introduced by the examples. They are real design gaps that th
 | Situation | What you must do manually |
 |---|---|
 | Parameter value changes | Query `parameter_impact`, re-run affected analyses, record results, decide whether to transition prediction status |
-| Prediction refuted | Query `refutation_impact` to see blast radius; decide whether to retract upstream claims |
+| Prediction refuted | Query `refutation_impact` to see blast radius; decide whether to retract upstream hypotheses |
 | Assumption under pressure from a refuted prediction | Explicitly review the assumption; the graph flags it, it does not change the assumption's status |
 | Analysis re-run with new parameters | Record the new result; transition the prediction status if warranted |
 

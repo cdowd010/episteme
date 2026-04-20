@@ -8,7 +8,7 @@ from typing import Protocol
 from .model import (
     Analysis,
     Assumption,
-    Claim,
+    Hypothesis,
     DeadEnd,
     Discovery,
     IndependenceGroup,
@@ -21,8 +21,8 @@ from .model import (
 from .types import (
     AnalysisId,
     AssumptionId,
-    ClaimId,
-    ClaimStatus,
+    HypothesisId,
+    HypothesisStatus,
     DeadEndId,
     DeadEndStatus,
     DiscoveryId,
@@ -56,7 +56,7 @@ class EpistemicGraphPort(Protocol):
         version: Monotonically increasing version counter. Zero for
             in-memory webs; incremented by the repository on each save.
             Used for optimistic concurrency control.
-        claims: Registry of all claims, keyed by ``ClaimId``.
+        hypotheses: Registry of all hypotheses, keyed by ``HypothesisId``.
         assumptions: Registry of all assumptions, keyed by
             ``AssumptionId``.
         predictions: Registry of all predictions, keyed by
@@ -77,7 +77,7 @@ class EpistemicGraphPort(Protocol):
 
     version: int
 
-    claims: Mapping[ClaimId, Claim]
+    hypotheses: Mapping[HypothesisId, Hypothesis]
     assumptions: Mapping[AssumptionId, Assumption]
     predictions: Mapping[PredictionId, Prediction]
     theories: Mapping[TheoryId, Theory]
@@ -91,14 +91,14 @@ class EpistemicGraphPort(Protocol):
 
     # ── Point lookups ─────────────────────────────────────────────
 
-    def get_claim(self, cid: ClaimId) -> Claim | None:
-        """Return a claim by ID, or ``None`` if it does not exist.
+    def get_hypothesis(self, cid: HypothesisId) -> Hypothesis | None:
+        """Return a hypothesis by ID, or ``None`` if it does not exist.
 
         Args:
-            cid: The claim identifier to look up.
+            cid: The hypothesis identifier to look up.
 
         Returns:
-            Claim | None: The claim instance, or ``None`` if not found.
+            Hypothesis | None: The hypothesis instance, or ``None`` if not found.
         """
         ...
 
@@ -128,38 +128,38 @@ class EpistemicGraphPort(Protocol):
 
     # ── Graph queries ─────────────────────────────────────────────
 
-    def claims_using_assumption(self, aid: AssumptionId) -> set[ClaimId]:
-        """Return the IDs of all claims that directly reference this assumption.
+    def hypotheses_using_assumption(self, aid: AssumptionId) -> set[HypothesisId]:
+        """Return the IDs of all hypotheses that directly reference this assumption.
 
         Args:
-            aid: The assumption to search for in claim ``assumptions`` sets.
+            aid: The assumption to search for in hypothesis ``assumptions`` sets.
 
         Returns:
-            set[ClaimId]: IDs of claims whose ``assumptions`` contains ``aid``.
+            set[HypothesisId]: IDs of hypotheses whose ``assumptions`` contains ``aid``.
         """
         ...
 
-    def claim_lineage(self, cid: ClaimId) -> set[ClaimId]:
-        """Return the transitive closure of a claim's ``depends_on`` chain.
+    def hypothesis_lineage(self, cid: HypothesisId) -> set[HypothesisId]:
+        """Return the transitive closure of a hypothesis's ``depends_on`` chain.
 
-        The input claim itself is NOT included in the result.
+        The input hypothesis itself is NOT included in the result.
 
         Args:
-            cid: The claim whose ancestor chain to compute.
+            cid: The hypothesis whose ancestor chain to compute.
 
         Returns:
-            set[ClaimId]: All ancestor claim IDs, excluding ``cid`` itself.
+            set[HypothesisId]: All ancestor hypothesis IDs, excluding ``cid`` itself.
         """
         ...
 
-    def assumption_lineage(self, cid: ClaimId) -> set[AssumptionId]:
-        """Return all assumptions reachable from a claim and its ancestors.
+    def assumption_lineage(self, cid: HypothesisId) -> set[AssumptionId]:
+        """Return all assumptions reachable from a hypothesis and its ancestors.
 
-        Expands through both claim ``depends_on`` chains and assumption
+        Expands through both hypothesis ``depends_on`` chains and assumption
         ``depends_on`` chains to capture every presupposed assumption.
 
         Args:
-            cid: The claim whose full assumption lineage to compute.
+            cid: The hypothesis whose full assumption lineage to compute.
 
         Returns:
             set[AssumptionId]: All transitively reachable assumption IDs.
@@ -169,7 +169,7 @@ class EpistemicGraphPort(Protocol):
     def prediction_implicit_assumptions(self, pid: PredictionId) -> set[AssumptionId]:
         """Return every assumption in the full derivation chain of a prediction.
 
-        Combines assumptions from all claim lineages, conditional_on
+        Combines assumptions from all hypothesis lineages, conditional_on
         chains, and transitive assumption depends_on chains.
 
         Args:
@@ -188,9 +188,9 @@ class EpistemicGraphPort(Protocol):
             pid: The prediction to analyze.
 
         Returns:
-            dict[str, set]: Keys are ``claim_ids`` (direct claims),
-                ``claim_ancestors`` (transitive ancestors excluding direct
-                claims), and ``implicit_assumptions`` (full assumption
+            dict[str, set]: Keys are ``hypothesis_ids`` (direct hypotheses),
+                ``hypothesis_ancestors`` (transitive ancestors excluding direct
+                hypotheses), and ``implicit_assumptions`` (full assumption
                 chain). All values are empty sets if the prediction does
                 not exist.
         """
@@ -203,7 +203,7 @@ class EpistemicGraphPort(Protocol):
             aid: The assumption to analyze.
 
         Returns:
-            dict[str, set]: Keys are ``direct_claims`` (claims that
+            dict[str, set]: Keys are ``direct_hypotheses`` (hypotheses that
                 directly reference this assumption), ``dependent_predictions``
                 (predictions whose derivation chain includes this assumption),
                 and ``tested_by`` (predictions that explicitly test it).
@@ -211,26 +211,26 @@ class EpistemicGraphPort(Protocol):
         """
         ...
 
-    def claims_depending_on_claim(self, cid: ClaimId) -> set[ClaimId]:
-        """Return all claims that transitively depend on this claim.
+    def hypotheses_depending_on_hypothesis(self, cid: HypothesisId) -> set[HypothesisId]:
+        """Return all hypotheses that transitively depend on this hypothesis.
 
         Args:
-            cid: The claim to trace forward from.
+            cid: The hypothesis to trace forward from.
 
         Returns:
-            set[ClaimId]: All downstream claim IDs. Does not include
+            set[HypothesisId]: All downstream hypothesis IDs. Does not include
                 ``cid`` itself.
         """
         ...
 
-    def predictions_depending_on_claim(self, cid: ClaimId) -> set[PredictionId]:
-        """Return all predictions whose derivation chain includes this claim.
+    def predictions_depending_on_hypothesis(self, cid: HypothesisId) -> set[PredictionId]:
+        """Return all predictions whose derivation chain includes this hypothesis.
 
         Args:
-            cid: The claim to trace forward from.
+            cid: The hypothesis to trace forward from.
 
         Returns:
-            set[PredictionId]: All prediction IDs whose ``claim_ids``
+            set[PredictionId]: All prediction IDs whose ``hypothesis_ids``
                 intersects with ``cid`` or its downstream dependents.
         """
         ...
@@ -243,7 +243,7 @@ class EpistemicGraphPort(Protocol):
 
         Returns:
             dict[str, set]: Keys are ``stale_analyses``,
-                ``constrained_claims``, ``affected_claims``, and
+                ``constrained_hypotheses``, ``affected_hypotheses``, and
                 ``affected_predictions``. All values are empty sets if
                 the parameter does not exist.
         """
@@ -251,17 +251,17 @@ class EpistemicGraphPort(Protocol):
 
     # ── Registration mutations ────────────────────────────────────
 
-    def register_claim(self, claim: Claim) -> EpistemicGraphPort:
-        """Register a new claim. Returns a new graph instance.
+    def register_hypothesis(self, hypothesis: Hypothesis) -> EpistemicGraphPort:
+        """Register a new hypothesis. Returns a new graph instance.
 
         Args:
-            claim: The claim to add. Must have a unique ``id``.
+            hypothesis: The hypothesis to add. Must have a unique ``id``.
 
         Returns:
-            EpistemicGraphPort: New graph containing the registered claim.
+            EpistemicGraphPort: New graph containing the registered hypothesis.
 
         Raises:
-            DuplicateIdError: If ``claim.id`` already exists.
+            DuplicateIdError: If ``hypothesis.id`` already exists.
             BrokenReferenceError: If any referenced ID does not exist.
             CycleError: If ``depends_on`` would create a cycle.
         """
@@ -324,7 +324,7 @@ class EpistemicGraphPort(Protocol):
 
         Raises:
             DuplicateIdError: If ``theory.id`` already exists.
-            BrokenReferenceError: If any referenced claim or prediction ID
+            BrokenReferenceError: If any referenced hypothesis or prediction ID
                 does not exist.
         """
         ...
@@ -340,7 +340,7 @@ class EpistemicGraphPort(Protocol):
 
         Raises:
             DuplicateIdError: If ``group.id`` already exists.
-            BrokenReferenceError: If any lineage claim or assumption ID
+            BrokenReferenceError: If any lineage hypothesis or assumption ID
                 does not exist.
         """
         ...
@@ -410,7 +410,7 @@ class EpistemicGraphPort(Protocol):
     def register_observation(self, observation: Observation) -> EpistemicGraphPort:
         """Register a new observation. Returns a new graph instance.
 
-        Validates that all referenced predictions, claims, and assumptions
+        Validates that all referenced predictions, hypotheses, and assumptions
         exist. Updates ``Prediction.observations`` backlinks.
 
         Args:
@@ -427,20 +427,20 @@ class EpistemicGraphPort(Protocol):
 
     # ── Update mutations ──────────────────────────────────────────
 
-    def update_claim(self, new_claim: Claim) -> EpistemicGraphPort:
-        """Replace a claim's fields. Returns a new graph instance.
+    def update_hypothesis(self, new_hypothesis: Hypothesis) -> EpistemicGraphPort:
+        """Replace a hypothesis's fields. Returns a new graph instance.
 
-        The new claim must share the same ``id`` as an existing claim.
+        The new hypothesis must share the same ``id`` as an existing hypothesis.
         Bidirectional links are updated by diffing old vs new references.
 
         Args:
-            new_claim: The updated claim. Must match an existing ``id``.
+            new_hypothesis: The updated hypothesis. Must match an existing ``id``.
 
         Returns:
-            EpistemicGraphPort: New graph with the updated claim.
+            EpistemicGraphPort: New graph with the updated hypothesis.
 
         Raises:
-            BrokenReferenceError: If the claim does not exist or if any
+            BrokenReferenceError: If the hypothesis does not exist or if any
                 newly referenced ID does not exist.
             CycleError: If the updated ``depends_on`` would create a cycle.
         """
@@ -449,7 +449,7 @@ class EpistemicGraphPort(Protocol):
     def update_assumption(self, new_assumption: Assumption) -> EpistemicGraphPort:
         """Replace an assumption's fields. Returns a new graph instance.
 
-        Backlinks ``used_in_claims`` and ``tested_by`` are preserved.
+        Backlinks ``used_in_hypotheses`` and ``tested_by`` are preserved.
 
         Args:
             new_assumption: The updated assumption. Must match an existing ``id``.
@@ -501,7 +501,7 @@ class EpistemicGraphPort(Protocol):
     def update_analysis(self, new_analysis: Analysis) -> EpistemicGraphPort:
         """Replace an analysis's fields. Returns a new graph instance.
 
-        ``claims_covered`` is preserved; ``Parameter.used_in_analyses``
+        ``hypotheses_covered`` is preserved; ``Parameter.used_in_analyses``
         backlinks are updated by diffing old vs new ``uses_parameters``.
 
         Args:
@@ -527,7 +527,7 @@ class EpistemicGraphPort(Protocol):
 
         Raises:
             BrokenReferenceError: If the theory does not exist or if any
-                referenced claim or prediction ID does not exist.
+                referenced hypothesis or prediction ID does not exist.
         """
         ...
 
@@ -643,18 +643,18 @@ class EpistemicGraphPort(Protocol):
         """
         ...
 
-    def transition_claim(self, cid: ClaimId, new_status: ClaimStatus) -> EpistemicGraphPort:
-        """Change a claim's lifecycle status. Returns a new graph instance.
+    def transition_hypothesis(self, cid: HypothesisId, new_status: HypothesisStatus) -> EpistemicGraphPort:
+        """Change a hypothesis's lifecycle status. Returns a new graph instance.
 
         Args:
-            cid: The claim ID to transition.
-            new_status: The target ``ClaimStatus`` value.
+            cid: The hypothesis ID to transition.
+            new_status: The target ``HypothesisStatus`` value.
 
         Returns:
-            EpistemicGraphPort: New graph with the updated claim status.
+            EpistemicGraphPort: New graph with the updated hypothesis status.
 
         Raises:
-            BrokenReferenceError: If the claim does not exist.
+            BrokenReferenceError: If the hypothesis does not exist.
         """
         ...
 
@@ -751,28 +751,28 @@ class EpistemicGraphPort(Protocol):
         """
         ...
 
-    def remove_claim(self, cid: ClaimId) -> EpistemicGraphPort:
-        """Remove a claim from the graph. Returns a new graph instance.
+    def remove_hypothesis(self, cid: HypothesisId) -> EpistemicGraphPort:
+        """Remove a hypothesis from the graph. Returns a new graph instance.
 
-        Raises if any claim or prediction still hard-references this claim.
+        Raises if any hypothesis or prediction still hard-references this hypothesis.
         Callers must first update or remove all referencing entities.
 
         Args:
-            cid: The claim ID to remove.
+            cid: The hypothesis ID to remove.
 
         Returns:
-            EpistemicGraphPort: New graph without the claim.
+            EpistemicGraphPort: New graph without the hypothesis.
 
         Raises:
-            BrokenReferenceError: If the claim does not exist or is still
-                referenced by other claims or predictions.
+            BrokenReferenceError: If the hypothesis does not exist or is still
+                referenced by other hypotheses or predictions.
         """
         ...
 
     def remove_assumption(self, aid: AssumptionId) -> EpistemicGraphPort:
         """Remove an assumption from the graph. Returns a new graph instance.
 
-        Raises if any claim, prediction, or other assumption still
+        Raises if any hypothesis, prediction, or other assumption still
         references this assumption.
 
         Args:
@@ -807,7 +807,7 @@ class EpistemicGraphPort(Protocol):
     def remove_analysis(self, anid: AnalysisId) -> EpistemicGraphPort:
         """Remove an analysis from the graph. Returns a new graph instance.
 
-        Raises if any claim or prediction still hard-references this analysis.
+        Raises if any hypothesis or prediction still hard-references this analysis.
 
         Args:
             anid: The analysis ID to remove.
@@ -817,7 +817,7 @@ class EpistemicGraphPort(Protocol):
 
         Raises:
             BrokenReferenceError: If the analysis does not exist or is
-                still referenced by claims or predictions.
+                still referenced by hypotheses or predictions.
         """
         ...
 

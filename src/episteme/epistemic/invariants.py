@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from .types import (
     AssumptionType,
-    ClaimCategory,
-    ClaimStatus,
-    ClaimType,
+    HypothesisCategory,
+    HypothesisStatus,
+    HypothesisType,
     ConfidenceTier,
     Criticality,
     EvidenceKind,
@@ -165,7 +165,7 @@ def validate_coverage(graph: EpistemicGraphPort) -> list[Finding]:
 
     Reports advisory findings for structural blind spots:
 
-    - ``NUMERICAL`` claims with no linked analyses (INFO).
+    - ``QUANTITATIVE`` hypotheses with no linked analyses (INFO).
     - ``EMPIRICAL`` assumptions with no ``falsifiable_consequence`` (WARNING).
     - Any predictions in ``STRESSED`` status requiring vigilance (WARNING).
 
@@ -177,12 +177,12 @@ def validate_coverage(graph: EpistemicGraphPort) -> list[Finding]:
     """
     findings: list[Finding] = []
 
-    for cid, claim in graph.claims.items():
-        if claim.category == ClaimCategory.NUMERICAL and not claim.analyses:
+    for cid, hypothesis in graph.hypotheses.items():
+        if hypothesis.category == HypothesisCategory.QUANTITATIVE and not hypothesis.analyses:
             findings.append(Finding(
                 Severity.INFO,
-                f"claims/{cid}",
-                "Numerical claim has no linked analyses",
+                f"hypotheses/{cid}",
+                "Numerical hypothesis has no linked analyses",
             ))
 
     for aid, assumption in graph.assumptions.items():
@@ -211,7 +211,7 @@ def validate_assumption_testability(graph: EpistemicGraphPort) -> list[Finding]:
     """Flag assumptions with a falsifiable consequence but no testing predictions.
 
     If an assumption declares a ``falsifiable_consequence`` but has an empty
-    ``tested_by`` set, it means the assumption claims to be testable but
+    ``tested_by`` set, it means the assumption hypotheses to be testable but
     nothing in the graph is actually testing it. Severity: WARNING.
 
     Args:
@@ -232,43 +232,43 @@ def validate_assumption_testability(graph: EpistemicGraphPort) -> list[Finding]:
     return findings
 
 
-def validate_retracted_claim_citations(graph: EpistemicGraphPort) -> list[Finding]:
-    """Flag predictions or claims that still cite a retracted claim.
+def validate_retracted_hypothesis_citations(graph: EpistemicGraphPort) -> list[Finding]:
+    """Flag predictions or hypotheses that still cite a retracted hypothesis.
 
-    Retracted claims are invalidated assertions that should not be relied
-    upon. Any prediction whose ``claim_ids`` includes a retracted claim,
-    or any claim whose ``depends_on`` includes a retracted claim, is a
+    Retracted hypotheses are invalidated assertions that should not be relied
+    upon. Any prediction whose ``hypothesis_ids`` includes a retracted hypothesis,
+    or any hypothesis whose ``depends_on`` includes a retracted hypothesis, is a
     structural integrity violation. Severity: CRITICAL.
 
     Args:
         graph: The epistemic graph to validate.
 
     Returns:
-        list[Finding]: One CRITICAL finding per prediction or claim that
-            cites a retracted claim.
+        list[Finding]: One CRITICAL finding per prediction or hypothesis that
+            cites a retracted hypothesis.
     """
     findings: list[Finding] = []
     retracted = {
-        cid for cid, c in graph.claims.items()
-        if c.status == ClaimStatus.RETRACTED
+        cid for cid, c in graph.hypotheses.items()
+        if c.status == HypothesisStatus.RETRACTED
     }
     if not retracted:
         return findings
     for pid, pred in graph.predictions.items():
-        cited = pred.claim_ids & retracted
+        cited = pred.hypothesis_ids & retracted
         if cited:
             findings.append(Finding(
                 Severity.CRITICAL,
                 f"predictions/{pid}",
-                f"Prediction cites retracted claim(s): {sorted(cited)}",
+                f"Prediction cites retracted hypothesis(s): {sorted(cited)}",
             ))
-    for cid, claim in graph.claims.items():
-        bad_deps = claim.depends_on & retracted
+    for cid, hypothesis in graph.hypotheses.items():
+        bad_deps = hypothesis.depends_on & retracted
         if bad_deps:
             findings.append(Finding(
                 Severity.CRITICAL,
-                f"claims/{cid}",
-                f"Claim depends on retracted claim(s): {sorted(bad_deps)}",
+                f"hypotheses/{cid}",
+                f"Hypothesis depends on retracted hypothesis(s): {sorted(bad_deps)}",
             ))
     return findings
 
@@ -277,7 +277,7 @@ def validate_implicit_assumption_coverage(graph: EpistemicGraphPort) -> list[Fin
     """Flag assumptions that silently underpin predictions but are never tested.
 
     An assumption is 'silently depended on' if it appears in the implicit
-    assumption set of one or more predictions (via claim lineage, depends_on
+    assumption set of one or more predictions (via hypothesis lineage, depends_on
     chains, or conditional_on) but has no ``tested_by`` coverage and is not
     in the ``tests_assumptions`` of any prediction that depends on it.
 
@@ -348,28 +348,28 @@ def validate_tests_conditional_overlap(graph: EpistemicGraphPort) -> list[Findin
     return findings
 
 
-def validate_foundational_claim_deps(graph: EpistemicGraphPort) -> list[Finding]:
-    """Flag foundational claims that have dependencies on other claims.
+def validate_foundational_hypothesis_deps(graph: EpistemicGraphPort) -> list[Finding]:
+    """Flag foundational hypotheses that have dependencies on other hypotheses.
 
-    Foundational claims are axioms — by definition they should not depend
-    on other claims. Having ``depends_on`` entries on a foundational claim
+    Foundational hypotheses are axioms — by definition they should not depend
+    on other hypotheses. Having ``depends_on`` entries on a foundational hypothesis
     indicates a misclassification or structural error. Severity: WARNING.
 
     Args:
         graph: The epistemic graph to validate.
 
     Returns:
-        list[Finding]: One WARNING per foundational claim with non-empty
+        list[Finding]: One WARNING per foundational hypothesis with non-empty
             ``depends_on``.
     """
     findings: list[Finding] = []
-    for cid, claim in graph.claims.items():
-        if claim.type == ClaimType.FOUNDATIONAL and claim.depends_on:
+    for cid, hypothesis in graph.hypotheses.items():
+        if hypothesis.type == HypothesisType.FOUNDATIONAL and hypothesis.depends_on:
             findings.append(Finding(
                 Severity.WARNING,
-                f"claims/{cid}",
-                f"Foundational claim has depends_on entries "
-                f"(foundational claims are axioms): {sorted(claim.depends_on)}",
+                f"hypotheses/{cid}",
+                f"Foundational hypothesis has depends_on entries "
+                f"(foundational hypotheses are axioms): {sorted(hypothesis.depends_on)}",
             ))
     return findings
 
@@ -498,9 +498,9 @@ def validate_stress_criteria(graph: EpistemicGraphPort) -> list[Finding]:
 
 
 def validate_retracted_observation_citations(graph: EpistemicGraphPort) -> list[Finding]:
-    """Flag observations that still link to retracted claims or disputed/retracted observations.
+    """Flag observations that still link to retracted hypotheses or disputed/retracted observations.
 
-    If an observation's ``related_claims`` includes claims that have been
+    If an observation's ``related_hypotheses`` includes hypotheses that have been
     retracted, the observation's interpretation may be compromised.
     Also flags observations in RETRACTED status that are still linked to
     predictions. Severity: WARNING.
@@ -512,17 +512,17 @@ def validate_retracted_observation_citations(graph: EpistemicGraphPort) -> list[
         list[Finding]: One WARNING per problematic observation.
     """
     findings: list[Finding] = []
-    retracted_claims = {
-        cid for cid, c in graph.claims.items()
-        if c.status == ClaimStatus.RETRACTED
+    retracted_hypotheses = {
+        cid for cid, c in graph.hypotheses.items()
+        if c.status == HypothesisStatus.RETRACTED
     }
     for oid, obs in graph.observations.items():
-        cited = obs.related_claims & retracted_claims
+        cited = obs.related_hypotheses & retracted_hypotheses
         if cited:
             findings.append(Finding(
                 Severity.WARNING,
                 f"observations/{oid}",
-                f"Observation references retracted claim(s): {sorted(cited)}",
+                f"Observation references retracted hypothesis(s): {sorted(cited)}",
             ))
         if obs.status == ObservationStatus.RETRACTED and obs.predictions:
             findings.append(Finding(
@@ -535,36 +535,36 @@ def validate_retracted_observation_citations(graph: EpistemicGraphPort) -> list[
 
 
 def validate_theory_abandonment_impact(graph: EpistemicGraphPort) -> list[Finding]:
-    """Flag claims whose only theoretical motivation comes from abandoned/superseded theories.
+    """Flag hypotheses whose only theoretical motivation comes from abandoned/superseded theories.
 
-    If all theories referenced by a claim have been abandoned or superseded,
-    the claim has lost its theoretical motivation. This does not invalidate
-    the claim (it may still be empirically supported), but the researcher
+    If all theories referenced by a hypothesis have been abandoned or superseded,
+    the hypothesis has lost its theoretical motivation. This does not invalidate
+    the hypothesis (it may still be empirically supported), but the researcher
     should be aware. Severity: WARNING.
 
     Args:
         graph: The epistemic graph to validate.
 
     Returns:
-        list[Finding]: One WARNING per claim with only abandoned/superseded
+        list[Finding]: One WARNING per hypothesis with only abandoned/superseded
             theoretical motivation.
     """
     findings: list[Finding] = []
     terminal_statuses = {TheoryStatus.ABANDONED, TheoryStatus.SUPERSEDED}
-    for cid, claim in graph.claims.items():
-        if not claim.theories:
+    for cid, hypothesis in graph.hypotheses.items():
+        if not hypothesis.theories:
             continue
         all_terminal = all(
             graph.theories.get(tid) is not None
             and graph.theories[tid].status in terminal_statuses
-            for tid in claim.theories
+            for tid in hypothesis.theories
         )
         if all_terminal:
             findings.append(Finding(
                 Severity.WARNING,
-                f"claims/{cid}",
+                f"hypotheses/{cid}",
                 f"All motivating theories are abandoned/superseded: "
-                f"{sorted(claim.theories)}. Claim has lost theoretical "
+                f"{sorted(hypothesis.theories)}. Hypothesis has lost theoretical "
                 f"motivation.",
             ))
     return findings
@@ -610,7 +610,7 @@ def validate_all(graph: EpistemicGraphPort) -> list[Finding]:
     ``graph.py``; this function covers the on-demand semantic checks.
 
     Validator execution order:
-        1. Retracted claim citations
+        1. Retracted hypothesis citations
         2. Tests/conditional overlap
         3. Tier constraints
         4. Evidence consistency
@@ -618,7 +618,7 @@ def validate_all(graph: EpistemicGraphPort) -> list[Finding]:
         6. Coverage gaps
         7. Assumption testability
         8. Implicit assumption coverage
-        9. Foundational claim dependencies
+        9. Foundational hypothesis dependencies
         10. Conditional assumption pressure
         11. Stress criteria
         12. Retracted observation citations
@@ -633,7 +633,7 @@ def validate_all(graph: EpistemicGraphPort) -> list[Finding]:
             in execution order.
     """
     return (
-        validate_retracted_claim_citations(graph)
+        validate_retracted_hypothesis_citations(graph)
         + validate_tests_conditional_overlap(graph)
         + validate_tier_constraints(graph)
         + validate_evidence_consistency(graph)
@@ -641,7 +641,7 @@ def validate_all(graph: EpistemicGraphPort) -> list[Finding]:
         + validate_coverage(graph)
         + validate_assumption_testability(graph)
         + validate_implicit_assumption_coverage(graph)
-        + validate_foundational_claim_deps(graph)
+        + validate_foundational_hypothesis_deps(graph)
         + validate_conditional_assumption_pressure(graph)
         + validate_stress_criteria(graph)
         + validate_retracted_observation_citations(graph)

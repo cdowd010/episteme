@@ -21,8 +21,8 @@ class EpistemicError(Exception):
 class DuplicateIdError(EpistemicError):
     """Raised when registering an entity whose ID already exists in the graph.
 
-    Each entity type has a unique namespace — a claim ID only needs to be
-    unique among claims, not across all entity types.
+    Each entity type has a unique namespace — a hypothesis ID only needs to be
+    unique among hypotheses, not across all entity types.
     """
 
     pass
@@ -41,7 +41,7 @@ class BrokenReferenceError(EpistemicError):
 class CycleError(EpistemicError):
     """Raised when a graph mutation would introduce a dependency cycle.
 
-    The ``depends_on`` graphs for both claims and assumptions must
+    The ``depends_on`` graphs for both hypotheses and assumptions must
     remain acyclic (DAG). This error is raised during registration
     or update if adding the new edges would violate that constraint.
     """

@@ -10,10 +10,10 @@
        
        
        # ── Typed identifiers ─────────────────────────────────────────────
-       # NewType gives nominal typing: ClaimId and AnalysisId are both str at
+       # NewType gives nominal typing: HypothesisId and AnalysisId are both str at
        # runtime, but the type checker treats them as distinct types.
        
-    1: ClaimId = NewType("ClaimId", str)
+    1: HypothesisId = NewType("HypothesisId", str)
     1: AssumptionId = NewType("AssumptionId", str)
     1: PredictionId = NewType("PredictionId", str)
     1: TheoryId = NewType("TheoryId", str)
@@ -94,7 +94,7 @@
        
     2: class DiscoveryStatus(Enum):
     1:     NEW = "new"                    # recently found, not yet integrated into the graph
-    1:     INTEGRATED = "integrated"      # incorporated as claims or predictions
+    1:     INTEGRATED = "integrated"      # incorporated as hypotheses or predictions
     1:     ARCHIVED = "archived"          # historical record only
        
        
@@ -105,12 +105,12 @@
        
        
     2: class ClaimType(Enum):
-    1:     FOUNDATIONAL = "foundational"  # axiomatic starting point; must not depend on other claims
-    1:     DERIVED = "derived"            # follows from other claims via depends_on
+    1:     FOUNDATIONAL = "foundational"  # axiomatic starting point; must not depend on other hypotheses
+    1:     DERIVED = "derived"            # follows from other hypotheses via depends_on
        
        
     2: class ClaimCategory(Enum):
-    1:     NUMERICAL = "numerical"    # a quantitative assertion; should have linked analyses
+    1:     QUANTITATIVE = "numerical"    # a quantitative assertion; should have linked analyses
     1:     QUALITATIVE = "qualitative"
        
        

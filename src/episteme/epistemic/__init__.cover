@@ -1,15 +1,15 @@
     1: """Epistemic domain kernel.
        
     The gravity well of the system. Models research truth as a directed graph
-    of typed nodes (claims, assumptions, predictions, analyses, …) and typed
+    of typed nodes (hypotheses, assumptions, predictions, analyses, …) and typed
        edges with bidirectional invariants.
        
        Dependency rule: zero external imports. Only stdlib. This layer must be
        fast, portable, and free of supply-chain risk.
        
        Public surface:
-         from desitter.epistemic.types import ClaimId, Finding, Severity, …
-         from desitter.epistemic.model import Claim, Assumption, Prediction, …
+         from desitter.epistemic.types import HypothesisId, Finding, Severity, …
+         from desitter.epistemic.model import Hypothesis, Assumption, Prediction, …
          from desitter.epistemic.graph import EpistemicGraph
          from desitter.epistemic.invariants import validate_all
          from desitter.epistemic.ports import GraphRepository, GraphRenderer, …
@@ -18,7 +18,7 @@
     1: from .model import (
            Analysis,
            Assumption,
-           Claim,
+           Hypothesis,
            Concept,
            DeadEnd,
            Discovery,
@@ -33,7 +33,7 @@
            AssumptionId,
            AssumptionType,
            ClaimCategory,
-           ClaimId,
+           HypothesisId,
            ClaimStatus,
            ClaimType,
            ConceptId,
@@ -65,14 +65,14 @@
        
     1: __all__ = [
            # types
-           "ClaimId", "AssumptionId", "PredictionId", "TheoryId", "DiscoveryId",
+           "HypothesisId", "AssumptionId", "PredictionId", "TheoryId", "DiscoveryId",
            "AnalysisId", "IndependenceGroupId", "ParameterId", "ConceptId", "DeadEndId",
            "PairwiseSeparationId",
            "Severity", "Finding", "ConfidenceTier", "EvidenceKind", "MeasurementRegime",
            "PredictionStatus", "DeadEndStatus", "ClaimStatus", "TheoryStatus", "DiscoveryStatus",
            "AssumptionType", "ClaimType", "ClaimCategory",
            # model
-           "Claim", "Assumption", "Prediction", "Theory", "IndependenceGroup",
+           "Hypothesis", "Assumption", "Prediction", "Theory", "IndependenceGroup",
            "PairwiseSeparation", "Analysis", "Discovery", "DeadEnd", "Concept", "Parameter",
            # graph
            "EpistemicGraph", "EpistemicError", "DuplicateIdError", "BrokenReferenceError",

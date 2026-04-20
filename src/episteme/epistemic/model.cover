@@ -17,7 +17,7 @@
            AssumptionId,
            AssumptionType,
            ClaimCategory,
-           ClaimId,
+           HypothesisId,
            ClaimStatus,
            ClaimType,
            ConceptId,
@@ -39,7 +39,7 @@
        
        
     3: @dataclass
-    2: class Claim:
+    2: class Hypothesis:
     1:     """An atomic, falsifiable assertion.
        
            depends_on forms a DAG. assumptions and analyses have bidirectional
@@ -48,17 +48,17 @@
            'parameter_constraints' is an annotation map: {ParameterId: constraint_str}.
            The constraint string is human-readable ("< 0.05", "> 3.0", "in [0.1, 10]").
            deSitter does not evaluate constraints — it surfaces them when a referenced
-           parameter changes, so the researcher knows to re-check this claim.
+           parameter changes, so the researcher knows to re-check this hypothesis.
            """
-    1:     id: ClaimId
+    1:     id: HypothesisId
     1:     statement: str
     1:     type: ClaimType
     1:     scope: str                                   # "global", "domain-specific"
-    1:     falsifiability: str
+    1:     refutation_criteria: str
     1:     status: ClaimStatus = ClaimStatus.ACTIVE
     1:     category: ClaimCategory = ClaimCategory.QUALITATIVE
     1:     assumptions: set[AssumptionId] = field(default_factory=set)
-    1:     depends_on: set[ClaimId] = field(default_factory=set)
+    1:     depends_on: set[HypothesisId] = field(default_factory=set)
     1:     analyses: set[AnalysisId] = field(default_factory=set)
     1:     parameter_constraints: dict[ParameterId, str] = field(default_factory=dict)
     1:     source: str | None = None                    # doi:..., arxiv:..., url, citation, or "derived from ..."
@@ -70,14 +70,14 @@
        
            'depends_on' captures presupposition: "the detector is linear" depends on
            "the detector is calibrated." This lets assumption_lineage do a full
-           transitive closure through both claim chains AND assumption chains, so
+           transitive closure through both hypothesis chains AND assumption chains, so
            no silent dependency is missed.
            """
     1:     id: AssumptionId
     1:     statement: str
     1:     type: AssumptionType
     1:     scope: str
-    1:     used_in_claims: set[ClaimId] = field(default_factory=set)
+    1:     used_in_claims: set[HypothesisId] = field(default_factory=set)
     1:     depends_on: set[AssumptionId] = field(default_factory=set)
     1:     falsifiable_consequence: str | None = None
     1:     tested_by: set[PredictionId] = field(default_factory=set)
@@ -87,12 +87,12 @@
        
     3: @dataclass
     2: class Prediction:
-    1:     """A testable consequence of one or more claims.
+    1:     """A testable consequence of one or more hypotheses.
        
-           'claim_ids' is the set of claims that jointly imply this prediction —
+           'claim_ids' is the set of hypotheses that jointly imply this prediction —
            the logical derivation chain. Most non-trivial predictions require
-           multiple claims together. Bidirectional maintenance is one-way only:
-           the graph validates all claim_ids exist; no backlink on Claim.
+           multiple hypotheses together. Bidirectional maintenance is one-way only:
+           the graph validates all claim_ids exist; no backlink on Hypothesis.
        
            'tests_assumptions' is the set of assumptions this prediction was
            explicitly designed to test — i.e., its outcome bears on whether
@@ -116,7 +116,7 @@
     1:     predicted: Any                               # the predicted value/outcome
     1:     specification: str | None = None             # formula/relationship being tested (the "what")
     1:     derivation: str | None = None                # why claim_ids jointly imply this prediction (the "why")
-    1:     claim_ids: set[ClaimId] = field(default_factory=set)
+    1:     claim_ids: set[HypothesisId] = field(default_factory=set)
     1:     tests_assumptions: set[AssumptionId] = field(default_factory=set)
     1:     analysis: AnalysisId | None = None
     1:     independence_group: IndependenceGroupId | None = None
@@ -139,7 +139,7 @@
            """
     1:     id: IndependenceGroupId
     1:     label: str
-    1:     claim_lineage: set[ClaimId] = field(default_factory=set)
+    1:     claim_lineage: set[HypothesisId] = field(default_factory=set)
     1:     assumption_lineage: set[AssumptionId] = field(default_factory=set)
     1:     member_predictions: set[PredictionId] = field(default_factory=set)
     1:     measurement_regime: MeasurementRegime | None = None
@@ -175,7 +175,7 @@
     1:     id: AnalysisId
     1:     command: str | None = None                   # how to invoke it (documentation)
     1:     path: str | None = None                      # path to the file, relative to workspace root
-    1:     claims_covered: set[ClaimId] = field(default_factory=set)
+    1:     claims_covered: set[HypothesisId] = field(default_factory=set)
     1:     uses_parameters: set[ParameterId] = field(default_factory=set)
     1:     notes: str | None = None
        
@@ -184,7 +184,7 @@
     2: class Theory:
     1:     """A higher-level explanatory framework being explored.
        
-           A theory motivates and organises claims. Claims are the atomic
+           A theory motivates and organises hypotheses. Claims are the atomic
            assertions the theory rests on; predictions are what the theory
            predicts that could be tested.
            """
@@ -192,7 +192,7 @@
     1:     title: str
     1:     status: TheoryStatus
     1:     summary: str | None = None
-    1:     related_claims: set[ClaimId] = field(default_factory=set)
+    1:     related_claims: set[HypothesisId] = field(default_factory=set)
     1:     related_predictions: set[PredictionId] = field(default_factory=set)
     1:     source: str | None = None                    # doi:..., arxiv:..., url, citation
        
@@ -206,7 +206,7 @@
     1:     summary: str
     1:     impact: str
     1:     status: DiscoveryStatus
-    1:     related_claims: set[ClaimId] = field(default_factory=set)
+    1:     related_claims: set[HypothesisId] = field(default_factory=set)
     1:     related_predictions: set[PredictionId] = field(default_factory=set)
     1:     references: list[str] = field(default_factory=list)
     1:     source: str | None = None                    # doi:..., arxiv:..., url, citation
@@ -224,7 +224,7 @@
     1:     description: str
     1:     status: DeadEndStatus
     1:     related_predictions: set[PredictionId] = field(default_factory=set)
-    1:     related_claims: set[ClaimId] = field(default_factory=set)
+    1:     related_claims: set[HypothesisId] = field(default_factory=set)
     1:     references: list[str] = field(default_factory=list)
     1:     source: str | None = None                    # doi:..., arxiv:..., url, or analysis reference
        

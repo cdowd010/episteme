@@ -5,12 +5,12 @@ from datetime import date
 from typing import Iterable, Mapping
 
 from ._types import ClientResult
-from ..epistemic.model import Analysis, Assumption, Claim, Prediction
+from ..epistemic.model import Analysis, Assumption, Hypothesis, Prediction
 from ..epistemic.types import (
     AssumptionType,
-    ClaimCategory,
-    ClaimStatus,
-    ClaimType,
+    HypothesisCategory,
+    HypothesisStatus,
+    HypothesisType,
     ConfidenceTier,
     EvidenceKind,
     MeasurementRegime,
@@ -19,48 +19,48 @@ from ..epistemic.types import (
 
 
 class _EpistemeClientHypothesisHelpers:
-    """Typed helpers for claims, assumptions, predictions, and analyses."""
+    """Typed helpers for hypotheses, assumptions, predictions, and analyses."""
 
-    def register_claim(
+    def register_hypothesis(
         self,
         id: str,
         statement: str,
-        type: ClaimType | str,
+        type: HypothesisType | str,
         scope: str,
-        falsifiability: str,
+        refutation_criteria: str,
         *,
         dry_run: bool = False,
-        status: ClaimStatus | str | None = None,
-        category: ClaimCategory | str | None = None,
+        status: HypothesisStatus | str | None = None,
+        category: HypothesisCategory | str | None = None,
         assumptions: Iterable[str] | None = None,
         depends_on: Iterable[str] | None = None,
         analyses: Iterable[str] | None = None,
         parameter_constraints: Mapping[str, str] | None = None,
         source: str | None = None,
-    ) -> ClientResult[Claim]:
-        """Register a claim in the epistemic graph.
+    ) -> ClientResult[Hypothesis]:
+        """Register a hypothesis in the epistemic graph.
 
         Args:
-            id: Unique identifier for the claim (e.g. ``"c-mass-energy"``).
-            statement: Human-readable statement of the claim.
-            type: Epistemological type (``ClaimType`` enum or its string key).
-            scope: Domain scope string identifying the area of the claim.
-            falsifiability: Description of how this claim could be falsified.
+            id: Unique identifier for the hypothesis (e.g. ``"c-mass-energy"``).
+            statement: Human-readable statement of the hypothesis.
+            type: Epistemological type (``HypothesisType`` enum or its string key).
+            scope: Domain scope string identifying the area of the hypothesis.
+            refutation_criteria: Description of how this hypothesis could be falsified.
             dry_run: Simulate the mutation without committing. Defaults to
                 ``False``.
             status: Initial lifecycle status. Falls back to the graph default
                 when ``None``.
-            category: Optional category tag (``ClaimCategory`` enum or string
+            category: Optional category tag (``HypothesisCategory`` enum or string
                 key).
-            assumptions: IDs of assumptions that underpin this claim.
-            depends_on: IDs of claims this claim logically depends on.
-            analyses: IDs of analyses that supply evidence for this claim.
+            assumptions: IDs of assumptions that underpin this hypothesis.
+            depends_on: IDs of hypotheses this hypothesis logically depends on.
+            analyses: IDs of analyses that supply evidence for this hypothesis.
             parameter_constraints: Mapping of parameter names to constraint
                 descriptions.
-            source: Citation or reference supporting the claim.
+            source: Citation or reference supporting the hypothesis.
 
         Returns:
-            ``ClientResult[Claim]`` with ``status="ok"`` and ``data`` holding
+            ``ClientResult[Hypothesis]`` with ``status="ok"`` and ``data`` holding
             the registered entity on success; ``status="BLOCKED"`` if a
             domain invariant prevents the write.
 
@@ -118,7 +118,7 @@ class _EpistemeClientHypothesisHelpers:
         dry_run: bool = False,
         specification: str | None = None,
         derivation: str | None = None,
-        claim_ids: Iterable[str] | None = None,
+        hypothesis_ids: Iterable[str] | None = None,
         tests_assumptions: Iterable[str] | None = None,
         analysis: str | None = None,
         independence_group: str | None = None,
@@ -127,7 +127,7 @@ class _EpistemeClientHypothesisHelpers:
         observed_bound: object | None = None,
         free_params: int | None = None,
         conditional_on: Iterable[str] | None = None,
-        falsifier: str | None = None,
+        refutation_criteria: str | None = None,
         benchmark_source: str | None = None,
         source: str | None = None,
         notes: str | None = None,
@@ -148,7 +148,7 @@ class _EpistemeClientHypothesisHelpers:
             dry_run: Simulate without committing.
             specification: Detailed numerical specification of the prediction.
             derivation: Theoretical derivation of the predicted value.
-            claim_ids: IDs of claims this prediction flows from.
+            hypothesis_ids: IDs of hypotheses this prediction flows from.
             tests_assumptions: IDs of assumptions this prediction tests.
             analysis: ID of the analysis responsible for evaluation.
             independence_group: ID of the independence group this prediction
@@ -160,7 +160,7 @@ class _EpistemeClientHypothesisHelpers:
             free_params: Number of free parameters used in deriving the
                 prediction.
             conditional_on: IDs of predictions this one is conditional on.
-            falsifier: Description of what would falsify this prediction.
+            refutation_criteria: Description of what would falsify this prediction.
             benchmark_source: Citation for the benchmark value.
             source: General citation or reference.
             notes: Free-text supplementary notes.
@@ -190,7 +190,7 @@ class _EpistemeClientHypothesisHelpers:
         """Register an analysis node in the epistemic graph.
 
         An analysis represents a runnable computation or procedure that
-        produces evidence for one or more predictions or claims.
+        produces evidence for one or more predictions or hypotheses.
 
         Args:
             id: Unique identifier for the analysis.
@@ -214,15 +214,15 @@ class _EpistemeClientHypothesisHelpers:
         """
         raise NotImplementedError
 
-    def get_claim(self, identifier: str) -> ClientResult[Claim]:
-        """Retrieve a claim by its unique identifier.
+    def get_hypothesis(self, identifier: str) -> ClientResult[Hypothesis]:
+        """Retrieve a hypothesis by its unique identifier.
 
         Args:
-            identifier: The unique string ID of the claim to look up.
+            identifier: The unique string ID of the hypothesis to look up.
 
         Returns:
-            ``ClientResult[Claim]`` with ``status="ok"`` and ``data`` set to
-            the entity when found, or ``status="error"`` if no claim with
+            ``ClientResult[Hypothesis]`` with ``status="ok"`` and ``data`` set to
+            the entity when found, or ``status="error"`` if no hypothesis with
             that ID exists.
 
         Raises:
@@ -275,19 +275,19 @@ class _EpistemeClientHypothesisHelpers:
         """
         raise NotImplementedError
 
-    def list_claims(self, **filters: object) -> ClientResult[list[Claim]]:
-        """Return all claims, applying any keyword attribute filters.
+    def list_hypotheses(self, **filters: object) -> ClientResult[list[Hypothesis]]:
+        """Return all hypotheses, applying any keyword attribute filters.
 
-        Keyword filters are matched against entity attribute values. A claim
+        Keyword filters are matched against entity attribute values. A hypothesis
         is included only when every supplied filter matches.
 
         Args:
             **filters: Attribute-value pairs to filter on (e.g.
-                ``status="active"`` to return only active claims).
+                ``status="active"`` to return only active hypotheses).
 
         Returns:
-            ``ClientResult[list[Claim]]`` with ``data`` holding the
-            (possibly empty) list of matching claims.
+            ``ClientResult[list[Hypothesis]]`` with ``data`` holding the
+            (possibly empty) list of matching hypotheses.
 
         Raises:
             NotImplementedError: This stub is not yet implemented.
@@ -342,23 +342,23 @@ class _EpistemeClientHypothesisHelpers:
         """
         raise NotImplementedError
 
-    def transition_claim(
+    def transition_hypothesis(
         self,
         identifier: str,
-        new_status: ClaimStatus | str,
+        new_status: HypothesisStatus | str,
         *,
         dry_run: bool = False,
-    ) -> ClientResult[Claim]:
-        """Advance or retract a claim's lifecycle status.
+    ) -> ClientResult[Hypothesis]:
+        """Advance or retract a hypothesis's lifecycle status.
 
         Args:
-            identifier: The unique string ID of the claim to transition.
-            new_status: Target lifecycle status (``ClaimStatus`` enum value
+            identifier: The unique string ID of the hypothesis to transition.
+            new_status: Target lifecycle status (``HypothesisStatus`` enum value
                 or its string key).
             dry_run: Simulate the transition without committing.
 
         Returns:
-            ``ClientResult[Claim]`` with ``status="ok"`` and ``data`` holding
+            ``ClientResult[Hypothesis]`` with ``status="ok"`` and ``data`` holding
             the updated entity, or ``status="BLOCKED"`` if the transition
             violates a domain invariant.
 
