@@ -2,7 +2,12 @@
 
 Status: `[ ]` pending · `[~]` in progress · `[x]` done
 
-**Target:** a researcher can `episteme.connect()` from a Python script or notebook, register and update all entity types, record analysis results, run queries, and get a health report. All without touching raw dicts or JSON files.
+**Target:** a researcher can `episteme.connect()` from a Python script or
+notebook, register and update all entity types, record analysis results, run
+queries, validate the graph, and get a health report -- all without touching
+raw dicts or JSON files. The architecture also supports AI agents as
+first-class users through the same Gateway and invariant system, but the
+Python API is the first shipping interface.
 
 ---
 
@@ -14,6 +19,7 @@ These are execution constraints. Work that violates them should be rejected.
 - The client changes calling conventions only. No business logic, no invariant bypass.
 - `EpistemicGraph` is the kernel mutation surface. The Gateway orchestrates around it.
 - `controlplane/` depends on abstractions from `epistemic/ports.py`. Concrete wiring stays in `factory.py`.
+- Views depend only on kernel protocols (`EpistemicGraphPort`, `GraphValidator`). No imports from controlplane or client.
 - Payload validation stays behind the `PayloadValidator` port. No inline validation in the Gateway.
 - Fail fast: schema errors, broken references, and invariant failures surface before persistence.
 - YAGNI: no concurrency control, indexing, CLI, or MCP until this target ships.
@@ -43,10 +49,12 @@ These are execution constraints. Work that violates them should be rejected.
 
 ---
 
-## Milestone 2: Views -- COMPLETE
+## Milestone 2: Evidence View -- COMPLETE
 
 - [x] `views/evidence.py` -- `evidence_summary()` builds EvidenceSummary per hypothesis with ObservationDetail, PredictionDetail, AssumptionDetail, AnalysisDetail, ObjectiveDetail
 - [x] `tests/views/test_evidence.py` -- 5 tests
+
+> Remaining views (health, status, metrics) tracked in Milestone 7.
 
 ---
 
@@ -56,7 +64,6 @@ These are execution constraints. Work that violates them should be rejected.
 
 - [x] Gateway metadata: `_gateway_catalog.py` (RESOURCE_SPECS, QUERY_SPECS), `_gateway_results.py` (GatewayResult)
 - [x] `controlplane/validate.py` -- `DomainValidator.validate()` delegates to `validate_all`
-- [ ] `validate_project(graph, extra_validators)` -- run `DomainValidator` plus any extras, return combined findings
 - [ ] `Gateway.__init__` -- store graph, validator, payload_validator
 - [ ] `Gateway.graph` property -- return current in-memory graph
 - [ ] `Gateway.resolve_resource` -- validate and return canonical resource key
@@ -66,12 +73,12 @@ These are execution constraints. Work that violates them should be rejected.
 - [ ] `Gateway._validate_payload` -- delegate to PayloadValidator if configured
 - [ ] `Gateway._matches_filters` -- test serialized entity dict against filter predicates
 - [ ] `Gateway._error_result` -- construct error GatewayResult
-- [ ] `Gateway._finalize_mutation` -- run validators on new graph; CRITICAL blocks; swap on success
-- [ ] `Gateway.register` -- validate payload, build entity, call kernel, finalize
+- [ ] `Gateway._finalize_mutation` -- run validators on new graph; CRITICAL blocks; swap on success; support `dry_run`
+- [ ] `Gateway.register(resource, payload, *, dry_run)` -- validate payload, build entity, call kernel, finalize
 - [ ] `Gateway.get` -- look up entity, serialize, return
 - [ ] `Gateway.list` -- collect all entities of type, filter, serialize, return
-- [ ] `Gateway.set` -- fetch existing, merge payload, rebuild entity, call kernel, finalize
-- [ ] `Gateway.transition` -- fetch existing, call kernel transition, finalize
+- [ ] `Gateway.set(resource, identifier, payload, *, dry_run)` -- fetch existing, merge payload, rebuild entity, call kernel, finalize
+- [ ] `Gateway.transition(resource, identifier, new_status, *, dry_run)` -- fetch existing, call kernel transition, finalize
 - [ ] `Gateway.query` -- resolve QuerySpec, coerce params, call graph method, serialize, return
 - [ ] `Gateway.record_analysis_result` -- narrow wrapper over `EpistemicGraph.record_analysis_result`
 
@@ -94,25 +101,28 @@ These are execution constraints. Work that violates them should be rejected.
 
 ## Milestone 4: Adapters
 
-> requires: Epistemic Kernel
+> requires: Epistemic Kernel, ports.py protocols
 
-- [ ] `adapters/json_repository.py` -- load/save EpistemicGraph to JSON
-- [ ] `adapters/transaction_log.py` -- append-only mutation journal; extend protocol with timestamp and agent_id fields
-- [ ] `adapters/payload_validator.py` -- schema validation against payload specs
+- [ ] `adapters/json_repository.py` -- load/save EpistemicGraph to JSON via `GraphRepository` protocol
+- [ ] `adapters/transaction_log.py` -- append-only JSONL mutation journal via `TransactionLog` protocol
+- [ ] `adapters/payload_validator.py` -- schema validation against payload specs via `PayloadValidator` protocol
 
 ---
 
 ## Milestone 5: Config
 
 - [x] Config dataclasses: `EpistemeConfig`, `ProjectPaths`, `ProjectContext`
-- [~] `load_config(workspace: Path) -> EpistemeConfig` -- parse `episteme.toml`; return defaults if absent
-- [ ] `build_context(workspace: Path, config: EpistemeConfig) -> ProjectContext` -- derive all paths
+- [x] `load_config(workspace: Path) -> EpistemeConfig` -- parse `episteme.toml`; return defaults if absent
+- [x] `build_context(workspace: Path, config: EpistemeConfig) -> ProjectContext` -- derive all paths
+- [ ] `validate_workspace(workspace: Path)` -- sanity-check workspace path
 
 ---
 
 ## Milestone 6: Client
 
 > requires: Gateway, Adapters, Config
+
+### Core (`_core.py`)
 
 - [ ] `_EpistemeClientCore.__init__(gateway, *, repo)` -- store gateway and repo
 - [ ] `_EpistemeClientCore.gateway` property
@@ -124,8 +134,12 @@ These are execution constraints. Work that violates them should be rejected.
 - [ ] `_EpistemeClientCore.set(resource, identifier, *, dry_run, **payload)` -> `ClientResult`
 - [ ] `_EpistemeClientCore.transition(resource, identifier, new_status, *, dry_run)` -> `ClientResult`
 - [ ] `_EpistemeClientCore.query(query_type, **params)` -> `ClientResult`
+- [ ] `_EpistemeClientCore.validate(*, extra_validators)` -> `list[Finding]` -- run `DomainValidator` (and any extras) against current graph
 - [ ] `_EpistemeClientCore._invoke_gateway` -- call gateway method, wrap unexpected errors
 - [ ] `_EpistemeClientCore._handle_resource_result` -- convert GatewayResult to ClientResult
+
+### Connect
+
 - [ ] `connect(*, repo, graph)` -- load config, build graph, build gateway, return EpistemeClient
 - [ ] `_without_none(**payload)` -- strip None values from payload dict
 
@@ -133,18 +147,18 @@ These are execution constraints. Work that violates them should be rejected.
 
 All three helper mixins have signatures but raise `NotImplementedError`. Implement all as thin wrappers over `self.register(...)`, `self.get(...)`, `self.list(...)`, `self.set(...)`, `self.transition(...)`.
 
-**`_hypothesis.py`** (Hypotheses, Assumptions, Predictions)
+**`_hypothesis.py`** (Hypotheses, Assumptions, Predictions, Analyses, Observations)
 - [ ] `register_hypothesis`, `get_hypothesis`, `list_hypotheses`, `set_hypothesis`, `transition_hypothesis`
 - [ ] `register_assumption`, `get_assumption`, `list_assumptions`, `set_assumption`
 - [ ] `register_prediction`, `get_prediction`, `list_predictions`, `set_prediction`, `transition_prediction`
-
-**`_structure.py`** (Parameters, IndependenceGroups, PairwiseSeparations, Analyses, Observations)
-- [ ] `register_parameter`, `get_parameter`, `list_parameters`, `set_parameter`
-- [ ] `register_independence_group`, `get_independence_group`, `list_independence_groups`, `set_independence_group`
-- [ ] `register_pairwise_separation`, `get_pairwise_separation`, `list_pairwise_separations`
 - [ ] `register_analysis`, `get_analysis`, `list_analyses`, `set_analysis`
 - [ ] `register_observation`, `get_observation`, `list_observations`, `set_observation`, `transition_observation`
 - [ ] `record_analysis_result(analysis_id, result, *, sha, date)` -- delegate to gateway
+
+**`_structure.py`** (Parameters, IndependenceGroups, PairwiseSeparations)
+- [ ] `register_parameter`, `get_parameter`, `list_parameters`, `set_parameter`
+- [ ] `register_independence_group`, `get_independence_group`, `list_independence_groups`, `set_independence_group`
+- [ ] `register_pairwise_separation`, `get_pairwise_separation`, `list_pairwise_separations`
 
 **`_registry.py`** (Objectives, Discoveries, DeadEnds)
 - [ ] `register_objective`, `get_objective`, `list_objectives`, `set_objective`, `transition_objective`
@@ -158,26 +172,64 @@ All three helper mixins have signatures but raise `NotImplementedError`. Impleme
 - [ ] set_* helpers for all entity types
 - [ ] transition_* helpers for status-bearing entities
 - [ ] record_analysis_result round-trip through client
+- [ ] validate() returns findings on a graph with violations
 - [ ] dry_run=True validates without writing
 - [ ] Schema validation errors surface as ClientResult errors, not exceptions
 
 ---
 
-## Milestone 7: Health View
+## Milestone 7: Views -- Health, Status, Metrics
 
-> requires: Validate
+> requires: Epistemic Kernel, DomainValidator (from M3 validate.py)
+
+These views depend only on kernel protocols. They can be built anytime after
+the kernel, but health in particular is needed for the target.
+
+### Health
 
 - [ ] `run_health_check(graph, validator)` in `views/health.py` -- run validator, compute overall status, return `HealthReport`
 - [ ] Test: returns HEALTHY on a clean graph
 - [ ] Test: returns WARNING / CRITICAL on a graph with violations
 
+### Status
+
+- [ ] `get_status(graph)` in `views/status.py` -- entity counts, coverage statistics, overall project state → `ProjectStatus`
+- [ ] `format_status_dict(status)` -- serialize for display
+- [ ] Tests: counts match registered entities; coverage stats correct
+
+### Metrics
+
+- [ ] `compute_metrics(graph)` in `views/metrics.py` -- prediction outcomes, coverage ratios → `PredictionMetrics`, `GraphMetrics`
+- [ ] `tier_a_evidence_summary(graph)` -- summary of fully-specified evidence
+- [ ] Tests: metrics correct for known graph states
+
 ---
 
-## Milestone 8: AI Agency Foundations
+## Milestone 8: Interfaces
 
-> requires: Gateway, Adapters, Client
+> requires: Client, Views
+> Deferred per YAGNI until the Python API target ships.
 
-These items enable AI agents to use Episteme as a research world model. The kernel and architecture already support this; these are additive extensions.
+### CLI
+
+- [ ] Click-based command group: `episteme health`, `episteme validate`, `episteme status`
+- [ ] `--json` flag on all commands for machine-readable output
+- [ ] Rich terminal formatting for human-readable output
+
+### MCP Server
+
+- [ ] Expose Gateway verbs (register, get, list, set, transition, query) as MCP tools
+- [ ] AI agents operate under the same invariant rules and lifecycle constraints as human users
+- [ ] No reduced or simulated interface -- agents are full participants
+
+---
+
+## Milestone 9: AI Agency Foundations
+
+> requires: Gateway, Adapters, Client, Interfaces
+
+These items enable AI agents to use Episteme as a research world model. The
+kernel and architecture already support this; these are additive extensions.
 
 ### Structured Adjudication
 
@@ -223,9 +275,10 @@ These items enable AI agents to use Episteme as a research world model. The kern
 
 ---
 
-## Exit Criteria
+## Exit Criteria (Python API Target)
 
-Every item below must be true before the Python API target is closed:
+Every item below must be true before the Python API target is closed.
+Milestones 1--7 are in scope. Milestones 8--9 are post-target.
 
 - [ ] `client = episteme.connect()` works from a Python script in a real workspace directory
 - [ ] All 11 entity types can be registered through typed keyword-argument helpers
@@ -233,11 +286,9 @@ Every item below must be true before the Python API target is closed:
 - [ ] All status-bearing entities can be transitioned through typed helpers
 - [ ] Analysis results can be recorded programmatically via `record_analysis_result`
 - [ ] All named queries return structured `ClientResult` objects suitable for notebooks
+- [ ] `client.validate()` runs the full invariant suite and returns findings
 - [ ] `run_health_check` returns a `HealthReport` with correct overall status
-- [ ] Structured `AdjudicationRationale` type replaces plain string on `Prediction`
-- [ ] `validate_independence_of_adjudication` flags self-attested high-stakes transitions
-- [ ] Transaction log adapter records agent_id and timestamp per mutation
-- [ ] MCP tools enforce atomic observation registration (no split run/register)
+- [ ] Graph persists to JSON and loads back without data loss
 - [ ] Validation failures (schema errors, broken refs, CRITICAL invariants) fail fast without writing
 - [ ] dry_run=True validates and returns findings without mutating the graph
 - [ ] All of the above is covered by automated tests
@@ -246,13 +297,14 @@ Every item below must be true before the Python API target is closed:
 
 ## Deferred
 
-Everything below is deferred until the exit criteria above are met:
+Acknowledged stubs that exist in the codebase but are not needed for the
+Python API target. Each slots into a future milestone when the need is proven.
 
-- CLI command handlers
-- MCP server and tools
-- `controlplane/check.py` (staleness detection beyond what tests cover)
-- `controlplane/render.py` and `controlplane/export.py`
-- `controlplane/prose.py`
-- `views/status.py` and `views/metrics.py`
-- Query performance indexing
-- Optimistic concurrency control
+- `controlplane/prose.py` -- managed-prose synchronization
+- `controlplane/render.py` -- incremental rendering and fingerprint caching
+- `controlplane/export.py` -- artifact export orchestration
+- `controlplane/check.py: check_refs()` -- referential integrity diagnostic (check_stale is implemented)
+- Event sourcing or result-history model
+- Query-performance indexing
+- Rich interactive CLI (completions, dashboards)
+- REST API
