@@ -34,8 +34,8 @@ Episteme fills that gap. It is a versioned, graph-structured registry of your
 **epistemic chain**: every hypothesis, assumption, prediction, observation,
 analysis, parameter, objective, discovery, and dead end. Hard invariants keep
 the graph consistent as research evolves. Validators surface structural facts
-about the graph — missing links, untested assumptions, stale analyses,
-compromised observation bases, supersession inconsistencies — so you can act on
+about the graph (missing links, untested assumptions, stale analyses,
+compromised observation bases, supersession inconsistencies) so you can act on
 them.
 
 Episteme is an **audit scaffold**, not a reasoning engine. It makes the
@@ -46,8 +46,8 @@ decides what to do about what it finds.
 
 ## Vision
 
-Episteme is a standalone tool. You use it directly — from Python, from a CLI,
-from a notebook — to track the epistemic structure of your research. That is
+Episteme is a standalone tool. You use it directly, from Python, from a CLI,
+or from a notebook, to track the epistemic structure of your research. That is
 the primary product, and it works without any AI involvement.
 
 But the architecture is designed from day one for a second mode of operation:
@@ -58,38 +58,38 @@ But the architecture is designed from day one for a second mode of operation:
 | Mode | Who drives | What it does |
 |------|-----------|-------------|
 | **Manual** | Human researcher | Episteme is a library. Register entities, run validators, query the graph. No AI required. |
-| **Assistant** | Human, AI helps | The AI acts as an epistemic bookkeeper — registers hypotheses, surfaces validator findings as a Socratic checklist, blocks changes that would create cycles or orphan evidence. |
+| **Assistant** | Human, AI helps | The AI acts as an epistemic bookkeeper: registers hypotheses, surfaces validator findings as a Socratic checklist, blocks changes that would create cycles or orphan evidence. |
 | **Hybrid** | Human sets scope, AI executes | Human defines objectives and assumptions, AI runs N analysis cycles autonomously. Human returns to a fully versioned, queryable graph showing every reasoning step. |
 | **Autonomous** | AI agent, human supervises | AI is given an `Objective` and runs the full research cycle. The invariant logic gate prevents it from advancing its state without valid epistemic reasoning. |
 | **Inductive** | AI, data-driven | Mines existing observations for patterns and surfaces candidate hypotheses. For domains where data precedes theory. |
-| **Adversarial** | AI critic | Red-teams the current graph — finding weak assumptions, thin test coverage, and disputed evidence bases. The 31 validators are a built-in red-team toolkit. |
-| **Archivist** | AI, retrospective | Constructs an epistemic graph from existing research (papers, logs, reports) — formalizing reasoning chains that were never recorded. |
+| **Adversarial** | AI critic | Red-teams the current graph by finding weak assumptions, thin test coverage, and disputed evidence bases. The 31 validators are a built-in red-team toolkit. |
+| **Archivist** | AI, retrospective | Constructs an epistemic graph from existing research (papers, logs, reports), formalizing reasoning chains that were never recorded. |
 | **Peer Reviewer** | AI, read-only | Produces a structured audit report from a completed graph. Analogous to journal peer review. |
 
 ### Why the architecture supports this
 
 **Structural constraint as a form of AI safety.** Most AI safety work operates
-at the output layer — RLHF, output filtering, guardrails on responses.
+at the output layer: RLHF, output filtering, guardrails on responses.
 Episteme operates at the *reasoning* layer. The kernel enforces 31+
 invariants on every write. An agent using Episteme as its world model cannot
-silently hallucinate progress — it must register a hypothesis, derive a
+silently hallucinate progress; it must register a hypothesis, derive a
 prediction, obtain an observation, and feed it back through the Gateway.
 The Gateway blocks circular reasoning, orphaned predictions, invalid
 transitions, and self-contradictory evidence claims. This constrains what
 gets recorded as the agent's *internal state*, not just what it outputs.
 
-**Queryable long-term memory.** A large research graph — 200 hypotheses, 800
-predictions, 2000 observations — does not fit in a context window. But the
+**Queryable long-term memory.** A large research graph (200 hypotheses, 800
+predictions, 2000 observations) does not fit in a context window. But the
 agent does not need to load the whole graph. It queries the Gateway: *"What is
 the blast radius of refuting Assumption A-01?"* and gets a precise,
-invariant-enforced traversal — not a fuzzy similarity search. This is how
+invariant-enforced traversal, not a fuzzy similarity search. This is how
 Episteme solves the context-window problem for long-running research.
 
 **Multi-agent coordination.** The single-gateway mutation boundary, copy-on-write
 semantics, and transaction log provide the coordination substrate for research
 swarms: a primary researcher agent, a QC agent running validators against the
 primary's graph (structural peer review), and domain-specialized agents
-querying specific graph slices — all sharing one source of truth.
+querying specific graph slices, all sharing one source of truth.
 
 ---
 
@@ -159,7 +159,7 @@ with ep.connect() as client:
 ```
 
 > **Note:** `connect()` and the client helpers are in progress (Milestone 3).
-> The epistemic kernel is complete and usable directly — see
+> The epistemic kernel is complete and usable directly; see
 > [EXAMPLES.md](EXAMPLES.md) for gateway-level usage.
 
 ### Running Tests
@@ -264,7 +264,7 @@ the center:
 ```
 
 All mutations route through a single **Gateway**. The kernel depends on
-nothing outside the standard library. Views depend only on kernel protocols —
+nothing outside the standard library. Views depend only on kernel protocols with
 zero control-plane imports. Protocol-based ports (`EpistemicGraphPort`,
 `GraphRepository`, `GraphValidator`) provide dependency inversion so any layer
 can be swapped without touching the domain logic.
@@ -289,13 +289,13 @@ Episteme supports any STEM research or engineering methodology:
 
 | Milestone | Scope | Status |
 |-----------|-------|--------|
-| 1 | Epistemic kernel — entity model, aggregate root, invariant validators, typed queries | **Complete** |
-| 2 | Views — EvidenceSummary per-hypothesis report | **Complete** |
-| 3 | Python API — `connect()`, entity register/get/list/transition helpers | In progress |
-| 4 | Control plane — gateway, staleness detection, export, render | In progress |
-| 5 | Interface layer — CLI and MCP server as thin delegates over the gateway | Planned |
-| 6 | Documentation — worked examples, terminology guide | Planned |
-| 7 | AI agency foundations — structured adjudication, provenance tracking, atomic tooling, concurrent writes | Planned |
+| 1 | Epistemic kernel: entity model, aggregate root, invariant validators, typed queries | **Complete** |
+| 2 | Views: EvidenceSummary per-hypothesis report | **Complete** |
+| 3 | Python API: `connect()`, entity register/get/list/transition helpers | In progress |
+| 4 | Control plane: gateway, staleness detection, export, render | In progress |
+| 5 | Interface layer: CLI and MCP server as thin delegates over the gateway | Planned |
+| 6 | Documentation: worked examples, terminology guide | Planned |
+| 7 | AI agency foundations: structured adjudication, provenance tracking, atomic tooling, concurrent writes | Planned |
 
 ---
 
