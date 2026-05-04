@@ -1,0 +1,2654 @@
+# Episteme Architecture Book
+
+*Everything you need to understand the design of Episteme, from first principles.*
+
+---
+
+## Table of Contents
+
+1. [What Is Episteme?](#1-what-is-episteme)
+2. [The Problem It Solves](#2-the-problem-it-solves)
+3. [The Core Idea: An Epistemic Graph](#3-the-core-idea-an-epistemic-graph)
+4. [The Entity Model  --  What Lives in the graph](#4-the-entity-model--what-lives-in-the-graph)
+5. [The Architecture  --  How the Code Is Organized](#5-the-architecture--how-the-code-is-organized)
+6. [The Epistemic Kernel](#6-the-epistemic-kernel)
+7. [The Control Plane](#7-the-control-plane)
+8. [Views](#8-views)w
+9. [The Client](#9-the-client)
+10. [Interfaces](#10-interfaces)
+11. [How the Layers Talk to Each Other](#11-how-the-layers-talk-to-each-other)
+12. [Architecture Rules and Why They Exist](#12-architecture-rules-and-why-they-exist)
+13. [The Epistemic Package in Detail](#13-the-epistemic-package-in-detail)
+14. [The Type System in Depth](#14-the-type-system-in-depth)
+15. [The Invariant System in Depth](#15-the-invariant-system-in-depth)
+16. [How Episteme Supports All STEM Research Workflows](#16-how-episteme-supports-all-stem-research-workflows)
+17. [What the Finished Product Looks Like](#17-what-the-finished-product-looks-like)
+18. [Design Decisions and Their Rationale](#18-design-decisions-and-their-rationale)
+19. [Extensibility and Long-Term Goals](#19-extensibility-and-long-term-goals)
+20. [Glossary](#20-glossary)
+21. [Why EpistemicGraphPort Enables Big Data and Mass AI Scale Without Refactoring](#21-why-epistemicgraphport-enables-big-data-and-mass-ai-scale-without-refactoring)
+22. [AI Agency: How Episteme Supports AI Research Agents](#22-ai-agency-how-episteme-supports-ai-research-agents)
+
+---
+
+## 1. What Is Episteme?
+
+Episteme is a Python library that tracks the **epistemic structure** of a research project. "Epistemic" means "related to knowledge"  --  Episteme tracks *what you know*, *why you think you know it*, and *what would change your mind*.
+
+It is **not** a data analysis tool. It does not run experiments, fit models, or draw conclusions. It is an **audit scaffold**: it records the structural relationships between your hypotheses, assumptions, predictions, and evidence, and it enforces rules that keep that structure consistent as your research evolves.
+
+Think of it like version control (Git) but for the *reasoning chain* of a research project instead of the source code.
+
+**Who uses it?** Any STEM researcher — from physicists and ecologists to ML engineers and bioinformaticians — working in Python scripts and Jupyter notebooks. AI agents are first-class users too: the MCP interface gives agents the same structured access to the epistemic graph that human researchers have through the Python API, operating under the same invariant rules and lifecycle constraints.
+
+**What does it produce?** A versioned, queryable graph of entities  --  hypotheses, assumptions, predictions, observations, analyses, parameters, objectives, discoveries, dead ends  --  with hard invariant enforcement. You can ask it questions like "if prediction P-001 is refuted, which hypotheses and assumptions are affected?" and get a precise structural answer.
+
+---
+
+## 2. The Problem It Solves
+
+Every research project has an implicit reasoning chain. For example:
+
+1. You **assume** the detector is calibrated (Assumption A-001)
+2. You **hypothesize** that catalyst X increases yield (Hypothesis C-001), based on that assumption
+3. You **predict** a 15% yield increase in the next experiment (Prediction P-001), derived from that hypothesis
+4. You **run an analysis** to test the prediction (Analysis AN-001)
+5. The analysis uses a **parameter**  --  the detection threshold (Parameter PAR-001)
+
+This chain exists in every project. But it almost never gets tracked formally. It lives in documents, email threads, and the researcher's memory. And things go wrong silently:
+
+- Someone changes the detection threshold parameter. The analysis that used the old threshold is now stale. But nobody realizes this, and the prediction that depended on that analysis still looks "confirmed."
+- A prediction is refuted. But the hypotheses upstream of it don't get flagged for review.
+- An empirical assumption is load-bearing  --  half the project rests on it  --  but nobody has set up a formal test for it.
+
+Episteme makes all of this explicit and queryable. When you change a parameter, you can ask "what analyses are now stale?" When a prediction is refuted, you can ask "what hypotheses and assumptions are affected?" When you register an assumption, the system can warn you if nothing is testing it.
+
+The key insight: **Episteme does not make decisions for you.** It surfaces structural facts and waits. The researcher or AI agent decides what to do about them.
+
+---
+
+## 3. The Core Idea: An Epistemic Graph
+
+The central data structure in Episteme is called the **EpistemicGraph**. It is a graph  --  a collection of entities connected by typed references.
+
+```
+  Assumptions ──ground──▶ Hypotheses ──derive──▶ Predictions
+       │                     │                    │
+       │                     │                    │
+       ▼                     ▼                    ▼
+  (tested_by)         (analyzed_by)       (observed against)
+       │                     │                    │
+  Predictions            Analyses            Observations
+```
+
+Every entity in the graph has a unique ID (like `"C-001"` for a hypothesis or `"P-001"` for a prediction). Relationships between entities are expressed as sets of these IDs. For example, a hypothesis has an `assumptions` field containing the IDs of the assumptions it depends on.
+
+The graph is the **single source of truth** for the epistemic state of a project. All queries and mutations go through it.
+
+### What makes it a "graph" and not just a list?
+
+The entities are interconnected in multiple ways:
+- Hypotheses form a directed acyclic graph (DAG) via `depends_on`
+- Assumptions form their own DAG via `depends_on`
+- Predictions reference hypotheses, test assumptions, and are conditioned on other assumptions
+- Analyses link to parameters and are covered by hypotheses
+- Parameters propagate staleness to analyses and onward to predictions
+
+These interconnections are what make the system useful. A single query can follow links across entity types to answer questions like "if this parameter changes, what predictions are affected?"
+
+---
+
+## 4. The Entity Model  --  What Lives in the graph
+
+The graph contains **eleven entity types**. Here is what each one is and why it exists.
+
+### Primary Entities (the core reasoning chain)
+
+**Hypothesis**  --  An atomic, falsifiable assertion. "Catalyst X increases yield." Hypotheses are the building blocks. They come in two structural types (`HypothesisType`):
+- `FOUNDATIONAL`: A base assertion that stands on its own (it does not `depend_on` other hypotheses)
+- `DERIVED`: An assertion that follows from other hypotheses (it has a non-empty `depends_on` set)
+
+Hypotheses also have a `category` (`HypothesisCategory`): `QUANTITATIVE` (backed by numerical analysis) or `QUALITATIVE` (conceptual or descriptive).
+
+Key fields: `assumptions` (grounding set), `depends_on` (hypothesis DAG), `analyses` (linked analytical work), `objectives` (which objectives this hypothesis serves), `observations` (observational evidence), `refutation_criteria` (what would falsify it), `parameter_constraints` (expected parameter ranges).
+
+Lifecycle (`HypothesisStatus`): `ACTIVE`, `REVISED`, `RETRACTED`, `DEFERRED`.
+
+**Assumption**  --  A premise taken as given. "The detector is calibrated properly." Assumptions come in two types (`AssumptionType`):
+- `EMPIRICAL`: In principle testable by observation or experiment
+- `METHODOLOGICAL`: A modeling convention or procedural choice
+
+Every assumption carries a `criticality` rating (`Criticality` enum): `LOW`, `MODERATE`, `HIGH`, or `LOAD_BEARING`. Load-bearing assumptions underpin major parts of the project and receive extra validator scrutiny.
+
+Assumptions form their own DAG via `depends_on`  --  one assumption can depend on others, and cyclic dependencies are rejected.
+
+Lifecycle (`AssumptionStatus`): `ACTIVE`, `QUESTIONED`, `FALSIFIED`, `RETIRED`.
+
+**Prediction**  --  A testable consequence of one or more hypotheses. "The next experiment will show a 15% yield increase." Predictions connect the abstract reasoning chain to the real world.
+
+Predictions have three important reference fields:
+- `hypothesis_ids`  --  the hypotheses that jointly imply this prediction
+- `tests_assumptions`  --  assumptions this prediction is *designed to test* (its outcome bears on whether those assumptions hold)
+- `conditional_on`  --  assumptions this prediction is *conditioned on* (it is valid only if these hold, but it is not testing them)
+
+A prediction **cannot** list the same assumption in both `tests_assumptions` and `conditional_on`  --  that would be a logical contradiction (you cannot simultaneously take something as given and test it).
+
+Predictions have a **confidence tier** (`ConfidenceTier`):
+- `FULLY_SPECIFIED`  --  zero free parameters, a pure prediction from objective
+- `CONDITIONAL`  --  valid only if stated assumptions hold
+- `FIT_CHECK`  --  agreement is unsurprising because the model was fit to this data
+
+Lifecycle (`PredictionStatus`): `PENDING`, `CONFIRMED`, `STRESSED`, `REFUTED`, `NOT_YET_TESTABLE`, or `SUPERSEDED`.
+
+Predictions support **supersession**: a newer prediction can replace an older one via the `supersedes` field, and the old prediction transitions to `SUPERSEDED`. This tracks how predictions evolve as research progresses.
+
+Additional fields for adjudication: `refutation_criteria`, `stress_criteria`, `predicted_uncertainty`, `observed_uncertainty`, `adjudication_rationale`, and `observations` (linked observational data).
+
+**Observation**  --  Raw empirical data collected during research. "Measured yield of 14.2% +/- 0.3% in experiment batch 7." Observations record what was actually seen, independent of what was predicted  --  they support inductive workflows where data precedes hypothesis.
+
+Key fields: `value` (the measured result), `uncertainty` (measurement uncertainty), `systematic_uncertainty` (known systematic error), `methodology` (how the observation was made), `predictions` (which predictions this observation bears on), `related_hypotheses`, `related_assumptions`.
+
+Lifecycle (`ObservationStatus`): `PRELIMINARY`, `VALIDATED`, `DISPUTED`, `RETRACTED`.
+
+**Analysis**  --  A piece of analytical work. Episteme never *runs* analyses  --  the researcher runs them with whatever tools they like (Python, R, SageMath, Jupyter), or an AI agent orchestrates them. Episteme just records *what was run*, *what parameters it used*, and *what result it produced*. This enables staleness detection: when a parameter changes, Episteme can identify which analyses need re-running.
+
+**Parameter**  --  A physical or mathematical constant referenced by analyses. "Detection threshold = 0.85." Parameters live in the graph so that when they change, Episteme can trace the impact through analyses to predictions. Each parameter tracks `value`, `unit`, `uncertainty`, and `last_modified`.
+
+### Organizational Entities
+
+**Objective**  --  A higher-level research goal or explanatory framework that motivates and organizes hypotheses. Objectives are **hub entities**  --  they link to hypotheses, predictions, observations, discoveries, and dead ends, providing the "why" behind the reasoning chain.
+
+Objectives have a `kind` (`ObjectiveKind`):
+- `EXPLANATORY`  --  seeks to explain a phenomenon
+- `GOAL`  --  aims to achieve a measurable outcome (requires `success_criteria`)
+- `EXPLORATORY`  --  open-ended investigation
+
+Lifecycle (`ObjectiveStatus`): `ACTIVE`, `REFINED`, `DEFERRED`, `ABANDONED`, `SUPERSEDED`, `ACHIEVED`, `INFEASIBLE`.
+
+Key fields: `success_criteria`, `motivates_hypotheses` (bidirectional with `Hypothesis.objectives`), `related_predictions`, `related_observations`, `related_dead_ends`, `related_discoveries`, `superseded_by`.
+
+**Discovery**  --  A significant finding during research. Discoveries have soft navigational links to hypotheses and predictions. Lifecycle (`DiscoveryStatus`): `NEW`, `INTEGRATED`, `ARCHIVED`.
+
+**DeadEnd**  --  A known dead end or abandoned direction. Records what was tried and why it didn't work. Dead ends are valuable negative results that prevent future researchers from repeating failed approaches. Lifecycle (`DeadEndStatus`): `ACTIVE`, `RESOLVED`, `ARCHIVED`.
+
+### Evidence Quality Entities
+
+**IndependenceGroup**  --  Groups predictions that share a common derivation chain. If two predictions both derive from the same hypotheses and assumptions, they are not genuinely independent evidence  --  confirmation of one does not independently confirm the objective. Independence groups make this explicit.
+
+**PairwiseSeparation**  --  Documents why two independence groups provide genuinely separate evidence. If both groups have member predictions, a separation record is required explaining why they are independent. Without it, validation reports a CRITICAL finding.
+
+### Bidirectional Links
+
+Many relationships in the graph are **bidirectional**. For example:
+- `Hypothesis.assumptions` → `Assumption.used_in_hypotheses`
+- `Hypothesis.objectives` → `Objective.motivates_hypotheses`
+- `Prediction.tests_assumptions` → `Assumption.tested_by`
+- `Prediction.observations` → `Observation.predictions`
+- `Analysis.uses_parameters` → `Parameter.used_in_analyses`
+- `Analysis.hypotheses_covered` → `Hypothesis.analyses`
+
+These backlinks are maintained **automatically** by the graph's register/update methods. You never set them directly. This is important: it means the graph is always self-consistent. You cannot register a hypothesis that references assumption A-001 without A-001's `used_in_hypotheses` set being updated to include that hypothesis.
+
+---
+
+## 5. The Architecture  --  How the Code Is Organized
+
+Episteme's dependencies form a **directed acyclic graph**, not a strict linear stack. Every arrow points inward  --  toward the kernel  --  but not every layer passes through every other layer.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Interfaces                                              │
+│  Python API, CLI, MCP Server                             │
+└────────────┬──────────────────────────┬──────────────────┘
+             │ calls                    │ calls
+┌────────────▼──────────────┐   ┌───────▼──────────────────┐
+│  Client                   │   │  Views                   │
+│  EpistemeClient,          │   │  health, status,         │
+│  persistence, typed       │   │  metrics, evidence       │
+│  helpers                  │   │  (read-only reports)     │
+└────────────┬──────────────┘   └───────┬──────────────────┘
+             │ calls                    │
+┌────────────▼──────────────┐           │
+│  Control Plane            │           │
+│  Gateway  --  the single    │           │ reads protocol
+│  mutation boundary        │           │
+└────────────┬──────────────┘           │
+             │ mutates/reads            │
+┌────────────▼──────────────────────────▼──────────────────┐
+│  Epistemic Kernel                                        │
+│  types, model, graph, invariants, ports, errors           │
+│  Pure Python. No I/O. No external dependencies.          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**The fundamental rules:**
+
+1. **Dependencies point inward.** The kernel imports nothing from any outer layer. The control plane imports only from the kernel. The client imports from the control plane and the kernel.
+
+2. **Views are siblings, not a layer in the mutation path.** Views depend *only* on kernel protocols (`EpistemicGraphPort`, `GraphValidator`). They do not import anything from the control plane or client. They are leaf consumers  --  read-only code that composes kernel data into reports.
+
+3. **The client does not depend on views.** Client and views are independent. Interfaces (the outermost layer) may use both.
+
+This is not a strict onion  --  it is a **hub-and-spoke** architecture with the kernel at the hub. The control plane, views, and (eventually) adapters are independent spokes that each depend on the kernel but not on each other. The client is the one integration point that bridges the control plane and the kernel, and interfaces sit at the outermost edge.
+
+This matters because it means:
+- You can test any component in isolation by providing a kernel (or a mock that satisfies the kernel's protocols)
+- You can replace any outer component without touching others  --  swapping the control plane does not affect views, and swapping views does not affect the client
+- A bug fixed in the kernel is fixed for every consumer simultaneously
+- The most critical code (the kernel) has the fewest dependencies and is the easiest to reason about
+
+---
+
+## 6. The Epistemic Kernel
+
+**Package:** `src/episteme/epistemic/`
+
+This is the heart of the system. It is **pure Python**  --  no file I/O, no network calls, no external dependencies beyond the standard library. Everything in this package is deterministic and testable in memory.
+
+### Module Breakdown
+
+| Module | Purpose |
+|--------|---------|
+| `types.py` | Type definitions: 11 `NewType` IDs, 16 enums, 7 transition tables, `Finding` dataclass, 3 typed query-result dataclasses (`RefutationImpact`, `AssumptionSupportStatus`, `ParameterImpact`) |
+| `model.py` | 11 entity dataclasses: `Hypothesis`, `Assumption`, `Prediction`, `Observation`, `Analysis`, `Objective`, `Discovery`, `DeadEnd`, `Parameter`, `IndependenceGroup`, `PairwiseSeparation` |
+| `graph.py` | `EpistemicGraph`  --  the aggregate root. All registrations, updates, transitions, removals, and queries. ~2060 lines. |
+| `invariants.py` | 31 semantic validator functions. Each is pure: `(EpistemicGraphPort) -> list[Finding]` |
+| `errors.py` | Domain exception hierarchy: `EpistemicError`, `DuplicateIdError`, `BrokenReferenceError`, `CycleError`, `InvariantViolation` |
+| `codec.py` | Serialization/deserialization between typed dataclasses and primitive dict payloads |
+| `ports.py` | Re-exports from three protocol modules below |
+| `_ports_graph.py` | `EpistemicGraphPort`  --  the abstract Protocol for the graph aggregate |
+| `_ports_services.py` | Service protocols: `GraphValidator`, `PayloadValidator`, `TransactionLog`, `ProseSync` |
+| `_ports_artifacts.py` | Artifact protocols: `GraphExporter`, `GraphRenderer`, `ArtifactSink`, `Artifact` dataclass |
+
+### What `types.py` gives you
+
+Every entity type has a **nominal ID type** defined via `NewType`:
+
+```python
+HypothesisId       = NewType("HypothesisId", str)
+AssumptionId  = NewType("AssumptionId", str)
+PredictionId  = NewType("PredictionId", str)
+# ... 8 more
+```
+
+At runtime, these are just strings. But the type checker treats them as distinct types  --  you cannot accidentally pass a `HypothesisId` where an `AssumptionId` is expected without a type error. This catches a whole class of bugs at type-check time rather than runtime.
+
+The enums define the vocabulary of the domain: `ConfidenceTier`, `EvidenceKind`, `MeasurementRegime`, `PredictionStatus`, etc. Every enum value is documented with what it means and when to use it.
+
+The `Finding` dataclass is the universal unit of diagnostic output:
+
+```python
+@dataclass
+class Finding:
+    severity: Severity    # INFO, WARNING, or CRITICAL
+    source: str           # e.g. "predictions/P-001"
+    message: str          # human-readable description
+```
+
+Every validation, health check, and coverage analysis in the system produces `Finding` instances. This uniformity means any consumer  --  CLI, MCP, Python API  --  can display diagnostics consistently.
+
+**Transition tables** define the legal lifecycle state changes for each entity type that has a status. For example, `PREDICTION_TRANSITIONS` maps each `PredictionStatus` to the set of statuses it can transition to. The graph's `transition_*` methods consult these tables and reject illegal transitions. There are 7 transition tables: `PREDICTION_TRANSITIONS`, `HYPOTHESIS_TRANSITIONS`, `OBJECTIVE_TRANSITIONS`, `ASSUMPTION_TRANSITIONS`, `OBSERVATION_TRANSITIONS`, `DISCOVERY_TRANSITIONS`, `DEAD_END_TRANSITIONS`.
+
+**Typed query-result dataclasses** give structure to the answers from graph traversal queries:
+
+```python
+@dataclass(frozen=True)
+class RefutationImpact:
+    hypothesis_ids: set[str]       # direct hypotheses in the prediction's derivation
+    hypothesis_ancestors: set[str] # transitively reachable ancestors
+    implicit_assumptions: set[str] # all assumptions in the full chain
+
+@dataclass(frozen=True)
+class AssumptionSupportStatus:
+    direct_hypotheses: set[str]     # hypotheses that cite this assumption
+    dependent_predictions: set[str] # predictions downstream of those hypotheses
+    tested_by: set[str]             # predictions formally testing this assumption
+
+@dataclass(frozen=True)
+class ParameterImpact:
+    stale_analyses: set[str]         # analyses using this parameter
+    constrained_hypotheses: set[str] # hypotheses with parameter constraints
+    affected_hypotheses: set[str]    # hypotheses covered by stale analyses
+    affected_predictions: set[str]   # predictions downstream of stale analyses
+```
+
+These dataclasses replace the raw `dict[str, set]` returns from earlier iterations, giving consumers static-typing guarantees and named attribute access.
+
+### What `model.py` gives you
+
+Eleven entity dataclasses, all using:
+- Python `dataclass` for structure
+- `set[SomeId]` for multi-valued references  --  unordered, no duplicates
+- `dict[ParameterId, str]` for annotated constraints
+- `Any` for flexible value fields (will be tightened to `JSONValue` post-MVP)
+
+Relationships are **ID references, not object references**. A hypothesis's `assumptions` field contains `{"A-001", "A-002"}`, not pointers to Assumption objects. To traverse the graph, you go through the `EpistemicGraph`. This decouples entities from each other and makes serialization trivial.
+
+### What `graph.py` gives you  --  the aggregate root
+
+This is the biggest and most important module. `EpistemicGraph` is a `@dataclass` with eleven dictionaries  --  one per entity type:
+
+```python
+@dataclass
+class EpistemicGraph:
+    version: int = 0
+    hypotheses: dict[HypothesisId, Hypothesis] = field(default_factory=dict)
+    assumptions: dict[AssumptionId, Assumption] = field(default_factory=dict)
+    predictions: dict[PredictionId, Prediction] = field(default_factory=dict)
+    # ... 8 more registries
+```
+
+**Copy-on-write mutations:** Every method that changes the graph returns a **new** `EpistemicGraph` instance. The old one is untouched. This is critical  --  it means:
+
+- **Free undo/redo**: keep the old graph around and you can roll back
+- **No partial corruption**: if a mutation fails halfway, the original graph is still intact
+- **Thread safety by default**: immutable snapshots cannot be corrupted by concurrent access
+
+For example:
+
+```python
+graph = EpistemicGraph()
+new_graph = graph.register_hypothesis(some_hypothesis)
+# graph is unchanged  --  it still has zero hypotheses
+# new_graph has the hypothesis
+```
+
+**Structural invariants at mutation time:** When you register or update an entity, `graph.py` immediately checks:
+
+1. **No duplicate IDs**  --  raises `DuplicateIdError`
+2. **Referential integrity**  --  all referenced IDs must exist in the graph. E.g., if a hypothesis references assumption `"A-001"`, that assumption must already be registered. Raises `BrokenReferenceError`
+3. **DAG acyclicity**  --  the `depends_on` graphs for hypotheses and assumptions must stay acyclic. Raises `CycleError`
+4. **Bidirectional link maintenance**  --  backlinks are updated automatically
+5. **Constraint validation**  --  e.g., `FULLY_SPECIFIED` predictions must have `free_params == 0`
+
+These are **structural** invariants  --  properties of the graph topology. They are enforced at write time, not checked after the fact.
+
+**Query methods** traverse the graph to answer structural questions:
+
+| Query | What it answers | Returns |
+|-------|----------------|---------|
+| `hypothesis_lineage(cid)` | All ancestor hypotheses in the `depends_on` DAG | `set[HypothesisId]` |
+| `assumption_lineage(cid)` | All assumptions transitively reachable from a hypothesis | `set[AssumptionId]` |
+| `prediction_implicit_assumptions(pid)` | All assumptions a prediction depends on (through its hypothesis chain) | `set[AssumptionId]` |
+| `refutation_impact(pid)` | If this prediction is refuted, which hypotheses and assumptions are affected? | `RefutationImpact` |
+| `assumption_support_status(aid)` | Which hypotheses use this assumption? Which predictions test it? | `AssumptionSupportStatus` |
+| `hypotheses_depending_on_hypothesis(cid)` | Direct dependents in the hypothesis DAG | `set[HypothesisId]` |
+| `predictions_depending_on_hypothesis(cid)` | All predictions that cite this hypothesis | `set[PredictionId]` |
+| `parameter_impact(pid)` | If this parameter changes, which analyses are stale and which predictions are affected? | `ParameterImpact` |
+
+### What `invariants.py` gives you  --  semantic validation
+
+While `graph.py` enforces structural invariants at write time, `invariants.py` provides **semantic** invariants that are checked on demand (e.g., during a health check or `ds validate`).
+
+There are 31 validator functions. Each is a pure function `(EpistemicGraphPort) -> list[Finding]`:
+
+1. **`validate_tier_constraints`**  --  `FULLY_SPECIFIED` must have 0 free params; `CONDITIONAL` should declare `conditional_on`; adjudicated predictions need observed values
+2. **`validate_independence_semantics`**  --  predictions in a group must share the group's lineage; populated groups need pairwise separation records
+3. **`validate_coverage`**  --  flags coverage gaps: assumptions with no hypotheses, hypotheses with no predictions, etc.
+4. **`validate_assumption_testability`**  --  empirical assumptions with `falsifiable_consequence` but empty `tested_by` get a WARNING
+5. **`validate_retracted_hypothesis_citations`**  --  warns if predictions still cite retracted hypotheses
+6. **`validate_implicit_assumption_coverage`**  --  every implicit assumption in a prediction's chain should have at least one test
+7. **`validate_tests_conditional_overlap`**  --  a prediction cannot list the same assumption in both `tests_assumptions` and `conditional_on`
+8. **`validate_foundational_hypothesis_deps`**  --  `FOUNDATIONAL` hypotheses must not have `depends_on`; `DERIVED` must have non-empty `depends_on`
+9. **`validate_evidence_consistency`**  --  `FIT_CHECK` tier cannot carry `NOVEL_PREDICTION` evidence kind
+10. **`validate_conditional_assumption_pressure`**  --  assumptions that appear only in `conditional_on` (never tested) get a WARNING
+11. **`validate_stress_criteria`**  --  predictions with `STRESSED` status should have `stress_criteria` explaining why
+12. **`validate_retracted_observation_citations`**  --  warns if predictions or hypotheses still cite retracted observations
+13. **`validate_objective_abandonment_impact`**  --  when an objective is ABANDONED, its downstream hypotheses should be reviewed
+14. **`validate_load_bearing_assumption_coverage`**  --  `LOAD_BEARING` or `HIGH` criticality assumptions must be tested by at least one prediction
+15. **`validate_testability_regime_consistency`**  --  predictions with `UNMEASURED` regime should not have observed values
+16. **`validate_goal_objective_criteria`**  --  `GOAL` objectives must have non-empty `success_criteria`
+17. **`validate_supersession_chains`**  --  superseded predictions must point to a valid successor
+18. **`validate_compromised_observation_basis`**  --  warns if observations are linked to falsified assumptions or retracted hypotheses
+19. **`validate_supersession_status_consistency`**  --  predictions that supersede others must have predecessor in `SUPERSEDED` status
+20. **`validate_refutation_criteria`**  --  active predictions should have refutation criteria specified
+21. **`validate_observed_but_pending`**  --  predictions with observed values but still in `PENDING` status get a WARNING
+22. **`validate_deferred_hypothesis_active_predictions`**  --  deferred hypotheses should not have active predictions
+23. **`validate_orphaned_predictions`**  --  predictions whose hypotheses are all retracted or deferred get a WARNING
+24. **`validate_falsified_assumption_impact`**  --  hypotheses grounded on falsified assumptions should be reviewed
+25. **`validate_adjudication_has_observations`**  --  adjudicated predictions (CONFIRMED/STRESSED/REFUTED) should link to observations
+26. **`validate_adjudication_rationale`**  --  adjudicated predictions should have `adjudication_rationale` explaining the verdict
+27. **`validate_hypothesis_refutation_criteria`**  --  active hypotheses should specify what would refute them
+28. **`validate_discovery_integration_consistency`**  --  INTEGRATED discoveries should reference at least one hypothesis or prediction
+29. **`validate_supersession_cycles`**  --  the `supersedes` chain must not form cycles
+30. **`validate_hypothesis_empirical_interface`**  --  hypotheses should connect to empirical evidence via predictions or observations
+31. **`validate_disconnected_dead_ends`**  --  dead ends should reference at least one hypothesis or prediction for context
+
+Additionally, `validate_prediction_transition` is a special-purpose validator invoked during status transitions (not part of the standard sweep), and `validate_all` orchestrates running all 31 validators.
+
+The distinction between structural invariants (in `graph.py`) and semantic invariants (in `invariants.py`) is deliberate:
+
+- **Structural invariants** are *always* enforced. You cannot create an inconsistent graph. They prevent data corruption.
+- **Semantic invariants** are *advisory*. They surface gaps, risks, and things you should think about. They do not prevent mutations.
+
+CRITICAL findings from semantic invariants *do* block mutations at the Gateway level  --  but this is the Gateway's policy, not the kernel's. The kernel just produces findings; the Gateway decides what to do with them.
+
+### What `errors.py` gives you
+
+A flat exception hierarchy rooted at `EpistemicError`:
+
+```
+EpistemicError
+├── DuplicateIdError        --  ID already exists in the graph
+├── BrokenReferenceError    --  referenced ID does not exist
+├── CycleError              --  would create a dependency cycle
+└── InvariantViolation      --  post-condition or structural integrity failure
+```
+
+These are **domain vocabulary**  --  they describe what can go wrong in terms the domain understands. Any code that interacts with the graph can catch `EpistemicError` to handle all domain errors.
+
+### What `ports.py` gives you  --  dependency inversion
+
+The kernel defines **abstract interfaces** (Python `Protocol` classes) for everything it needs from the outside world. These are split across three modules for organizational clarity, with `ports.py` re-exporting everything:
+
+**`_ports_graph.py`  --  the graph contract:**
+- **`EpistemicGraphPort`**  --  the abstract contract for the graph aggregate. Declares all twelve registries (as `Mapping`, not `dict`), all query methods, all mutation methods. The concrete `EpistemicGraph` class satisfies this protocol, but so could any other implementation (a database-backed lazy-loading proxy, a test double, etc.).
+
+**`_ports_services.py`  --  service contracts:**
+- **`GraphRepository`**  --  load and save the graph
+- **`GraphValidator`**  --  run all validation rules and return findings
+- **`PayloadValidator`**  --  validate inbound mutation payloads before they reach the graph
+- **`TransactionLog`**  --  append provenance records for mutations
+- **`ProseSync`**  --  update managed prose blocks derived from canonical state
+
+**`_ports_artifacts.py`  --  artifact contracts:**
+- **`GraphExporter`** / **`GraphRenderer`** / **`ArtifactSink`**  --  produce and consume rendered artifacts
+- **`Artifact`**  --  a frozen dataclass with `name`, `content`, `media_type`, and `metadata`
+
+This is the **Dependency Inversion Principle** (the D in SOLID) in action. The kernel defines the contracts; outer layers provide the implementations. The kernel never imports from any outer layer.
+
+### What `codec.py` gives you
+
+Bidirectional translation between typed dataclasses and primitive dict payloads. Used by the Gateway to convert between the JSON-friendly format that interfaces send/receive and the strongly-typed entities the kernel works with.
+
+---
+
+## 7. The Control Plane
+
+**Package:** `src/episteme/controlplane/`
+
+The control plane is the **orchestration layer**. It does not define domain logic (that is the kernel's job). It coordinates: payload validation → kernel mutation → invariant enforcement → result packaging.
+
+### The Gateway  --  the single mutation boundary
+
+**`gateway.py`** defines the `Gateway` class. This is arguably the most architecturally significant class in the system. Let us explain why.
+
+**The problem it solves:** Episteme has three interfaces  --  Python API, CLI, and MCP server. Without a gateway, each interface would need to:
+
+1. Parse and validate input
+2. Build entity objects
+3. Call kernel mutations
+4. Run invariant checks
+5. Decide whether to allow or block the mutation
+6. Package the result
+
+If each interface did this independently, you would have three copies of the same orchestration logic. Bugs would be fixed in one interface but not the others. Invariant enforcement would be inconsistent. This is the N-interface problem.
+
+**The solution:** All mutations flow through one `Gateway`. The Gateway provides six resource-oriented verbs:
+
+| Verb | What it does |
+|------|-------------|
+| `register(resource, payload)` | Create a new entity |
+| `get(resource, identifier)` | Retrieve one entity by ID |
+| `list(resource, **filters)` | List entities, optionally filtered |
+| `set(resource, identifier, payload)` | Update an existing entity |
+| `transition(resource, identifier, new_status)` | Change an entity's lifecycle status |
+| `query(query_type, **params)` | Run a named read-only query |
+
+And one additional method:
+
+| Verb | What it does |
+|------|-------------|
+| `record_analysis_result(...)` | Record the output of an analysis run |
+
+Every verb returns a `GatewayResult`:
+
+```python
+@dataclass
+class GatewayResult:
+    status: str         # "ok", "error", or "BLOCKED"
+    message: str        # human-readable description
+    data: dict          # payload (entity dict, query result, etc.)
+    findings: list      # diagnostic findings
+```
+
+The Gateway **never raises exceptions** to its callers. All errors are reported through the result object. This makes it safe to call from any context  --  a CLI handler, an MCP tool, or a Python script.
+
+**How `register` works (step by step):**
+
+1. Resolve the resource key (e.g., `"hypothesis"` → look up in `RESOURCE_SPECS`)
+2. Run payload validation via the `PayloadValidator` port (if configured)
+3. Convert the primitive payload dict into a typed entity using `codec.py`
+4. Call the kernel's register method (e.g., `graph.register_hypothesis(hypothesis)`)
+5. The kernel returns a new graph instance (copy-on-write)
+6. Run all semantic validators on the new graph
+7. If any CRITICAL findings → return `"BLOCKED"` and keep the old graph
+8. If clean → swap in the new graph, return `"ok"`
+
+If `dry_run=True`, step 8 skips the swap  --  you get the validation result without modifying state.
+
+**The `RESOURCE_SPECS` catalog:**
+
+The Gateway does not have 11 separate `register_hypothesis`, `register_assumption`, etc. methods. Instead, it uses a metadata-driven approach. `_gateway_catalog.py` defines a lookup table:
+
+```python
+RESOURCE_SPECS = {
+    "hypothesis": ResourceSpec("hypotheses", "register_hypothesis", "update_hypothesis", "transition_hypothesis"),
+    "assumption": ResourceSpec("assumptions", "register_assumption", "update_assumption"),
+    # ... 9 more
+}
+```
+
+This table maps each resource key to: which collection it lives in, which kernel method to call for register/update/transition. The Gateway uses this table dynamically, so adding a new entity type to the kernel automatically becomes available through the Gateway (and therefore through all interfaces) just by adding one entry to the catalog.
+
+**The `QUERY_SPECS` catalog:**
+
+Similarly for queries:
+
+```python
+QUERY_SPECS = {
+    "hypothesis_lineage": QuerySpec("hypothesis_lineage", {"cid": "hypothesis"}),
+    "refutation_impact": QuerySpec("refutation_impact", {"pid": "prediction"}),
+    # ... more
+}
+```
+
+### Other Control Plane Modules
+
+| Module | Purpose |
+|--------|---------|
+| `factory.py` | Composition root  --  wires concrete adapter implementations into the Gateway. "Where the real objects get plugged in." |
+| `validate.py` | Orchestrates running all validators and aggregating findings. |
+| `check.py` | Pure diagnostic functions: `check_refs` (referential integrity), `check_stale` (staleness detection). |
+| `prose.py` | Managed-prose synchronization: `sync_prose` and `verify_prose_sync`. |
+| `render.py` | SHA-256 fingerprint cache + incremental rendering orchestration. |
+| `export.py` | Export orchestration  --  produces portable artifacts from the graph. |
+
+---
+
+## 8. Views
+
+**Package:** `src/episteme/views/`
+
+Views are **read-only, composed summaries** of the graph state. They do not mutate anything. They combine information from multiple queries into higher-level reports.
+
+| Module | What it produces |
+|--------|-----------------|
+| `health.py` | `HealthReport` with an overall status (`HEALTHY` / `WARNINGS` / `CRITICAL`) and a list of findings. This is the "is my project OK?" check. |
+| `status.py` | `ProjectStatus`  --  summary of entity counts, coverage statistics, and overall project state. |
+| `metrics.py` | `PredictionMetrics` and `GraphMetrics`  --  quantitative summaries of prediction outcomes, coverage ratios, etc. |
+| `evidence.py` | `EvidenceSummary`  --  per-hypothesis evidence rollup. Collects all predictions, observations, assumptions, and analyses bearing on a hypothesis into a single structured report with detail objects (`PredictionDetail`, `ObservationDetail`, `AssumptionDetail`, `AnalysisDetail`). |
+
+Views depend **only on the kernel**  --  specifically on `EpistemicGraphPort` and `GraphValidator` (both Protocol classes defined in `epistemic/ports.py`). They have zero imports from the control plane. The `GraphValidator` protocol is abstract; a concrete implementation (like `DomainValidator` in the control plane) is injected at runtime by the factory, but views never import it or know it exists.
+
+Nothing inside Episteme depends on views  --  they are leaf consumers. Interfaces will call views directly.
+
+The key architectural point about views: they exist so that **interfaces do not need to compose this information themselves**. Without views, the CLI would need to call five different queries and format the result, and the MCP server would need to do the same thing. Views centralize this composition so interfaces stay thin.
+
+---
+
+## 9. The Client
+
+**Package:** `src/episteme/client/`
+
+The client is the **Python-facing API surface**. It wraps the Gateway with:
+
+1. **Persistence**  --  the client owns `save()`, which writes the in-memory graph to disk via a `GraphRepository`
+2. **Typed helpers**  --  `register_hypothesis(id=..., statement=...)` instead of `register("hypothesis", {"id": ..., "statement": ...})`
+3. **Context management**  --  `with episteme.connect() as client:` auto-saves on exit
+4. **Error handling**  --  `ClientResult` objects with `.ok`, `.data`, `.error` fields
+
+### Module Breakdown
+
+| Module | Purpose |
+|--------|---------|
+| `__init__.py` | Public API: `EpistemeClient` class, `connect()` factory function |
+| `_core.py` | `_EpistemeClientCore`  --  generic gateway verbs (`register`, `get`, `list`, `set`, `transition`, `query`) |
+| `_resources.py` | `_EpistemeClientResourceHelpers`  --  entity-specific typed helpers (`register_hypothesis`, `get_hypothesis`, etc.) |
+| `_hypothesis.py` | Hypothesis/prediction workflow helpers |
+| `_structure.py` | Structural query helpers |
+| `_registry.py` | Registry management helpers |
+| `_types.py` | `ClientResult` and `EpistemeClientError` |
+
+`EpistemeClient` uses **mixin composition**: it inherits from both `_EpistemeClientResourceHelpers` and `_EpistemeClientCore`. The core provides the generic verbs; the resource helpers add typed convenience methods on top.
+
+The important architectural rule: **the client changes calling conventions only.** It must not add business logic or bypass invariants. Every client method is a thin wrapper that calls the Gateway. If you call `client.register_hypothesis(...)`, it just builds a payload dict and calls `gateway.register("hypothesis", payload)`.
+
+---
+
+## 10. Interfaces
+
+**Package:** `src/episteme/interfaces/`
+
+Interfaces are **thin adapters** that parse inputs, call the client/gateway/views, and format outputs. They contain **zero business logic**.
+
+Three interfaces are planned:
+
+1. **Python API** (human researchers and programmatic access)  --  `import episteme as ep; client = episteme.connect()`. This goes through the `client/` package directly.
+
+2. **CLI** (inspection and audit)  --  `ds health`, `ds validate`, `ds status`. Uses Click for command parsing, Rich for terminal formatting. Every command accepts `--json` for machine-readable output.
+
+3. **MCP Server** (AI agents, first-class interface)  --  exposes all capabilities as typed tools via the Model Context Protocol. AI assistants (Claude, Copilot, Cursor) and autonomous research agents use the same Gateway, invariant system, and entity model as human researchers. There is no reduced or simulated interface for agents — they are full participants.
+
+The architectural rule: **if an interface needs logic that another interface also needs, that logic belongs in a lower layer** (views, control plane, or kernel). Interfaces parse, call, and format. That's it.
+
+---
+
+## 11. How the Layers Talk to Each Other
+
+Let us trace a complete operation through all the layers to see how they interact.
+
+### Example: Registering a Hypothesis via the Python API
+
+```python
+import episteme as ds
+
+client = episteme.connect()
+result = client.register_hypothesis(
+    id="C-001",
+    statement="Catalyst X increases yield.",
+    type="foundational",
+    scope="global",
+    refutation_criteria="A replicated null result would falsify this hypothesis.",
+)
+```
+
+Here is what happens inside:
+
+**Step 1  --  Client layer** (`client/_resources.py`)
+
+`register_hypothesis` is a typed helper. It builds a payload dict:
+
+```python
+payload = {"id": "C-001", "statement": "Catalyst X increases yield.", ...}
+```
+
+Then calls `self.register("hypothesis", **payload)`.
+
+**Step 2  --  Client layer** (`client/_core.py`)
+
+`register()` calls `self.gateway.register("hypothesis", payload)`.
+
+**Step 3  --  Control plane** (`controlplane/gateway.py`)
+
+`Gateway.register("hypothesis", payload)`:
+
+1. Looks up `"hypothesis"` in `RESOURCE_SPECS` → gets `ResourceSpec("hypotheses", "register_hypothesis", ...)`
+2. Runs payload validation via `PayloadValidator.validate("hypothesis", payload)` → returns `[]` (no issues)
+3. Calls `normalize_payload("hypothesis", payload)` (from `codec.py`) → builds a `Hypothesis` dataclass
+4. Calls `self._graph.register_hypothesis(hypothesis)` → kernel returns a new graph
+
+**Step 4  --  Kernel** (`epistemic/graph.py`)
+
+`EpistemicGraph.register_hypothesis(hypothesis)`:
+
+1. Checks `hypothesis.id not in self.hypotheses` → ok (no duplicate)
+2. Checks all referenced IDs exist (assumptions, depends_on, analyses, objectives) → ok
+3. If `depends_on` is non-empty, checks for cycles in the hypothesis DAG → ok
+4. Shallow-copies the graph via `_copy()`, deep-copies only modified entities
+5. Adds the hypothesis to the new graph's `hypotheses` dict
+6. Updates backlinks: for each assumption in `hypothesis.assumptions`, adds `hypothesis.id` to that assumption's `used_in_hypotheses`; similarly for objectives, analyses, observations
+7. Returns the new graph
+
+**Step 5  --  Back in the Gateway**
+
+5. Runs all semantic validators (`invariants.py` functions) on the new graph
+6. No CRITICAL findings → swaps in the new graph: `self._graph = new_graph`
+7. Returns `GatewayResult(status="ok", message="registered hypothesis C-001", ...)`
+
+**Step 6  --  Back in the Client**
+
+Wraps the `GatewayResult` into a `ClientResult` and returns it to the caller.
+
+### Example: Querying Refutation Impact
+
+```python
+result = client.query("refutation_impact", pid="P-001")
+```
+
+**Client** → `gateway.query("refutation_impact", pid="P-001")`
+
+**Gateway** → looks up `"refutation_impact"` in `QUERY_SPECS`, sees it needs parameter `pid` of resource type `"prediction"`. Coerces `"P-001"` to `PredictionId("P-001")`. Calls `self._graph.refutation_impact(pid)`.
+
+**Kernel** (`graph.py`) → traverses the graph:
+1. Finds all hypotheses cited by prediction P-001 (via `hypothesis_ids`)
+2. Finds all ancestor hypotheses of those hypotheses (via `hypothesis_lineage`)
+3. Finds all assumptions in the transitive lineage
+4. Returns a `RefutationImpact` dataclass with `hypothesis_ids`, `hypothesis_ancestors`, and `implicit_assumptions`
+
+**Gateway** → serializes the result and wraps it in `GatewayResult(status="ok", data=...)`.
+
+**Client** → wraps in `ClientResult` and returns.
+
+### The Dependency Flow (What Imports What)
+
+```
+interfaces/  →  client/  →  controlplane/  →  epistemic/
+                                ↑
+                           views/  ──────────→  epistemic/
+```
+
+- `epistemic/` imports nothing outside itself
+- `controlplane/` imports from `epistemic/` only (types, model, graph, ports, codec, errors)
+- `views/` imports from `epistemic/` only (ports, types)
+- `client/` imports from `controlplane/` and `epistemic/` (ports)
+- `interfaces/` imports from `client/` and `views/`
+
+No cycles. No upward dependencies.
+
+---
+
+## 12. Architecture Rules and Why They Exist
+
+These rules are execution constraints, not aspirations. New code that violates them should be rejected.
+
+### Rule 1: All writes flow through the Gateway
+
+**What:** Every mutation  --  register, set, transition, record  --  goes through `controlplane/gateway.py`.
+
+**Why:** Without this, you get the N-interface problem: three interfaces each implementing their own validation, invariant checking, and error handling. A bug fixed in one interface does not get fixed in the others. Invariant enforcement becomes inconsistent. The Gateway centralizes this so there is exactly one place where mutations are validated, blocked, or committed.
+
+### Rule 2: The kernel has no I/O
+
+**What:** `epistemic/` never touches files, databases, networks, or the clock.
+
+**Why:** This is the most critical code in the system. Every invariant, every query, every entity definition lives here. If it had I/O dependencies, it would be harder to test, harder to reason about, and vulnerable to environmental differences. By keeping it pure, we guarantee deterministic behavior and make testing trivial.
+
+### Rule 3: Copy-on-write mutations
+
+**What:** Every mutation on `EpistemicGraph` returns a new instance.
+
+**Why:** Eliminates an entire class of bugs: partial mutation corruption, state leaking between operations, undo complexity. The old graph is always valid. The new graph is valid or the mutation was rejected. There is no intermediate state.
+
+### Rule 4: The client does not add business logic
+
+**What:** `client/` is a thin wrapper. It changes calling conventions (keyword args instead of dicts) and owns persistence. It does not add validation rules, bypass invariants, or implement domain logic.
+
+**Why:** If the client added its own validation, you would have two sources of truth for "what is valid." Updates to the kernel's validation would not automatically apply to the client's checks. The client's job is ergonomics, not enforcement.
+
+### Rule 5: Interfaces are thin adapters
+
+**What:** Interfaces parse inputs, call services, and format outputs. Nothing more.
+
+**Why:** Same reasoning as Rule 4, applied to the outermost layer. If the CLI needed logic that the MCP server also needed, putting it in the CLI would mean duplicating it for MCP. Shared logic belongs in views or the control plane.
+
+### Rule 6: Dependency inversion via protocols
+
+**What:** The kernel defines abstract interfaces (`Protocol` classes in `ports.py`). Outer layers implement them. The kernel never imports from outer layers.
+
+**Why:** This lets you swap implementations without changing the kernel. Want a database instead of JSON files? Implement `GraphRepository` for PostgreSQL. The kernel does not change. Want to test without real persistence? Pass a mock. This is the Open/Closed Principle: the system is open for extension (new implementations) but closed for modification (the kernel stays stable).
+
+### Rule 7: Fail fast
+
+**What:** Schema errors, broken references, and invariant failures are caught at mutation time, before persistence.
+
+**Why:** A broken reference that reaches the JSON file is much harder to fix than one caught at write time. Fail-fast means errors are caught close to their source, where the context for debugging is richest.
+
+### Rule 8: YAGNI
+
+**What:** Don't add features until they are needed. No concurrency control, no indexing, no result-history model until the Python API MVP proves those needs are real.
+
+**Why:** Premature abstraction creates complexity with no payoff. Every abstraction has a maintenance cost. By deferring features until they are proven necessary, the codebase stays small and focused on what matters now.
+
+### Rule 9: Composition over inheritance
+
+**What:** Extend behavior by wrapping shared methods, not by creating deep inheritance hierarchies.
+
+**Why:** The client uses mixin composition: `EpistemeClient` inherits from `_EpistemeClientCore` and `_EpistemeClientResourceHelpers`. This is flat (two levels), and each mixin has a clear responsibility. Deep inheritance makes code hard to follow ("where is this method actually defined?") and creates brittle coupling between base and derived classes.
+
+### Rule 10: Payload validation stays behind the port
+
+**What:** All schema validation happens through the `PayloadValidator` protocol. No inline validation in the Gateway or interfaces.
+
+**Why:** One source of truth for "what is a valid payload." If validation were scattered across Gateway methods and interface handlers, it would be inconsistent and hard to update. The `PayloadValidator` port means the validation logic can be swapped (e.g., JSON Schema today, something else tomorrow) without touching the Gateway.
+
+---
+
+## 13. The Epistemic Package in Detail
+
+This section goes deeper into the `epistemic/` package  --  the part of the system that tends to be the most confusing because it contains domain concepts that do not map directly to common software patterns.
+
+### Why it exists as a separate package
+
+The epistemic package is the **domain kernel**  --  the irreducible core of what Episteme *is*. If you stripped away the CLI, the MCP server, the persistence layer, the rendering, and the client API, this package would still be a complete, self-contained model of an epistemic graph.
+
+This separation is not just organizational. It has concrete consequences:
+
+1. **The kernel can be tested exhaustively in memory.** No file fixtures, no test databases, no mock servers. You create an `EpistemicGraph()`, call methods, and assert results.
+
+2. **The kernel defines stability.** Types, entity shapes, and invariant rules change rarely. Outer layers (CLI flags, MCP tool schemas, rendering formats) change frequently. By separating them, changes to the outer layers never force changes to the kernel.
+
+3. **The kernel is the contract.** Every other layer in the system is defined in terms of what the kernel provides. The `EpistemicGraphPort` protocol *is* the kernel's public API.
+
+### The entity relationship graph
+
+Here is how all eleven entity types relate:
+
+```
+Parameter ──used_in──▶ Analysis ──hypotheses_covered──▶ Hypothesis
+                                                        │
+                                                        │ depends_on (DAG)
+                                                        ▼
+                                                      Hypothesis
+                                                        │
+                                              ┌─────────┤ assumptions
+                                              │         ▼
+                                              │     Assumption ──depends_on (DAG)──▶ Assumption
+                                              │         │
+                                              │    tested_by / conditional_on
+                                              │         ▼
+Hypothesis ──hypothesis_ids──▶ Prediction ◀── observations ── Observation
+                                  │
+                        independence_group
+                                  ▼
+                          IndependenceGroup
+                                  │
+                        both populated?
+                                  ▼
+                         PairwiseSeparation
+
+Objective ──motivates_hypotheses──▶ Hypothesis  (bidirectional)
+Objective ··related_predictions··▶ Prediction   (soft)
+Objective ··related_observations··▶ Observation  (soft)
+Discovery ··soft links··▶ Hypothesis, Prediction
+DeadEnd ··soft links··▶ Hypothesis, Prediction
+```
+
+**Hard references** (solid arrows) are enforced: the referenced entity must exist, and removing it requires removing the reference first.
+
+**Bidirectional references** (like Objective <-> Hypothesis) are maintained automatically by register/update methods.
+
+**Soft links** (dotted arrows) are navigational hints. They are scrubbed automatically when the target entity is removed.
+
+### The copy-on-write pattern in detail
+
+When you call `graph.register_hypothesis(hypothesis)`, here is what happens internally:
+
+```python
+def register_hypothesis(self, hypothesis: Hypothesis) -> EpistemicGraph:
+    # 1. Validate: no duplicate, all refs exist, no cycle
+    if hypothesis.id in self.hypotheses:
+        raise DuplicateIdError(...)
+    for aid in hypothesis.assumptions:
+        if aid not in self.assumptions:
+            raise BrokenReferenceError(...)
+    # ... cycle check for depends_on ...
+    
+    # 2. Shallow-copy collections, deep-copy only modified entities
+    new = self._copy()
+    
+    # 3. Add the hypothesis to the copy
+    new.hypotheses[hypothesis.id] = hypothesis
+    
+    # 4. Maintain bidirectional backlinks on the copy
+    for aid in hypothesis.assumptions:
+        new.assumptions[aid] = copy.deepcopy(new.assumptions[aid])
+        new.assumptions[aid].used_in_hypotheses.add(hypothesis.id)
+    for anid in hypothesis.analyses:
+        new.analyses[anid] = copy.deepcopy(new.analyses[anid])
+        new.analyses[anid].hypotheses_covered.add(hypothesis.id)
+    
+    # 5. Return the copy  --  self is untouched
+    return new
+```
+
+This uses the `_copy()` method which creates new dict instances (shallow copies) sharing the same entity references, then deep-copies only the specific entities whose backlinks are modified. The cost per mutation is O(N_mutated_entities), not O(N_total_entities). Optimization beyond this is deferred until profiling proves it necessary (YAGNI).
+
+### How queries traverse the graph
+
+Consider `refutation_impact(pid)`, which answers: "if prediction P is refuted, what is affected?"
+
+```python
+def refutation_impact(self, pid: PredictionId) -> RefutationImpact:
+    pred = self.predictions[pid]
+    
+    # 1. Direct hypotheses: the hypotheses in the prediction's derivation chain
+    direct_hypotheses = set(pred.hypothesis_ids)
+    
+    # 2. Ancestor hypotheses: transitively reachable through depends_on
+    ancestors = set()
+    for cid in direct_hypotheses:
+        ancestors |= self.hypothesis_lineage(cid)
+    ancestors -= direct_hypotheses  # exclude the direct ones
+    
+    # 3. Implicit assumptions: all assumptions in the full hypothesis chain
+    implicit = self.prediction_implicit_assumptions(pid)
+    
+    return RefutationImpact(
+        hypothesis_ids=direct_hypotheses,
+        hypothesis_ancestors=ancestors,
+        implicit_assumptions=implicit,
+    )
+```
+
+The query does not change anything. It reads the graph and computes a structural answer. The *interpretation* of that answer  --  should we retract hypothesis C-001? should we mark assumption A-001 as suspect?  --  is left to the researcher or agent.
+
+### How invariants catch real problems
+
+Consider `validate_assumption_testability`:
+
+```python
+def validate_assumption_testability(graph: EpistemicGraphPort) -> list[Finding]:
+    findings = []
+    for aid, a in graph.assumptions.items():
+        if a.type == AssumptionType.EMPIRICAL:
+            if a.falsifiable_consequence and not a.tested_by:
+                findings.append(Finding(
+                    Severity.WARNING,
+                    f"assumptions/{aid}",
+                    "Empirical assumption has a falsifiable consequence "
+                    "but no prediction in tested_by"
+                ))
+    return findings
+```
+
+This catches a real and common problem: a researcher has identified an assumption as empirical and has even written down what would falsify it  --  but no prediction in the project is actually *testing* it. The assumption is load-bearing but unmonitored. The invariant surfaces this gap.
+
+This validator does not *fix* the problem. It produces a WARNING finding, which will appear in health checks and `ds validate` output. The researcher or agent decides whether to create a prediction that tests the assumption, acknowledge the gap, or determine that the assumption does not need testing right now.
+
+---
+
+
+## 14. The Type System in Depth
+
+This section explains every type definition in `types.py`: what it is, why it exists, and what design choice it encodes.
+
+### Typed Identifiers: Why NewType Instead of Plain Strings
+
+Every entity type has a nominal identifier defined via `NewType`:
+
+```python
+HypothesisId  = NewType("HypothesisId", str)
+AssumptionId  = NewType("AssumptionId", str)
+PredictionId  = NewType("PredictionId", str)
+# ... 8 more
+```
+
+At runtime these are plain strings. But the type checker treats them as *distinct*: passing a `HypothesisId` where an `AssumptionId` is expected produces a type error. This catches a common class of bugs  --  feeding the wrong entity type's ID into a lookup  --  at static-analysis time rather than runtime.
+
+**Why not UUIDs?** UUIDs are opaque. IDs like `"H-001"` or `"P-003"` are human-readable in health checks, JSON files, CLI output, and conversation with AI agents. Researchers and agents alike need to reason about graphs by identity, and meaningful IDs help.
+
+**Why not integer keys?** String IDs support user-chosen naming conventions (e.g. `"H-stationarity"` or `"A-calibration"`) that communicate semantics at a glance. Integer auto-increment IDs lose this.
+
+There are eleven NewType IDs  --  one per entity type:
+
+| NewType | Entity |
+|---------|--------|
+| `HypothesisId` | Hypothesis |
+| `AssumptionId` | Assumption |
+| `PredictionId` | Prediction |
+| `ObservationId` | Observation |
+| `AnalysisId` | Analysis |
+| `ParameterId` | Parameter |
+| `ObjectiveId` | Objective |
+| `DiscoveryId` | Discovery |
+| `DeadEndId` | DeadEnd |
+| `IndependenceGroupId` | IndependenceGroup |
+| `PairwiseSeparationId` | PairwiseSeparation |
+
+### The Severity Enum and the Finding Dataclass
+
+```python
+class Severity(Enum):
+    INFO = auto()
+    WARNING = auto()
+    CRITICAL = auto()
+```
+
+Three levels, not more. This is deliberate:
+
+- **INFO**: Non-blocking context. "You might want to look at this." Early-stage gaps, workflow nudges. Never blocks.
+- **WARNING**: A potential problem requiring review, but not a logical inconsistency. The graph is still valid; the researcher or agent should consider this gap.
+- **CRITICAL**: A structural or logical violation that should prevent normal workflows until fixed. The Gateway blocks mutations that would result in CRITICAL findings.
+
+Why not five or ten severity levels? Because consuming code needs to branch on severity, and every additional level creates a new decision point. Three levels give exactly the distinctions that matter: "ignore for now," "review when convenient," and "stop and fix."
+
+The `Finding` dataclass is the universal diagnostic output:
+
+```python
+@dataclass
+class Finding:
+    severity: Severity
+    source: str      # e.g. "predictions/P-001"
+    message: str     # human-readable explanation
+```
+
+Every validator, health check, and coverage analysis produces `Finding` instances. This uniformity means the CLI, MCP server, Python API, and views can all display diagnostics consistently without understanding which validator produced them.
+
+### Confidence Tiers: ConfidenceTier
+
+```python
+class ConfidenceTier(Enum):
+    FULLY_SPECIFIED = "fully_specified"
+    CONDITIONAL = "conditional"
+    FIT_CHECK = "fit_check"
+```
+
+This enum encodes one of the most important epistemic distinctions in research: **how constrained is the prediction?**
+
+**`FULLY_SPECIFIED`**  --  zero free parameters. The prediction is a pure logical consequence of the hypotheses. If you know the hypotheses are true, the prediction follows with no room for adjustment. This is the gold standard of predictive power. A fully specified prediction that is confirmed provides the strongest possible evidence for its hypotheses.
+
+*Why this matters:* In physics, a prediction like "general relativity predicts light bending at 1.75 arcseconds near the Sun" is fully specified  --  no parameters were tuned to make it come out right. In ML, a prediction like "the model will achieve 92% accuracy on the held-out test set" is fully specified if no hyperparameters were tuned against that test set.
+
+**`CONDITIONAL`**  --  the prediction is valid only if stated assumptions hold, or it has free parameters (`free_params > 0`). This is the common case in real research: most predictions depend on auxiliary assumptions or have parameters that were tuned. The prediction still has evidential value, but it is weaker than a fully specified prediction because the conditionality creates escape routes ("the prediction failed because assumption A didn't hold, not because the hypothesis is wrong").
+
+*Why this matters:* Conditional predictions are the bread and butter of working science. An ecologist predicts species diversity will increase if habitat connectivity improves (conditional on no invasive species introduction). An ML engineer predicts model accuracy will improve with more data (conditional on the data distribution being stationary). Making the conditionality explicit forces the researcher to declare their escape routes upfront.
+
+**`FIT_CHECK`**  --  the model was tuned or calibrated to match this data. Agreement is unsurprising because the data was used to fit the model. The only logically consistent `EvidenceKind` pairing is `FIT_CONSISTENCY`.
+
+*Why this matters:* Fit checks are an honest acknowledgment of circularity. In particle physics, fitting a model to existing data and then reporting that it matches the data is a fit check, not a prediction. In ML, reporting training accuracy is a fit check. Making this explicit prevents the common mistake of counting fit-to-data as independent confirmation.
+
+*Why exactly three tiers?* Because these map to the three fundamental epistemic relationships between a model and data: the model predicts the data without adjustment (FULLY_SPECIFIED), the model predicts the data with declared caveats (CONDITIONAL), or the model was adjusted to match the data (FIT_CHECK). Every prediction falls into exactly one of these categories.
+
+### Evidence Classification: EvidenceKind
+
+```python
+class EvidenceKind(Enum):
+    NOVEL_PREDICTION = "novel_prediction"
+    RETRODICTION = "retrodiction"
+    FIT_CONSISTENCY = "fit_consistency"
+```
+
+This enum captures the *temporal and methodological* relationship between a prediction and the data that tests it.
+
+**`NOVEL_PREDICTION`**  --  the prediction was made *before* the relevant measurement existed. This is the strongest form of evidence. The prediction had every chance to fail; it could not have been cherry-picked or reverse-engineered to match data that did not yet exist.
+
+**`RETRODICTION`**  --  the prediction explains already-observed data that was *not* used to fit or tune the model. This is genuinely evidential  --  the model was not adjusted to match this specific data  --  but it is weaker than a novel prediction because the researcher knew the answer before formulating the prediction. Unconscious bias in model construction is hard to eliminate.
+
+**`FIT_CONSISTENCY`**  --  the data was part of fitting or calibration. Agreement is expected and provides minimal independent evidence. It is still worth recording (it would be alarming if the fit were *bad*), but it should never be mistaken for independent confirmation.
+
+*Why these three and not more?* These three categories capture the essential epistemic distinction: was the data available before or after the prediction (NOVEL vs RETRODICTION), and was the data used to construct the model (FIT_CONSISTENCY)? Finer-grained distinctions (e.g., "the data was available but I didn't look at it") are too subjective to formalize reliably.
+
+### Measurement Regime: MeasurementRegime
+
+```python
+class MeasurementRegime(Enum):
+    MEASURED = "measured"
+    BOUND_ONLY = "bound_only"
+    UNMEASURED = "unmeasured"
+```
+
+**`MEASURED`**  --  the evidence is a direct measurement (quantitative or categorical). Once the prediction is adjudicated (CONFIRMED/STRESSED/REFUTED), an `observed` value should be present.
+
+**`BOUND_ONLY`**  --  the evidence is an upper or lower bound, not a point estimate. Common in particle physics (mass limits), environmental science (detection limits), and engineering (performance bounds). Once adjudicated, an `observed_bound` should be present.
+
+**`UNMEASURED`**  --  no direct measurement path exists currently. The prediction is registered for future testing. This is the expected pairing for `NOT_YET_TESTABLE` status.
+
+*Why separate MEASURED and BOUND_ONLY?* Because bounds and point measurements have fundamentally different interpretations. A bound of $m_X < 125 \text{ GeV}$ means something categorically different from a measurement of $m_X = 125 \pm 2 \text{ GeV}$. Forcing all evidence into a single "observed" field would conflate these semantics.
+
+### Lifecycle Enums: Status Types
+
+Each entity type that has a lifecycle has its own status enum. The design principle: **each enum reflects the actual epistemic lifecycle of that entity type**, not a generic state machine imposed from outside.
+
+#### PredictionStatus (6 states)
+
+```
+PENDING --> CONFIRMED --> STRESSED --> REFUTED
+  |             |             |           |
+  |             +-------> REFUTED         |
+  |             |             |           |
+  +-------> STRESSED         +-------> PENDING (re-evaluation)
+  |                                       |
+  +-------> REFUTED  <--------------------+
+  |
+  +-------> NOT_YET_TESTABLE --> PENDING
+  |
+  +-------> SUPERSEDED (terminal)
+```
+
+- **PENDING**: Default. Awaiting decisive evidence. The prediction exists but has not been adjudicated.
+- **CONFIRMED**: Current evidence supports the prediction. Not "proven true"  --  Episteme uses Popperian semantics where hypotheses and predictions are never proven, only not-yet-refuted.
+- **STRESSED**: Evidence introduces tension without decisive refutation. This is the state between "looks fine" and "obviously wrong." It exists because real research produces ambiguous results. A 2-sigma tension is not a refutation, but it is not comfortable either. `stress_criteria` should define the threshold.
+- **REFUTED**: Evidence contradicts the prediction decisively. The refutation criteria have been met.
+- **NOT_YET_TESTABLE**: No feasible experiment or observation currently exists. Common for predictions that are theoretically derived but await technological capability or data collection.
+- **SUPERSEDED**: Replaced by a refined prediction via `supersedes`. Terminal  --  no transitions out. The old prediction is a historical record; the new one is the active version.
+
+*Why STRESSED exists:* Many fields (especially particle physics, cosmology, and biomedical research) have situations where data creates tension without being decisive. The famous "$3\sigma$ anomaly" is stressed, not refuted. Without an explicit STRESSED state, researchers are forced to choose between CONFIRMED (which hides the tension) and REFUTED (which overstates it). STRESSED makes the ambiguity visible and auditable.
+
+*Why REFUTED allows transition back to PENDING:* New evidence can reopen a question. A measurement once thought to refute a prediction may itself be retracted or revised. The `REFUTED --> PENDING` path supports this while maintaining a full audit trail.
+
+*Why SUPERSEDED is terminal:* Once a prediction is replaced by a better version, there is no reason to revive the old one. If circumstances change, a *new* prediction should supersede the current one, maintaining the provenance chain.
+
+#### HypothesisStatus (4 states)
+
+```
+ACTIVE --> REVISED --> ACTIVE (further revision)
+  |           |
+  |           +-------> RETRACTED (terminal)
+  |           |
+  |           +-------> DEFERRED
+  |
+  +-------> RETRACTED (terminal)
+  |
+  +-------> DEFERRED --> ACTIVE (resume) or RETRACTED
+```
+
+- **ACTIVE**: The hypothesis is current and in use.
+- **REVISED**: The statement or semantics have changed. Downstream entities may need review. Can return to ACTIVE once downstream entities are updated.
+- **RETRACTED**: Invalidated. Terminal state. Predictions citing a retracted hypothesis receive CRITICAL findings.
+- **DEFERRED**: Investigation paused, not abandoned. May resume later. While DEFERRED, active predictions derived from it are flagged by validators.
+
+*Why no CONFIRMED for hypotheses?* Episteme follows Popperian epistemology: hypotheses are never "confirmed" in the strong sense. They accumulate supporting evidence through their predictions, but they remain perpetually falsifiable. The health of a hypothesis is assessed by examining its predictions, not by marking the hypothesis itself as confirmed.
+
+*Why DEFERRED exists:* Real research has resource constraints. A hypothesis may be sound but deprioritized. DEFERRED makes this visible so the system can flag the inconsistency of having active predictions hanging off a paused hypothesis.
+
+#### AssumptionStatus (4 states)
+
+```
+ACTIVE --> QUESTIONED --> ACTIVE (doubt resolved)
+  |           |
+  |           +-------> FALSIFIED (terminal)
+  |           |
+  |           +-------> RETIRED (terminal)
+  |
+  +-------> FALSIFIED (terminal)
+  |
+  +-------> RETIRED (terminal)
+```
+
+- **ACTIVE**: Accepted and in use.
+- **QUESTIONED**: Evidence or analysis has cast doubt, but the assumption is not yet decisively falsified. Downstream entities should be reviewed.
+- **FALSIFIED**: Testing has shown the assumption does not hold. Terminal. Predictions conditional on it and hypotheses referencing it are flagged.
+- **RETIRED**: No longer relevant. Terminal. Kept for provenance.
+
+*Why QUESTIONED is separate from FALSIFIED:* The distinction between "under suspicion" and "definitively disproven" matters enormously in practice. A questioned assumption triggers review (WARNING); a falsified assumption triggers remediation (CRITICAL). Collapsing them would either under-respond to falsification or over-respond to doubt.
+
+#### ObservationStatus (4 states)
+
+```
+PRELIMINARY --> VALIDATED --> DISPUTED --> VALIDATED (dispute resolved)
+     |              |             |
+     |              +-------> RETRACTED (terminal)
+     |              |
+     +-------> DISPUTED
+     |
+     +-------> RETRACTED (terminal)
+```
+
+- **PRELIMINARY**: Initial observation, not yet validated. Default.
+- **VALIDATED**: Checked, replicated, or independently confirmed.
+- **DISPUTED**: Validity or interpretation is contested.
+- **RETRACTED**: Withdrawn due to error or fraud. Terminal.
+
+*Why observations need their own lifecycle:* Observations are the empirical foundation. A retracted observation that is still linked to confirmed predictions corrupts the empirical basis. The lifecycle lets the system track data quality independently of what the data is being used for.
+
+#### ObjectiveStatus (7 states)
+
+Objectives have the richest lifecycle because they represent higher-level research goals with diverse possible outcomes:
+
+- **ACTIVE**: Under development.
+- **REFINED**: Updated from an earlier formulation.
+- **DEFERRED**: Paused.
+- **ABANDONED**: No longer pursued. Terminal.
+- **SUPERSEDED**: Replaced. Terminal.
+- **ACHIEVED**: Success criteria met. Terminal. Primarily for GOAL objectives.
+- **INFEASIBLE**: Determined unachievable. Terminal. Primarily for GOAL objectives.
+
+*Why 7 states?* Because research objectives genuinely have seven distinct outcomes. A theory can be active, refined, abandoned (it does not explain what it should), or superseded (a better theory exists). A goal can be achieved or determined infeasible. Collapsing these would lose distinctions that matter for research program management.
+
+#### DiscoveryStatus (3 states) and DeadEndStatus (3 states)
+
+Both have simple three-state lifecycles reflecting their nature as records of findings:
+
+**DiscoveryStatus:** `NEW` (just found) -> `INTEGRATED` (incorporated into hypotheses/predictions) -> `ARCHIVED` (historical).
+
+**DeadEndStatus:** `ACTIVE` (unresolved) -> `RESOLVED` (addressed) -> `ARCHIVED` (historical).
+
+*Why not merge discoveries and dead ends?* They serve opposite epistemic purposes. Discoveries are positive findings that may generate new hypotheses. Dead ends are negative findings that constrain the hypothesis space and prevent repeating failed approaches. Merging them would lose this distinction.
+
+### Classification Enums: What Kind of Entity Is This?
+
+#### ObjectiveKind
+
+```python
+class ObjectiveKind(Enum):
+    EXPLANATORY = "explanatory"
+    GOAL = "goal"
+    EXPLORATORY = "exploratory"
+```
+
+These three kinds capture the space of *why* a research program exists:
+
+- **EXPLANATORY**: Seeks to explain a phenomenon. The traditional notion of a scientific theory. "Why does X happen?"
+- **GOAL**: A concrete target outcome with measurable success criteria. "Achieve X." Common in engineering, applied science, and ML.
+- **EXPLORATORY**: Open-ended investigation to characterize or understand a domain. "What is happening in domain X?" Common in field sciences, early-stage research, and data science.
+
+*Why these three?* They correspond to the three fundamental modes of scientific inquiry: explanation (deductive/theoretical), achievement (engineering/applied), and exploration (inductive/observational). Every research objective can be classified into exactly one of these.
+
+#### HypothesisType and HypothesisCategory
+
+**HypothesisType** distinguishes structural role:
+- `FOUNDATIONAL`: An axiomatic starting point. Must not have `depends_on` entries. Validated by `validate_foundational_hypothesis_deps`.
+- `DERIVED`: Follows from other hypotheses. Should have non-empty `depends_on`.
+
+**HypothesisCategory** distinguishes epistemic character:
+- `QUANTITATIVE`: Makes a numerical assertion. Should be linked to analyses, parameters, or thresholds.
+- `QUALITATIVE`: Conceptual, structural, or descriptive. Not directly numerical.
+
+*Why separate enums instead of one?* Because they are orthogonal dimensions. A hypothesis can be FOUNDATIONAL+QUANTITATIVE, FOUNDATIONAL+QUALITATIVE, DERIVED+QUANTITATIVE, or DERIVED+QUALITATIVE. Collapsing them into a single enum would either lose combinations or create a combinatorial explosion of values.
+
+#### AssumptionType and Criticality
+
+**AssumptionType** distinguishes testability:
+- `EMPIRICAL`: In principle falsifiable by observation or experiment. Should have a `falsifiable_consequence`.
+- `METHODOLOGICAL`: A modeling convention or procedural choice. Not empirically testable in the same way.
+
+**Criticality** rates structural importance:
+- `LOW`: Peripheral. Failure has limited impact.
+- `MODERATE`: Meaningful dependency. Default.
+- `HIGH`: Major dependency. Many entities rest on it.
+- `LOAD_BEARING`: Single point of failure. If it falls, a large fraction of the project collapses.
+
+*Why LOAD_BEARING is separate from HIGH:* The jump from HIGH to LOAD_BEARING is qualitative, not just quantitative. A LOAD_BEARING assumption needs extra scrutiny  --  it should be actively tested. The validator `validate_load_bearing_assumption_coverage` treats LOAD_BEARING assumptions without tests as CRITICAL findings, while HIGH assumptions without tests are only WARNING.
+
+### Status Transition Tables
+
+Types.py defines seven transition tables, one for each entity type with a lifecycle:
+
+```python
+PREDICTION_TRANSITIONS: dict[PredictionStatus, frozenset[PredictionStatus]]
+HYPOTHESIS_TRANSITIONS: dict[HypothesisStatus, frozenset[HypothesisStatus]]
+OBJECTIVE_TRANSITIONS: dict[ObjectiveStatus, frozenset[ObjectiveStatus]]
+ASSUMPTION_TRANSITIONS: dict[AssumptionStatus, frozenset[AssumptionStatus]]
+OBSERVATION_TRANSITIONS: dict[ObservationStatus, frozenset[ObservationStatus]]
+DISCOVERY_TRANSITIONS: dict[DiscoveryStatus, frozenset[DiscoveryStatus]]
+DEAD_END_TRANSITIONS: dict[DeadEndStatus, frozenset[DeadEndStatus]]
+```
+
+Each table maps a current status to the set of statuses reachable from it. The graph's `transition_*` methods consult these tables and reject illegal transitions at mutation time.
+
+**Design principles for the tables:**
+
+1. **Terminal states have empty successor sets.** RETRACTED, SUPERSEDED, ABANDONED, ACHIEVED, INFEASIBLE, FALSIFIED, RETIRED, ARCHIVED  --  once entered, you cannot leave. This protects provenance: a retracted hypothesis should not silently become active again.
+
+2. **Re-evaluation paths exist where epistemically justified.** `REFUTED --> PENDING` (new evidence reopens the question), `QUESTIONED --> ACTIVE` (doubt is resolved), `DISPUTED --> VALIDATED` (dispute is settled). These are intentional escape routes that allow the system to model the messiness of real research without losing audit trail.
+
+3. **Every non-terminal state can reach at least one terminal state.** This ensures no entity gets stuck in a non-terminal state with no path forward.
+
+4. **PENDING is the universal starting point for predictions.** Even `NOT_YET_TESTABLE` can only go back to `PENDING`  --  you cannot jump from "not testable" directly to "confirmed." The prediction must first become testable (return to PENDING), then be adjudicated.
+
+5. **DEFERRED states can always resume.** `DEFERRED --> ACTIVE` is allowed for both hypotheses and objectives. Pausing is always reversible.
+
+### Typed Query Result Dataclasses
+
+```python
+@dataclass
+class RefutationImpact:
+    hypothesis_ids: set[str]
+    hypothesis_ancestors: set[str]
+    implicit_assumptions: set[str]
+
+@dataclass
+class AssumptionSupportStatus:
+    direct_hypotheses: set[str]
+    dependent_predictions: set[str]
+    tested_by: set[str]
+
+@dataclass
+class ParameterImpact:
+    stale_analyses: set[str]
+    constrained_hypotheses: set[str]
+    affected_hypotheses: set[str]
+    affected_predictions: set[str]
+```
+
+These replace raw `dict[str, set]` returns, giving consumers static-typing guarantees and named attribute access.
+
+**RefutationImpact**: Answers "if prediction P is refuted, what is affected?" The three fields partition the blast radius into direct hypotheses (the derivation chain), transitive ancestors (the broader hypothesis graph), and implicit assumptions (the full assumption closure). This partition lets the researcher prioritize: direct hypotheses need immediate review; ancestors may need review; implicit assumptions are the full scope of what was being assumed.
+
+**AssumptionSupportStatus**: Answers "how supported is assumption A?" The three fields distinguish between hypotheses that *reference* the assumption, predictions *downstream* of those hypotheses, and predictions that *explicitly test* the assumption. The ratio of `dependent_predictions` to `tested_by` is a rough measure of how much of the project rests on untested ground.
+
+**ParameterImpact**: Answers "if parameter P changes, what is affected?" The four fields trace the propagation: stale analyses (directly use the parameter), constrained hypotheses (have threshold annotations), affected hypotheses (covered by stale analyses or constrained), affected predictions (downstream of everything). This chain makes it possible to assess whether a parameter change requires re-running one analysis or rethinking the entire project.
+
+---
+
+
+## 15. The Invariant System in Depth
+
+This section explains every one of the 31 semantic validators: what real-world research failure it prevents, why it has its chosen severity, and what the researcher should do when it fires.
+
+### Two Kinds of Invariants
+
+Episteme has **structural invariants** (enforced at mutation time in `graph.py`) and **semantic invariants** (checked on demand in `invariants.py`).
+
+**Structural invariants** prevent data corruption. They cannot be overridden:
+- No duplicate IDs within any entity collection
+- All hard references point to existing entities (referential integrity)
+- The `depends_on` DAGs for hypotheses and assumptions are acyclic
+- Bidirectional backlinks are always consistent
+- `FULLY_SPECIFIED` predictions must have `free_params == 0`
+
+**Semantic invariants** surface epistemic gaps. They produce findings but do not prevent mutations at the kernel level (the Gateway may block mutations with CRITICAL findings, but that is a policy decision, not a kernel constraint):
+
+The 31 semantic validators fall into ten thematic groups.
+
+### Group 1: Retraction and Falsification Propagation
+
+These validators ensure that when something is retracted or falsified, the downstream effects are surfaced:
+
+**`validate_retracted_hypothesis_citations`** (#1)
+- **What it catches:** Predictions or hypotheses that still cite a retracted hypothesis.
+- **Why it matters:** A retracted hypothesis is an invalidated assertion. Predictions derived from it and hypotheses that depend on it are built on a foundation that has been pulled out. If these are not flagged, the researcher may continue relying on conclusions that have lost their logical support.
+- **Severity:** CRITICAL for active predictions/hypotheses (they need remediation). INFO for terminal ones (REFUTED, SUPERSEDED, RETRACTED)  --  they are historical records.
+- **What to do:** Either retract the downstream entities, revise the derivation chain to bypass the retracted hypothesis, or provide a new hypothesis that replaces it.
+
+**`validate_retracted_observation_citations`** (#12)
+- **What it catches:** Observations that reference retracted hypotheses, and retracted observations still linked to predictions.
+- **Why it matters:** If an observation was interpreted in the context of a hypothesis that turned out to be wrong, the observation's interpretation may be compromised. And if a retracted observation (e.g., from faulty instrumentation) is still linked to active predictions, those predictions have a corrupted empirical basis.
+- **Severity:** WARNING for active predictions, INFO for terminal ones.
+- **What to do:** Review whether the observation is still valid despite the hypothesis retraction. Unlink retracted observations from active predictions and re-adjudicate.
+
+**`validate_falsified_assumption_impact`** (#24)
+- **What it catches:** Active hypotheses grounded on FALSIFIED or QUESTIONED assumptions, and active predictions conditional on them.
+- **Why it matters:** When an assumption is falsified, everything that depends on it needs re-evaluation. When an assumption is questioned, the dependent entities should be reviewed. This validator ensures the impact of assumption status changes propagates visibly through the graph.
+- **Severity:** CRITICAL for FALSIFIED assumptions, WARNING for QUESTIONED.
+- **What to do:** For FALSIFIED: revise or retract dependent hypotheses, and re-evaluate conditional predictions. For QUESTIONED: review and determine whether the doubt is material.
+
+**`validate_conditional_assumption_pressure`** (#10)
+- **What it catches:** CONFIRMED or STRESSED predictions that are conditional on assumptions whose testing predictions have been REFUTED.
+- **Why it matters:** This catches an indirect invalidation path. Prediction P is conditional on assumption A. Another prediction Q was designed to test A, and Q has been refuted. A is now under adversarial pressure. P's status was established when A was considered sound  --  that basis is now in question.
+- **Severity:** WARNING. The pressure is indirect  --  assumption A's own status has not changed  --  so this is a review prompt, not a hard block.
+- **What to do:** Investigate whether Q's refutation actually undermines A. If so, transition A to QUESTIONED and let `validate_falsified_assumption_impact` handle propagation.
+
+### Group 2: Confidence and Evidence Consistency
+
+These validators enforce the logical relationships between confidence tiers, evidence kinds, and measurement regimes:
+
+**`validate_tier_constraints`** (#1)
+- **What it catches:** Four constraint violations: FULLY_SPECIFIED predictions with non-zero free parameters (CRITICAL), CONDITIONAL predictions with neither `conditional_on` nor `free_params` (WARNING), adjudicated MEASURED predictions without `observed` (CRITICAL), adjudicated BOUND_ONLY predictions without `observed_bound` (CRITICAL).
+- **Why it matters:** The confidence tier system is the backbone of evidential reasoning. A "fully specified" prediction with free parameters is lying about its epistemic status. An adjudicated prediction without recorded evidence is an unsubstantiated claim.
+- **Severity:** CRITICAL for hard contradictions, WARNING for incomplete metadata.
+- **What to do:** Fix the metadata. If a prediction has free parameters, classify it as CONDITIONAL. If it has been adjudicated, record the observed value.
+
+**`validate_evidence_consistency`** (#9)
+- **What it catches:** FIT_CHECK predictions marked as NOVEL_PREDICTION or RETRODICTION.
+- **Why it matters:** A fit check means the model was tuned to match this data. Marking it as a novel prediction or retrodiction is logically contradictory  --  the data was used in fitting, so it cannot be genuinely independent evidence. This catches a common self-deception in research.
+- **Severity:** WARNING. The contradiction may reflect a classification mistake rather than a data integrity issue.
+- **What to do:** Reclassify the evidence kind to FIT_CONSISTENCY, or re-examine whether the prediction really is a fit check.
+
+**`validate_testability_regime_consistency`** (#16)
+- **What it catches:** NOT_YET_TESTABLE predictions with a measurement regime other than UNMEASURED.
+- **Why it matters:** If no feasible test exists (NOT_YET_TESTABLE), then declaring a measurement regime (MEASURED or BOUND_ONLY) is contradictory  --  the regime claims evidence form is known, but the status says no test exists.
+- **Severity:** WARNING.
+- **What to do:** Either set the regime to UNMEASURED, or transition the prediction to PENDING if a test has become feasible.
+
+### Group 3: Independence and Evidence Quality
+
+**`validate_independence_semantics`** (#2)
+- **What it catches:** Two issues: predictions listed in an independence group whose `independence_group` field does not back-reference the group (CRITICAL), and pairs of populated independence groups without a pairwise separation record (CRITICAL).
+- **Why it matters:** Independence groups exist to prevent the common error of counting correlated evidence as independent confirmation. If two "independent" groups have no documented basis for their independence, the evidence quality claim is unsubstantiated. Back-reference consistency is a data integrity check.
+- **Severity:** CRITICAL for both checks. Evidence independence is a load-bearing claim  --  getting it wrong inflates apparent confirmation.
+- **What to do:** For back-reference issues: fix the prediction's `independence_group` field. For missing separations: create a PairwiseSeparation record documenting why the groups provide genuinely independent evidence.
+
+### Group 4: Coverage and Testability
+
+These validators flag blind spots  --  places where the reasoning chain is thin or unmonitored:
+
+**`validate_coverage`** (#3)
+- **What it catches:** QUANTITATIVE hypotheses with no linked analyses (INFO), EMPIRICAL assumptions with no `falsifiable_consequence` (WARNING), and any STRESSED predictions (WARNING  --  requiring vigilance).
+- **Why it matters:** A quantitative hypothesis without analysis is just a number without a computation. An empirical assumption without a falsifiable consequence cannot be tested  --  it is unfalsifiable in practice even if labeled empirical.
+- **Severity:** INFO/WARNING. These are coverage gaps, not violations.
+- **What to do:** Link analyses to quantitative hypotheses. Write falsifiable consequences for empirical assumptions. Review stressed predictions.
+
+**`validate_assumption_testability`** (#4)
+- **What it catches:** Assumptions that declare a `falsifiable_consequence` but have an empty `tested_by` set.
+- **Why it matters:** The researcher has identified what would falsify the assumption  --  but nothing in the graph is testing it. The assumption is testable but untested. This is a common and dangerous blind spot.
+- **Severity:** WARNING.
+- **What to do:** Create a prediction that explicitly tests this assumption (with the assumption in `tests_assumptions`).
+
+**`validate_implicit_assumption_coverage`** (#6)
+- **What it catches:** Assumptions that silently underpin predictions (via hypothesis lineage, depends_on chains, or conditional_on) but have no `tested_by` coverage.
+- **Why it matters:** These are the hidden dependencies. A prediction may depend on an assumption through three layers of hypothesis derivation, and nobody realizes the assumption is untested. This validator performs the transitive closure to find these hidden dependencies.
+- **Severity:** INFO. The dependency relationship itself is not a problem  --  it is the lack of testing that is the gap.
+- **What to do:** Consider whether the implicit dependency is real and material. If so, create a test for it.
+
+**`validate_load_bearing_assumption_coverage`** (#14)
+- **What it catches:** LOAD_BEARING assumptions with no `tested_by` (CRITICAL), HIGH criticality assumptions with no `tested_by` (WARNING).
+- **Why it matters:** A load-bearing assumption is a single point of failure. If it falls, a large fraction of the project's conclusions are invalidated. Having no test for it means the project's foundation is unmonitored. This is the most dangerous structural gap possible.
+- **Severity:** CRITICAL for LOAD_BEARING, WARNING for HIGH. The severity reflects the blast radius.
+- **What to do:** Prioritize creating predictions that test load-bearing assumptions. This is the highest-value use of limited testing resources.
+
+**`validate_hypothesis_empirical_interface`** (#30)
+- **What it catches:** ACTIVE hypotheses with no predictions anywhere in the graph citing them.
+- **Why it matters:** A hypothesis without predictions has no way to be confirmed, stressed, or refuted. It is a claim without evidence, disconnected from the empirical world. This is expected during early development but should be resolved.
+- **Severity:** INFO. Early-stage gaps are normal.
+- **What to do:** Derive testable predictions from the hypothesis, or acknowledge that it is not yet in a testable state.
+
+### Group 5: Logical Consistency
+
+**`validate_tests_conditional_overlap`** (#7)
+- **What it catches:** Predictions that list the same assumption in both `tests_assumptions` and `conditional_on`.
+- **Why it matters:** This is a logical contradiction. `tests_assumptions` means "this prediction's outcome bears on whether the assumption holds." `conditional_on` means "this prediction is only valid if the assumption holds." You cannot simultaneously test something you take as given. It is like saying "I am testing whether gravity exists, conditional on gravity existing."
+- **Severity:** CRITICAL. This is a logical error, not a gap.
+- **What to do:** Decide whether the prediction tests the assumption or is conditioned on it. It cannot be both.
+
+**`validate_foundational_hypothesis_deps`** (#8)
+- **What it catches:** FOUNDATIONAL hypotheses with non-empty `depends_on`.
+- **Why it matters:** Foundational hypotheses are axioms  --  starting points that do not rest on other hypotheses. If a "foundational" hypothesis depends on another hypothesis, it is misclassified. Either it should be DERIVED, or its `depends_on` should be empty.
+- **Severity:** WARNING. The misclassification may be a simple tagging error.
+- **What to do:** Either change the hypothesis type to DERIVED, or remove the `depends_on` entries.
+
+### Group 6: Adjudication Quality
+
+These validators ensure that when predictions are adjudicated (moved to CONFIRMED, STRESSED, or REFUTED), the adjudication is auditable:
+
+**`validate_stress_criteria`** (#11)
+- **What it catches:** STRESSED predictions without `stress_criteria`.
+- **Why it matters:** STRESSED means "evidence creates tension without decisive refutation." But what constitutes tension? Without explicit criteria, the STRESSED status is ad-hoc and unauditable. Different reviewers might disagree on what counts as "tension."
+- **Severity:** WARNING.
+- **What to do:** Document what evidence threshold separates CONFIRMED from STRESSED.
+
+**`validate_refutation_criteria`** (#20)
+- **What it catches:** REFUTED predictions without `refutation_criteria`.
+- **Why it matters:** The prediction was declared refuted, but what was the threshold? Without criteria, the refutation cannot be audited or challenged.
+- **Severity:** WARNING.
+- **What to do:** Document what evidence constituted decisive refutation.
+
+**`validate_observed_but_pending`** (#21)
+- **What it catches:** Predictions with recorded `observed` or `observed_bound` but status still PENDING.
+- **Why it matters:** Evidence has been recorded but no adjudication decision has been made. The prediction may be ready for review.
+- **Severity:** INFO. This is a workflow completeness nudge.
+- **What to do:** Adjudicate the prediction based on the recorded evidence.
+
+**`validate_adjudication_has_observations`** (#25)
+- **What it catches:** Adjudicated predictions (CONFIRMED/STRESSED/REFUTED) with no linked observations. UNMEASURED regime is exempt.
+- **Why it matters:** An adjudication without linked observations has an unauditable empirical basis. The adjudication claims something about evidence, but no evidence is attached.
+- **Severity:** WARNING.
+- **What to do:** Link the observations that informed the adjudication.
+
+**`validate_adjudication_rationale`** (#26)
+- **What it catches:** Adjudicated predictions without `adjudication_rationale`.
+- **Why it matters:** The rationale explains *why* the prediction was judged CONFIRMED, STRESSED, or REFUTED. Without it, the adjudication is a bare assertion with no reasoning. This completes the adjudication documentation triad alongside `stress_criteria` and `refutation_criteria`.
+- **Severity:** WARNING.
+- **What to do:** Write a prose explanation of the evidence and reasoning behind the adjudication.
+
+### Group 7: Lifecycle Integrity
+
+These validators catch states that are internally inconsistent from a lifecycle perspective:
+
+**`validate_supersession_chains`** (#17)
+- **What it catches:** Dangling supersession references (CRITICAL)  --  `superseded_by` or `supersedes` pointing to non-existent entities. Missing supersession links (WARNING)  --  REVISED hypotheses or SUPERSEDED objectives without declared successors.
+- **Why it matters:** Supersession is the mechanism for provenance chains ("A was replaced by B which was replaced by C"). Broken links in this chain mean lost provenance. Missing links mean incomplete provenance.
+- **Severity:** CRITICAL for dangling refs (data corruption), WARNING for missing links (incomplete metadata).
+- **What to do:** Fix dangling references. Fill in `superseded_by` on revised/superseded entities.
+
+**`validate_supersession_status_consistency`** (#19)
+- **What it catches:** Predictions where B `supersedes` A but A's status is not SUPERSEDED (WARNING), and predictions with SUPERSEDED status but no successor in the graph (WARNING).
+- **Why it matters:** If B claims to supersede A but A is still CONFIRMED, the supersession is incomplete  --  the old prediction is still active despite being replaced. If A is SUPERSEDED but no B exists, the provenance chain is broken.
+- **Severity:** WARNING for both checks.
+- **What to do:** Transition the predecessor to SUPERSEDED, or fix the successor's `supersedes` reference.
+
+**`validate_supersession_cycles`** (#29)
+- **What it catches:** Cycles in supersession chains across predictions, hypotheses, and objectives.
+- **Why it matters:** Supersession is inherently a DAG. "A replaced B which replaced A" is incoherent and indicates a data entry error.
+- **Severity:** CRITICAL.
+- **What to do:** Break the cycle by removing one of the supersession links.
+
+**`validate_deferred_hypothesis_active_predictions`** (#22)
+- **What it catches:** DEFERRED hypotheses with active predictions (PENDING, CONFIRMED, or STRESSED).
+- **Why it matters:** A deferred hypothesis means "investigation paused." But active predictions derived from it are still being treated as current. Their theoretical basis is on hold but they are not. This is an inconsistency the researcher should be aware of.
+- **Severity:** WARNING.
+- **What to do:** Either resume the hypothesis (ACTIVE) or defer/supersede the predictions.
+
+**`validate_orphaned_predictions`** (#23)
+- **What it catches:** Predictions with empty `hypothesis_ids`.
+- **Why it matters:** A prediction without a derivation chain has no logical root. It is an assertion without a "where did this come from?" This is expected during exploratory work but should be resolved as the graph matures.
+- **Severity:** INFO.
+- **What to do:** Link the prediction to hypotheses that imply it, or acknowledge that it is a standalone empirical claim.
+
+### Group 8: Objective and Theory Coherence
+
+**`validate_objective_abandonment_impact`** (#13)
+- **What it catches:** Hypotheses whose *all* motivating objectives are terminal (ABANDONED, SUPERSEDED, or INFEASIBLE).
+- **Why it matters:** The hypothesis has lost its theoretical motivation. Every objective that prompted it has been dropped. This does not invalidate the hypothesis  --  it may still have empirical support  --  but the researcher should know it is orphaned.
+- **Severity:** WARNING.
+- **What to do:** Either find a new motivating objective, or determine that the hypothesis stands on its own empirical merits.
+
+**`validate_goal_objective_criteria`** (#16bis)
+- **What it catches:** GOAL objectives without `success_criteria`.
+- **Why it matters:** A goal without success criteria cannot be evaluated  --  there is no definition of "done." This is the research equivalent of an acceptance test without pass criteria.
+- **Severity:** WARNING.
+- **What to do:** Define what evidence or outcome constitutes achieving this goal.
+
+### Group 9: Observation Integrity
+
+**`validate_compromised_observation_basis`** (#18)
+- **What it catches:** CONFIRMED or STRESSED predictions whose linked observations are DISPUTED or RETRACTED.
+- **Why it matters:** The prediction was adjudicated based on certain observations. If those observations are now contested or withdrawn, the adjudication may no longer be valid. The empirical basis has been compromised.
+- **Severity:** WARNING.
+- **What to do:** Re-adjudicate the prediction using the remaining valid observations, or suspend judgement by transitioning to PENDING.
+
+### Group 10: Integration and Navigation
+
+**`validate_discovery_integration_consistency`** (#28)
+- **What it catches:** Discoveries with status INTEGRATED but no links to hypotheses or predictions.
+- **Why it matters:** The discovery claims it has been incorporated into the reasoning graph, but has no structural evidence of incorporation. The claim is unsubstantiated.
+- **Severity:** WARNING.
+- **What to do:** Add links to the hypotheses or predictions that resulted from this discovery, or revert status to NEW.
+
+**`validate_disconnected_dead_ends`** (#31)
+- **What it catches:** Dead ends with no links to hypotheses or predictions.
+- **Why it matters:** A dead end records a failed approach, but without links to the reasoning it emerged from, it is a free-floating note. Linking it to hypotheses or predictions improves navigability and helps future researchers understand *what* was tried in *which* context.
+- **Severity:** INFO.
+- **What to do:** Link the dead end to the hypotheses or predictions involved in the failed approach.
+
+### Group 11: Falsifiability Culture
+
+**`validate_hypothesis_refutation_criteria`** (#27)
+- **What it catches:** ACTIVE hypotheses with predictions but no `refutation_criteria`.
+- **Why it matters:** A hypothesis that generates predictions but has not declared what would refute it violates Popper's falsifiability principle. During early exploration, missing criteria are expected. But once a hypothesis has predictions testing its consequences, it is mature enough that refutation criteria should exist.
+- **Severity:** INFO. This is a maturity nudge, not a blocking issue.
+- **What to do:** Articulate what evidence, observation, or experimental result would constitute refutation.
+
+### The Special-Purpose Validator: validate_prediction_transition
+
+`validate_prediction_transition` is not part of the standard validation sweep. It is invoked specifically during status transitions and produces advisory findings for transitions that are technically valid but may indicate incomplete researcher intent:
+
+- Transitioning to STRESSED without `stress_criteria` defined (WARNING)
+- Transitioning to REFUTED without `refutation_criteria` defined (WARNING)
+- Transitioning to NOT_YET_TESTABLE with a non-UNMEASURED measurement regime (WARNING)
+
+These are "are you sure?" prompts, not blocks. They catch cases where the researcher is making a status change without having documented the evidence thresholds.
+
+### Why Validators Are Pure Functions on a Protocol
+
+Every validator has the signature:
+
+```python
+def validate_*(graph: EpistemicGraphPort) -> list[Finding]: ...
+```
+
+This design has three consequences:
+
+1. **Backend-agnostic.** The validators work identically whether the graph is in-memory, database-backed, or distributed. They depend only on the Protocol, not on storage.
+
+2. **Composable.** The Gateway can run all 31 validators, a specific subset, or just one. The `validate_all` orchestrator concatenates them, but each is independently callable.
+
+3. **Testable in isolation.** Each validator can be tested by constructing a minimal graph with the specific pattern it should catch, and asserting the expected findings. No setup complexity.
+
+The execution order in `validate_all` is fixed but arbitrary  --  validators are independent and do not depend on each other's output. The order is maintained to give deterministic output.
+
+---
+
+
+## 16. How Episteme Supports All STEM Research Workflows
+
+Episteme is designed to support the full spectrum of STEM research methodologies, not just the textbook hypothetico-deductive model. This section explains how the entity model, type system, and invariant rules map to each major research workflow, and why the graph can handle all of them without specialization.
+
+### The Hypothetico-Deductive Method (Physics, Chemistry, Biomedicine)
+
+**The pattern:** Formulate hypotheses -> derive testable predictions -> test predictions -> revise or retain hypotheses.
+
+**How the graph models it:**
+
+This is the workflow the graph was primarily designed around. The core reasoning chain is:
+
+```
+Objective (EXPLANATORY) --> Hypothesis (FOUNDATIONAL or DERIVED)
+    --> Prediction (FULLY_SPECIFIED or CONDITIONAL) --> Observation
+```
+
+The hypothesis forms the theoretical claim. Predictions are derived from it with confidence tiers that honestly classify the prediction's epistemic strength. Observations record what was actually measured. The adjudication cycle (PENDING -> CONFIRMED/STRESSED/REFUTED) captures the empirical verdict.
+
+**Key entities:** Hypothesis (central), Prediction (the empirical interface), Assumption (declaring what is taken for granted), Parameter (physical constants), Analysis (computational verification).
+
+**Key invariants:** `validate_tier_constraints` (predictions must honestly declare their confidence), `validate_evidence_consistency` (no counting fit-to-data as novel evidence), `validate_hypothesis_refutation_criteria` (hypotheses must eventually declare what would refute them).
+
+**Example disciplines:** Particle physics (theoretical predictions verified by collider data), synthetic chemistry (predicted reaction yields verified by experiment), pharmaceutical trials (predicted efficacy verified by clinical data).
+
+### Inductive / Observation-First Workflows (Ecology, Geology, Phenomenology)
+
+**The pattern:** Collect observations -> identify patterns -> formulate hypotheses to explain patterns -> test hypotheses with further observations.
+
+**How the graph models it:**
+
+Episteme explicitly supports this via the `Observation` entity type and the `Objective` with `EXPLORATORY` kind. The researcher starts by registering observations without any linked predictions or hypotheses:
+
+```
+Objective (EXPLORATORY) --> Observation (PRELIMINARY)
+    --> [pattern recognition by researcher]
+    --> Hypothesis (derived from observations)
+    --> Prediction (further testable consequences)
+```
+
+Observations can exist independently in the graph. An observation without linked predictions represents an exploratory finding that has not yet been connected to the reasoning chain. This is the normal state at the start of an inductive workflow.
+
+The `related_observations` soft link on Objectives supports data collection programs where observations are gathered under an objective before any hypothesis is formed.
+
+**Key entities:** Observation (primary data), Objective (EXPLORATORY), Discovery (for noteworthy intermediate findings).
+
+**Key invariants:** `validate_observed_but_pending` (nudges the researcher when observations accumulate without adjudication), `validate_hypothesis_empirical_interface` (nudges when hypotheses are formulated  --  "now derive predictions from them").
+
+**Why this works:** Many domain scientists (ecologists, geologists, epidemiologists) start with data, not theory. Requiring hypotheses before observations would block their workflow. The graph accommodates both directions: theory-first (derive predictions then observe) and data-first (observe then hypothesize).
+
+### Abductive Reasoning (Medical Diagnosis, Forensic Science, Root Cause Analysis)
+
+**The pattern:** Observe surprising evidence -> generate candidate explanations -> evaluate which explanation best accounts for the evidence.
+
+**How the graph models it:**
+
+Abductive reasoning starts with observations and works backward to hypotheses. The graph models this through:
+
+1. Register observations of the surprising evidence
+2. Register multiple competing hypotheses, each proposing an explanation
+3. For each hypothesis, derive predictions about what else should be true if it is the correct explanation
+4. Record further observations that discriminate between hypotheses
+5. Transition predictions as evidence accumulates  --  hypotheses whose predictions fail get their predictions REFUTED
+
+The `depends_on` DAG allows competing hypotheses to share some common assumptions while differing in their core claims. The `refutation_impact` query then shows the researcher which hypothesis is most threatened by each piece of new evidence.
+
+**Key entities:** Observation (the surprising evidence), multiple Hypothesis entities (competing explanations), Prediction (discriminating tests).
+
+**Key invariants:** `validate_retracted_hypothesis_citations` (when one hypothesis is eliminated, ensure downstream predictions are flagged), `validate_orphaned_predictions` (predictions should be linked to their parent hypotheses).
+
+### Bayesian Updating / Iterative Refinement
+
+**The pattern:** Start with prior beliefs (hypotheses and assumptions) -> collect evidence -> update beliefs -> collect more evidence -> update again.
+
+**How the graph models it:**
+
+Iterative refinement is handled through the **supersession** mechanism and the **REVISED/STRESSED** lifecycle states:
+
+1. Register initial hypotheses and predictions
+2. As evidence accumulates, some predictions are CONFIRMED, some are STRESSED
+3. When the researcher revises a hypothesis in light of evidence, the old hypothesis transitions to REVISED, and a new hypothesis is registered with `superseded_by` linking old to new
+4. New predictions are derived from the revised hypothesis. Old predictions may be SUPERSEDED by refined versions via the `supersedes` field.
+5. The process repeats
+
+The supersession chains (Hypothesis A -> B -> C, Prediction P1 -> P2 -> P3) are the graph's representation of Bayesian updating. The full chain is preserved for provenance  --  you can trace how beliefs evolved.
+
+**Key entities:** Hypothesis (with REVISED status and `superseded_by`), Prediction (with SUPERSEDED status and `supersedes`).
+
+**Key invariants:** `validate_supersession_chains` (provenance links are intact), `validate_supersession_status_consistency` (superseded predictions have consistent status), `validate_supersession_cycles` (no circular provenance).
+
+### Engineering Optimization (ML, Chemical Engineering, Manufacturing)
+
+**The pattern:** Define a goal with measurable success criteria -> hypothesize approaches -> predict outcomes -> test -> iterate toward the goal.
+
+**How the graph models it:**
+
+Engineering optimization maps naturally to `Objective` with `GOAL` kind:
+
+```
+Objective (GOAL, success_criteria="Accuracy >= 95% on test set")
+    --> Hypothesis ("Architecture X will achieve the target")
+    --> Prediction ("Expected accuracy: 96% +/- 1%")
+    --> Analysis ("training_pipeline.py")
+    --> Parameter ("learning_rate = 0.001")
+```
+
+The GOAL objective's `success_criteria` provides the acceptance test. Predictions carry `predicted_uncertainty` and `observed_uncertainty` for quantitative comparison. When an approach fails, it is recorded as a DeadEnd. When a goal is met, the objective transitions to ACHIEVED.
+
+The `supersedes` field on predictions directly supports the iteration pattern common in engineering: "Prediction P-v2 refines P-v1 based on what we learned."
+
+**Key entities:** Objective (GOAL), Prediction (with uncertainty fields), Analysis (provenance for computational work), Parameter (configuration values), DeadEnd (failed approaches).
+
+**Key invariants:** `validate_goal_objective_criteria` (goals must have success criteria), `validate_tier_constraints` (predictions must honestly classify their confidence), `validate_compromised_observation_basis` (results are still valid).
+
+**Example disciplines:** Machine learning (model performance optimization), chemical process engineering (yield optimization), materials science (property tuning).
+
+### Computational / Simulation Science
+
+**The pattern:** Build a computational model -> run simulations -> compare predictions with observations (real or simulated) -> refine model.
+
+**How the graph models it:**
+
+Episteme tracks the analytical work but never runs it. This is by design  --  the researcher uses their own tools (Python scripts, Jupyter notebooks, simulation packages), and Episteme records the provenance:
+
+```
+Analysis (path="simulations/thermal_model.py", command="python thermal_model.py")
+    --> uses Parameter ("thermal_conductivity = 401 W/mK")
+    --> hypotheses_covered -> Hypothesis ("The thermal model is accurate")
+    --> linked Prediction ("Predicted temperature: 350K +/- 5K")
+```
+
+When the researcher runs the simulation and records the result via `record_analysis_result`, Episteme stores the output value, git SHA, and date. When a parameter changes, `parameter_impact` identifies which analyses are stale and which predictions are affected.
+
+**Key entities:** Analysis (provenance for code), Parameter (simulation inputs), Prediction (expected outputs).
+
+**Key invariants:** `validate_coverage` (quantitative hypotheses should have linked analyses), `validate_tier_constraints` (simulation predictions should declare how many free parameters they have).
+
+**Why `Analysis.path` and `Analysis.command` are documentation only:** Episteme never invokes analyses. This keeps the kernel pure (no I/O) and means the system works with *any* computational tool  --  Python, R, MATLAB, Fortran, GPU frameworks, cloud computing platforms.
+
+### Exploratory / Data-Driven Research (Data Science, Bioinformatics)
+
+**The pattern:** Explore a dataset -> identify patterns -> formulate explanations -> validate further.
+
+**How the graph models it:**
+
+This is the domain of `EXPLORATORY` objectives and the observation-first workflow:
+
+```
+Objective (EXPLORATORY, summary="Characterize soil microbiome at site X")
+    --> Observation (microbiome composition data)
+    --> Observation (environmental metadata)
+    --> Discovery ("Unexpected correlation between pH and diversity")
+    --> Hypothesis (derived from discovery)
+    --> Prediction (testable consequence)
+```
+
+Discoveries are the bridge between exploration and formal hypothesis testing. When the researcher notices something noteworthy, they register it as a Discovery. When the discovery leads to a hypothesis, the status transitions to INTEGRATED.
+
+**Key entities:** Objective (EXPLORATORY), Observation (primary data), Discovery (notable findings), Hypothesis (emergent from data).
+
+**Key invariants:** `validate_discovery_integration_consistency` (discoveries marked INTEGRATED should link to hypotheses or predictions), `validate_hypothesis_empirical_interface` (once hypotheses are formulated, they should eventually have predictions).
+
+### Multi-Objective Research Programs
+
+**The pattern:** A research program pursues multiple objectives simultaneously, with shared hypotheses, assumptions, and predictions.
+
+**How the graph models it:**
+
+Hypotheses can reference multiple objectives via the `objectives` field (bidirectional with `Objective.motivates_hypotheses`). Predictions can derive from multiple hypotheses. Assumptions can be shared across hypotheses.
+
+This creates a rich web of dependencies that the graph makes explicit:
+
+```
+Objective-1 (EXPLANATORY) --+--> Hypothesis-A (grounded on Assumption-1)
+                             |       |
+Objective-2 (GOAL) ---------+       +--> Prediction-X
+                             |       |
+Objective-3 (EXPLORATORY) --+  Hypothesis-B (depends_on Hypothesis-A)
+                                     |
+                                     +--> Prediction-Y
+```
+
+When Objective-1 is abandoned, `validate_objective_abandonment_impact` flags Hypothesis-A (which may still be supported by Objectives 2 and 3, or may have lost all motivation). The structural answer  --  not the researcher's guess  --  determines the impact.
+
+**Key entities:** Multiple Objectives of different kinds, Hypotheses linking to multiple objectives, shared Assumptions.
+
+**Key invariants:** `validate_objective_abandonment_impact` (track when motivation is lost), `validate_retracted_hypothesis_citations` (propagate retraction through the shared structure).
+
+### Long-Running Longitudinal Studies
+
+**The pattern:** Research spans months or years with evolving parameters, accumulating observations, and periodic re-evaluation.
+
+**How the graph models it:**
+
+The graph's temporal features support this directly:
+
+- **Parameter staleness detection:** When parameters change (`last_modified` updates), `parameter_impact` identifies which analyses need re-running. The researcher does not need to mentally track which results are stale.
+- **Observation accumulation:** Observations carry `date` fields. The graph accumulates them over time without requiring the researcher to batch them.
+- **Supersession for evolving predictions:** As measurements improve, old predictions are superseded by refined ones, preserving the full history.
+- **Version tracking:** `EpistemicGraph.version` is incremented on each save, giving a coarse chronological record.
+- **Dead ends as institutional memory:** When approaches fail, recording them as DeadEnd entities prevents future researchers (or future selves) from repeating failed experiments.
+
+**Key entities:** Parameter (with `last_modified`), Observation (with `date`), DeadEnd (institutional memory), Analysis (with `last_result_date`).
+
+### Collaborative / Multi-Team Research
+
+**The pattern:** Multiple teams contribute to a shared research program, each responsible for different hypotheses, analyses, or observations.
+
+**How the graph models it:**
+
+The tagging system (`tags` field on most entities) supports team-level organization:
+
+```python
+Hypothesis(id="H-001", tags={"team:materials", "phase:2"})
+Prediction(id="P-001", tags={"team:testing", "phase:2"})
+```
+
+Teams can filter the graph by tags to see their scope. But the connections between entities  --  a materials team's hypothesis feeding into a testing team's prediction  --  are visible to everyone. The graph makes cross-team dependencies explicit.
+
+**Key features:** Tags for organizational filtering, `source` fields for provenance attribution, bidirectional links that make cross-team dependencies visible.
+
+### Why One Graph Handles All Workflows
+
+The fundamental insight is that all STEM research workflows share the same epistemic primitives:
+
+| Primitive | What it is | Which workflows use it |
+|-----------|-----------|----------------------|
+| **Hypothesis** | A falsifiable claim | All workflows that reason about explanations |
+| **Assumption** | A premise taken as given | All workflows (every project has assumptions) |
+| **Prediction** | A testable consequence | Deductive, abductive, engineering, simulation |
+| **Observation** | Empirical data | All workflows (all science is ultimately empirical) |
+| **Analysis** | Computational work | Simulation, engineering, quantitative science |
+| **Parameter** | A constant or configuration | Simulation, engineering, applied science |
+| **Objective** | A research goal | All workflows (every project has a purpose) |
+| **Discovery** | A noteworthy finding | Exploratory, inductive, serendipitous |
+| **DeadEnd** | A failed approach | All workflows (negative results are universal) |
+| **IndependenceGroup** | Correlated evidence | Any workflow claiming independent confirmation |
+| **PairwiseSeparation** | Independence basis | Any workflow with multiple evidence streams |
+
+No workflow requires entities that the graph does not have. No workflow is forced to use entities it does not need  --  empty collections are free, and the graph imposes no minimum structure.
+
+The invariant system adapts to the workflow in use:
+- A purely exploratory project (only observations and objectives) will have few findings  --  most validators examine prediction/hypothesis structure that does not yet exist
+- A mature hypothetico-deductive project will trigger the full validator suite
+- An engineering project will trigger GOAL-specific validators alongside the core prediction validators
+
+This is not accidental. Each entity type and each validator was designed with the question: "Does this apply to only one kind of research, or is it a genuine epistemic primitive?" Only genuine primitives made it into the kernel.
+
+---
+
+
+## 17. What the Finished Product Looks Like
+
+Here is how a researcher uses Episteme, demonstrated at the kernel level using a realistic scenario. (The Client layer, once built, will wrap these same operations with ergonomic keyword-argument helpers and persistence.)
+
+### Setting Up a Graph
+
+```python
+from episteme.epistemic.graph import EpistemicGraph
+from episteme.epistemic.model import (
+    Assumption, Hypothesis, Prediction, Parameter, Analysis, Observation,
+)
+from episteme.epistemic.types import (
+    AssumptionType, Criticality, HypothesisType, HypothesisCategory,
+    ConfidenceTier, EvidenceKind, MeasurementRegime, PredictionStatus,
+)
+
+graph = EpistemicGraph()
+```
+
+### Registering the Reasoning Chain
+
+```python
+# An empirical assumption about the research domain
+graph = graph.register_assumption(Assumption(
+    id="A-001",
+    statement="The statistical distribution of fraud patterns in the training "
+              "period is representative of the deployment period.",
+    type=AssumptionType.EMPIRICAL,
+    scope="FraudNet v1.0, training window Jan-Dec 2023",
+    criticality=Criticality.HIGH,
+    falsifiable_consequence="A significant drop in precision or recall on "
+                           "fresh deployment data not explained by volume changes.",
+))
+
+# A foundational hypothesis grounded on that assumption
+graph = graph.register_hypothesis(Hypothesis(
+    id="C-001",
+    statement="FraudNet v1.0 has learned genuine fraud-indicative patterns.",
+    type=HypothesisType.FOUNDATIONAL,
+    scope="FraudNet v1.0",
+    refutation_criteria="Precision and recall at or below random baseline on "
+                        "the held-out test set would falsify.",
+    assumptions={"A-001"},
+))
+
+# A derived hypothesis that follows from C-001
+graph = graph.register_hypothesis(Hypothesis(
+    id="C-002",
+    statement="The patterns generalise at precision >= 0.85.",
+    type=HypothesisType.DERIVED,
+    scope="FraudNet v1.0, temporal test set",
+    refutation_criteria="Observed precision < 0.85 on holdout test set.",
+    category=HypothesisCategory.QUANTITATIVE,
+    depends_on={"C-001"},
+    assumptions={"A-001"},
+))
+
+# A parameter used by the evaluation analysis
+graph = graph.register_parameter(Parameter(
+    id="PAR-001",
+    name="test_split_ratio",
+    value=0.20,
+    notes="Fraction of data held out as test set. Temporal split.",
+))
+
+# The analysis  --  Episteme records provenance, it does not run the analysis
+graph = graph.register_analysis(Analysis(
+    id="AN-001",
+    path="analyses/model_evaluation.py",
+    command="python model_evaluation.py --split 0.20",
+    uses_parameters={"PAR-001"},
+))
+
+# A prediction derived from the hypotheses
+graph = graph.register_prediction(Prediction(
+    id="P-001",
+    observable="FraudNet v1.0 precision on temporal hold-out test set",
+    tier=ConfidenceTier.CONDITIONAL,
+    status=PredictionStatus.PENDING,
+    evidence_kind=EvidenceKind.NOVEL_PREDICTION,
+    measurement_regime=MeasurementRegime.MEASURED,
+    predicted=0.88,
+    hypothesis_ids={"C-001", "C-002"},
+    conditional_on={"A-001"},
+    analysis="AN-001",
+    free_params=0,
+    refutation_criteria="Precision < 0.85 on the test set.",
+))
+```
+
+### Recording Results and Transitioning Status
+
+```python
+# The researcher runs the analysis and gets precision = 0.91
+
+# Update the prediction with the observed value
+graph = graph.update_prediction("P-001", observed=0.91)
+
+# Transition to CONFIRMED  --  evidence supports the prediction
+graph = graph.transition_prediction("P-001", PredictionStatus.CONFIRMED)
+```
+
+### When Things Change  --  Parameter Drift
+
+```python
+# Two months later, governance changes the test split ratio
+graph = graph.update_parameter("PAR-001", value=0.30,
+    notes="Increased from 0.20 to 0.30 per Q4 governance review.")
+
+# Query: what is affected by this parameter change?
+impact = graph.parameter_impact("PAR-001")
+# impact.stale_analyses == {"AN-001"}
+# impact.affected_hypotheses == {"C-002"}
+# impact.affected_predictions == {"P-001"}
+# AN-001 was run with --split 0.20 but the parameter is now 0.30
+# The analysis is stale.
+```
+
+### When Predictions Are Stressed
+
+```python
+# After re-running with the new split, precision drops to 0.87
+graph = graph.update_prediction("P-001", observed=0.87)
+graph = graph.transition_prediction("P-001", PredictionStatus.STRESSED)
+
+# What is the blast radius?
+impact = graph.refutation_impact("P-001")
+# impact.hypothesis_ids == {"C-001", "C-002"}
+# impact.hypothesis_ancestors == set()  # C-001 is foundational
+# impact.implicit_assumptions == {"A-001"}
+
+# Are any assumptions untested?
+support = graph.assumption_support_status("A-001")
+# support.direct_hypotheses == {"C-001", "C-002"}
+# support.dependent_predictions == {"P-001"}
+# support.tested_by == set()  # nobody is formally testing distribution stability!
+```
+
+### Health Checks
+
+```python
+# Run a full project health check
+from episteme.epistemic.invariants import validate_all
+from episteme.views.health import run_health_check
+
+findings = validate_all(graph)
+# findings:
+#   WARNING: "A-001 has falsifiable_consequence but tested_by is empty"
+#   WARNING: "P-001 is STRESSED"
+```
+
+### What Episteme Reveals
+
+The health check and queries surface real structural gaps:
+1. Assumption A-001 is empirical, has a falsifiable consequence, but nothing is formally testing it
+2. The prediction is STRESSED because a parameter change invalidated the original measurement
+3. The analysis was run under different parameters than currently specified
+
+None of these are "bugs." They are real research gaps that the epistemic graph makes visible. The researcher decides what to do about them.
+
+---
+
+## 18. Design Decisions and Their Rationale
+
+### "Why not just use a database?"
+
+The epistemic kernel is an in-memory data structure, not a database. This is intentional:
+
+1. **Domain logic is the hard part.** The challenging thing about Episteme is not storage  --  it is cycle detection, transitive closure queries, bidirectional link maintenance, and invariant enforcement. These are graph algorithms, not SQL queries. An in-memory graph structure makes them straightforward.
+
+2. **Persistence is pluggable.** The `GraphRepository` protocol means storage can be JSON files today and PostgreSQL tomorrow. The kernel does not care.
+
+3. **Testing is trivial.** Create a graph, add entities, assert. No test database setup, no cleanup, no connection pools.
+
+4. **Research projects are small.** A typical epistemic graph has tens to hundreds of entities, not millions. In-memory performance is more than sufficient.
+
+### "Why copy-on-write instead of in-place mutation?"
+
+Copy-on-write (returning a new graph instance from every mutation) costs more memory than in-place mutation. The tradeoff:
+
+| Copy-on-write | In-place mutation |
+|---------------|-------------------|
+| Old graph always valid | Old graph is gone after mutation |
+| Free rollback | Manual rollback logic needed |
+| No partial corruption | Partial corruption possible if mutation fails midway |
+| Thread-safe by default | Requires locks for concurrent access |
+| Higher memory usage | Lower memory usage |
+
+For research-project-sized data (dozens to hundreds of entities), the memory overhead is negligible. The correctness guarantees are worth far more than the memory cost.
+
+### "Why Protocol classes instead of abstract base classes?"
+
+Python `Protocol` classes (from `typing`) provide **structural subtyping**  --  "if it has these methods, it satisfies the protocol." This is different from abstract base classes, which require **nominal subtyping**  --  "it must explicitly inherit from the base class."
+
+Benefits:
+- **No coupling to the base class.** A test double does not need to import and inherit from anything  --  it just needs to have the right methods.
+- **Works with any class.** If you have a database-backed graph that happens to have the same methods as `EpistemicGraphPort`, it satisfies the protocol without knowing Episteme exists.
+- **Honest about what's needed.** The protocol declares *exactly* what the consumer needs, nothing more.
+
+### "Why a single Gateway instead of service-per-entity?"
+
+Alternative: have a `HypothesisService`, `PredictionService`, etc., each handling its own entity type.
+
+This was rejected because:
+1. **Cross-entity invariants** (e.g., prediction references hypothesis references assumption) would need to coordinate across services
+2. **Transaction boundary** becomes unclear  --  which service owns the graph state?
+3. **11 services x 6 verbs = 66 methods** versus 1 Gateway x 6 verbs = 6 methods. The Gateway's catalog-driven approach scales to any number of entity types without new methods.
+
+### "Why resource-oriented verbs (register/get/list/set/transition/query)?"
+
+These are a small, uniform set of operations that apply to all entity types. This has several benefits:
+
+1. **Predictability:** Once you know how `register` works for hypotheses, you know how it works for assumptions, predictions, and everything else.
+2. **Metadata-driven:** The `RESOURCE_SPECS` catalog maps each entity type to its kernel methods. Adding a new entity type means adding one catalog entry  --  not writing new Gateway methods.
+3. **Interface simplicity:** CLI, MCP, and Python API all map cleanly to these six verbs.
+
+### "Why are Objective, Discovery, and DeadEnd separate entity types instead of tags on Hypotheses?"
+
+Objectives, discoveries, and dead ends have distinct lifecycles, distinct fields, and distinct purposes. An objective has `ObjectiveKind` (EXPLANATORY/GOAL/EXPLORATORY), `success_criteria`, bidirectional links to hypotheses, and seven lifecycle states including ACHIEVED and INFEASIBLE. A dead end has `status: ACTIVE | RESOLVED | ARCHIVED`. A discovery has `date`, `impact`, `status` (NEW/INTEGRATED/ARCHIVED), and `references`.
+
+Collapsing them into hypotheses-with-tags would lose this type safety and make the data model ambiguous. The cost of eleven entity types is eleven catalog entries and eleven dataclasses in `model.py`. The benefit is that each entity type has exactly the fields and lifecycle it needs.
+
+### "Why is `EpistemicGraph.version` a simple integer?"
+
+The version field is incremented by the repository on each successful save. It exists for future optimistic concurrency control: if two sessions load version 5 and both try to save, the second save can detect the conflict (the version on disk is now 6, not 5).
+
+A simple integer is chosen over timestamps or UUIDs because:
+- It is monotonically increasing  --  easy to compare
+- It is deterministic  --  no clock dependency
+- It is sufficient for single-writer scenarios (the current model)
+- It can be extended to vector clocks or CRDTs later if needed
+
+---
+
+## 19. Extensibility and Long-Term Goals
+
+### Where the architecture is designed to grow
+
+**New entity types:** Add a dataclass to `model.py`, register/update/query methods to `graph.py`, an entry to `RESOURCE_SPECS`, and an ID type to `types.py`. The Gateway, client, CLI, and MCP all pick it up automatically through the catalog.
+
+**New query types:** Add a method to `EpistemicGraph`, an entry to `QUERY_SPECS`, and it is available through `gateway.query(...)` and all interfaces.
+
+**New invariant rules:** Add a function to `invariants.py` (or a new file) with the signature `(EpistemicGraphPort) -> list[Finding]`. Register it with the validator. Done.
+
+**New persistence backends:** Implement the `GraphRepository` protocol for your storage system. Pass it to `connect()`. The kernel, Gateway, client, and views do not change.
+
+**New interfaces:** Write a thin adapter that calls the Gateway/client/views and formats output. No business logic in the interface.
+
+**New rendering formats:** Implement the `GraphRenderer` protocol. The export pipeline routes through it.
+
+### The milestone roadmap
+
+| Milestone | Goal | Status |
+|-----------|------|--------|
+| **1: Epistemic Kernel** | 11 entity types, 31 validators, 7 transition tables, typed query results, 112 tests | Complete |
+| **2: Views** | Evidence summary, health, status, metrics views | Complete |
+| **3: Gateway** | Single mutation boundary with catalog-driven resource routing | In progress |
+| **4: Adapters** | JSON repository, transaction log, payload validator | Planned |
+| **5: Config** | Configuration loading and context building | Partial |
+| **6: Client** | Python-facing API with typed helpers and persistence | Planned |
+| **7: Interfaces** | CLI, MCP server, Python package API | Planned |
+| **8: AI Agency Foundations** | Structured adjudication, provenance tracking, atomic tooling, concurrent writes | Planned |
+
+### What is explicitly deferred
+
+- Separate result-history or event-sourcing model
+- Optimistic concurrency control or locking
+- Prose sync adapter
+- Query-performance indexing
+- Rich interactive CLI (completions, dashboards)
+- REST API
+
+These are deferred not because they are unimportant, but because the Python API MVP must ship first. Each deferred item will be reconsidered when there is evidence it is needed.
+
+### Design for optionality
+
+The architecture is deliberately structured so that future needs can be met without rearchitecting:
+
+- **Need a database?** Implement `GraphRepository`. No kernel changes.
+- **Need concurrent access?** The `version` field enables optimistic concurrency. The copy-on-write pattern means readers always see consistent snapshots.
+- **Need event sourcing?** The transaction log already records all mutations as an append-only JSONL file. A full event-sourcing model would extend this, not replace it.
+- **Need a REST API?** Write a thin interface that calls the Gateway. Same pattern as CLI and MCP.
+- **Need real-time notifications?** An adapter can watch the transaction log file and emit events.
+
+The key principle: **the kernel does not need to change for any of these**. The layered architecture with dependency inversion means extensions happen at the boundary, not the center.
+
+---
+
+## 20. Glossary
+
+| Term | Definition |
+|------|-----------|
+| **Aggregate root** | A single entry point for all mutations to a cluster of related objects. In Episteme, `EpistemicGraph` is the aggregate root  --  you mutate hypotheses, assumptions, and predictions through the graph, never directly. |
+| **Backlink** | A reverse reference maintained automatically by the graph. E.g., `Assumption.used_in_hypotheses` is a backlink populated when hypotheses reference that assumption. |
+| **CRITICAL finding** | A validation result that blocks mutations. The Gateway will not commit a change if the resulting graph has CRITICAL findings. |
+| **Copy-on-write** | A mutation pattern where the original is never modified. Instead, a new copy is created with the change applied. |
+| **DAG** | Directed Acyclic Graph. Hypotheses and assumptions form DAGs via their `depends_on` fields. Cycles are not allowed. |
+| **Dependency inversion** | A design principle where high-level modules define abstract interfaces and low-level modules implement them. The kernel defines `GraphRepository`; the JSON adapter implements it. |
+| **Domain kernel** | The innermost layer of the architecture containing pure domain logic with no I/O. The `epistemic/` package. |
+| **Dry run** | A mode where the Gateway validates a mutation without actually committing it. Useful for pre-flighting changes. |
+| **Entity** | One of the eleven typed objects that live in the epistemic graph: Hypothesis, Assumption, Prediction, Observation, Analysis, Parameter, Objective, Discovery, DeadEnd, IndependenceGroup, PairwiseSeparation. |
+| **Epistemic** | Relating to knowledge. "Epistemic structure" = the structure of what is hypothesised, assumed, predicted, and evidenced. |
+| **EpistemicGraph** | The aggregate root dataclass containing all entities and their relationships. The single source of truth. |
+| **EpistemicGraphPort** | The Protocol interface that abstracts the graph. Code that only needs to *read* the graph depends on this protocol, not on the concrete class. |
+| **Finding** | A single diagnostic result produced by validators, invariant checks, or health reports. Has `severity`, `source`, and `message`. |
+| **Gateway** | The single mutation/query boundary. All writes go through it. Returns `GatewayResult`, never raises. |
+| **GatewayResult** | The return type of all Gateway operations. Contains `status` ("ok"/"error"/"BLOCKED"), `message`, `data`, and `findings`. |
+| **Hard reference** | A reference that must point to an existing entity. Broken hard references are rejected at write time. |
+| **Independence group** | A set of predictions sharing a common derivation chain. Used to reason about whether evidence is genuinely independent. |
+| **Invariant** | A property that must always hold. Structural invariants (no cycles, no broken refs) are enforced at write time. Semantic invariants (coverage gaps, untested assumptions) are checked on demand. |
+| **MCP** | Model Context Protocol. A standard for AI assistants to call tools on external systems. Episteme exposes an MCP server so AI agents can interact with the epistemic graph. |
+| **NewType** | A Python `typing` construct that creates a distinct type alias. `HypothesisId` and `AssumptionId` are both `str` at runtime but are treated as different types by the type checker. |
+| **Payload** | A primitive `dict[str, object]` representation of an entity, used for serialization and as the format interfaces send to the Gateway. |
+| **Port** | An abstract interface defined by the kernel for something it needs from the outside world (persistence, validation, rendering). From "ports and adapters" architecture. |
+| **Protocol** | A Python `typing.Protocol` class. Defines structural subtyping  --  any object with the right methods satisfies the protocol without explicit inheritance. |
+| **Soft link** | A navigational reference on leaf entities (Objective, Discovery, DeadEnd) that is scrubbed automatically when the target is removed. Not enforced at write time. |
+| **Structural invariant** | A graph-topology property enforced at mutation time: no duplicate IDs, no broken references, no cycles, backlinks consistent. |
+| **Semantic invariant** | A domain-level property checked on demand: every hypothesis should have a prediction, empirical assumptions should be tested, etc. |
+| **Transaction log** | An append-only JSONL file recording every Gateway mutation. Provides full provenance for audit. |
+| **WARNING finding** | A validation result that does not block mutations but should be reviewed. Surfaces risks and gaps. |
+| **Criticality** | Enum (LOW, MODERATE, HIGH, LOAD_BEARING) rating how much of the project depends on an assumption. Load-bearing assumptions receive extra validator scrutiny. |
+| **EvidenceSummary** | A view that rolls up all predictions, observations, assumptions, and analyses bearing on one hypothesis into a single structured report. |
+| **Observation** | Raw empirical data collected during research. Records what was actually seen, supports inductive workflows. |
+| **ObjectiveKind** | Enum (EXPLANATORY, GOAL, EXPLORATORY) classifying the purpose of an objective. |
+| **Supersession** | The pattern where a newer prediction replaces an older one. The old prediction transitions to SUPERSEDED; the new one carries a `supersedes` reference. |
+| **Transition table** | A dict mapping each status enum value to its set of legal successor statuses. Used by `transition_*` methods to reject invalid status changes. |
+| **Typed query result** | A frozen dataclass (RefutationImpact, AssumptionSupportStatus, ParameterImpact) returned by graph traversal queries, replacing raw dicts with named fields. |
+
+---
+
+## 21. Why EpistemicGraphPort Enables Big Data and Mass AI Scale Without Refactoring
+
+This section explains  --  in full technical depth  --  why the architecture's treatment of `EpistemicGraphPort` as a Protocol (rather than a concrete class) is the single most important design decision for long-term scalability. It is the reason the system can graduate from a single-researcher local tool to a platform serving mass AI workloads without touching the Gateway, the Client, the invariant rules, or any of the interface layers.
+
+---
+
+### The Critical Decision: The Gateway Holds a Protocol, Not a Class
+
+Start with this fact and hold it clearly:
+
+```python
+class Gateway:
+    def __init__(
+        self,
+        graph: EpistemicGraphPort,   # ← Protocol
+        ...
+    ) -> None:
+```
+
+The Gateway does not hold an `EpistemicGraph`. It holds an `EpistemicGraphPort`. These are different things:
+
+- `EpistemicGraph` is a **concrete dataclass**  --  an in-memory, copy-on-write graph stored in plain Python dicts.
+- `EpistemicGraphPort` is a **Protocol**  --  a structural type specification that says *any object satisfying these method signatures is a valid graph*.
+
+In Python's type system, a `Protocol` does not require inheritance. If an object has the right methods and attributes, it satisfies the Protocol. No declaration needed. This is called **structural subtyping** (also known as duck typing with static verification).
+
+**What this means architecturally:** the Gateway was never coupled to in-memory storage. From the moment it was written, it was designed to be handed *any* object that can store and traverse the epistemic graph  --  in-memory, on-disk, in a database, or distributed across a cluster. The caller decides which backend to use. The Gateway is indifferent.
+
+---
+
+### The Scale Tiers, One By One
+
+#### Tier 1: Local research (today's implementation)
+
+```
+connect()
+  └── GraphRepository.load()         # reads JSON from disk
+  └── EpistemicGraph (in-memory)     # the concrete dataclass
+  └── Gateway(graph=EpistemicGraph)
+```
+
+The in-memory `EpistemicGraph` is correct and fast for small projects  --  a few hundred to a few thousand entities. Every mutation shallow-copies the collection dicts and deep-copies only the specific entities it modifies, giving free rollback semantics and eliminating corruption from partial mutations at O(N_mutated_entities) cost. Saving to disk calls `json_repository.save()`. This is the right implementation for a researcher running scripts and notebooks on their laptop.
+
+#### Tier 2: Larger single-project teams (no code changes needed)
+
+The JSON repository already handles this tier. A project with tens of thousands of entities can still be serialized to JSON and loaded into memory at session start. The `version` field on `EpistemicGraph` is already the hook for optimistic concurrency: if two researchers open sessions against the same project, the second writer detects a version conflict on save and can merge or retry. No changes to the kernel, Gateway, Client, or interfaces are required  --  the concurrency logic lives entirely in the `GraphRepository` adapter.
+
+#### Tier 3: Institutional research infrastructure (adapter swap)
+
+At this tier you want entities to live in a real database  --  not because JSON is wrong, but because you want concurrent access, indexing, access control, and audit tooling native to your infrastructure (Postgres, MongoDB, SQLite with WAL, etc.).
+
+The swap looks like this:
+
+```python
+class PostgresGraphRepository:
+    def load(self) -> EpistemicGraphPort:
+        return PostgresEpistemicGraphProxy(self._conn)
+
+    def save(self, graph: EpistemicGraphPort) -> None:
+        ...  # no-op or version bump if using the proxy directly
+```
+
+```python
+class PostgresEpistemicGraphProxy:
+    """Satisfies EpistemicGraphPort. Reads/writes go to Postgres."""
+
+    def register_hypothesis(self, hypothesis: Hypothesis) -> EpistemicGraphPort:
+        self._conn.execute("INSERT INTO hypotheses ...")
+        return self  # proxy is mutable; returns itself
+
+    def hypothesis_lineage(self, cid: HypothesisId) -> set[HypothesisId]:
+        # push the traversal into SQL with a recursive CTE
+        return self._conn.execute("WITH RECURSIVE lineage AS ...").fetchall()
+    ...
+```
+
+The `PostgresEpistemicGraphProxy` satisfies `EpistemicGraphPort` structurally  --  no inheritance from `EpistemicGraph`, no shared code. It is a completely independent implementation that happens to speak the same interface.
+
+**What changes:** one file in `adapters/`  --  the `PostgresGraphRepository`.
+
+**What does not change:** `Gateway`, `_EpistemeClientCore`, `EpistemeClient`, `connect()`, all invariant rules in `invariants.py`, all view services (`health.py`, `status.py`, `metrics.py`), CLI, MCP. Zero lines touched.
+
+The reason is dependency inversion: all of those layers already depend on `EpistemicGraphPort`, not `EpistemicGraph`. They made no assumption about where the data lives.
+
+#### Tier 4: Mass AI workloads (adapter extension)
+
+At this tier you have many AI agents operating concurrently, potentially reading and writing the epistemic graph in parallel. The graph may contain millions of entities across many projects. You want a graph database (Neo4j, Amazon Neptune, TigerGraph) so that graph traversals like `hypothesis_lineage`, `refutation_impact`, and `parameter_impact` are executed as native graph queries  --  not in-memory Python set walks.
+
+The architecture handles this without modification because:
+
+1. **The graph traversal methods are part of the Protocol.** The queries defined in `EpistemicGraphPort`  --  `hypothesis_lineage`, `refutation_impact`, `prediction_implicit_assumptions`, `parameter_impact`, etc.  --  are abstract contracts. A Neo4j-backed proxy implements each as a Cypher query. The query semantics are identical from the Gateway's point of view.
+
+2. **The Gateway's `query()` method routes by name through `QUERY_SPECS`.** It calls `getattr(self._graph, method_name)(**coerced_params)`. As long as the backend implements the method, the Gateway does not care whether the traversal runs in Python memory or across a distributed graph engine.
+
+3. **Mutation operations can become distributed transactions.** A proxy backed by a graph database can implement `register_hypothesis`, `update_hypothesis`, etc. as atomic graph mutations. The `_finalize_mutation` path in the Gateway  --  which calls the validator post-mutation and either commits or rolls back  --  already has the right structure for this: it runs validators on the *proposed* new graph before committing `self._graph = new_graph`. A DB-backed proxy would simply commit or rollback at the database level instead.
+
+For mass AI workloads specifically, AI agents talking to Episteme via MCP do not call the Python API  --  they call the MCP server, which calls the Gateway. The Gateway calls the graph proxy. Whether that proxy is in-memory or backed by a distributed graph database is completely transparent to the agents. They see the same tools, the same results, the same invariant enforcement.
+
+---
+
+### The Other Ports That Scale the Same Way
+
+`EpistemicGraphPort` is the most important seam, but the architecture has four other ports that independently enable infrastructure-level scale:
+
+#### `GraphRepository`
+
+```python
+class GraphRepository(Protocol):
+    def load(self) -> EpistemicGraphPort: ...
+    def save(self, graph: EpistemicGraphPort) -> None: ...
+    def supports_native_validation(self) -> bool: ...
+```
+
+Today: `json_repository.py` reads and writes a single JSON file.
+
+At scale: an S3-backed repository, a Git-backed repository with commit-on-save semantics, or a no-op repository if the proxy speaks directly to the DB (i.e., `load()` returns the proxy and `save()` is a version bump). The `supports_native_validation` flag lets the factory skip the Python-side validator when the backend has its own constraint engine.
+
+#### `TransactionLog`
+
+```python
+class TransactionLog(Protocol):
+    def append(self, operation: str, identifier: str) -> str: ...
+```
+
+Today: appends to a local `transaction_log.jsonl` file.
+
+At scale: appends to Kafka, Kinesis, or Pulsar. Downstream systems  --  dashboards, audit pipelines, ML training monitors, real-time anomaly detectors  --  subscribe to the stream without ever touching the Episteme codebase. The Gateway never changes. The log consumer is decoupled entirely.
+
+#### `GraphExporter` and `ArtifactSink`
+
+```python
+class GraphExporter(Protocol):
+    def export(self, graph: EpistemicGraphPort) -> Iterable[Artifact]: ...
+
+class ArtifactSink(Protocol):
+    def emit(self, artifacts: Iterable[Artifact]) -> None: ...
+```
+
+Both use `Iterable`  --  they are designed for streaming. A large graph export does not need to materialize into memory all at once. The exporter yields artifacts; the sink consumes them as they arrive. At scale you point the sink at object storage (S3, GCS, Azure Blob) or a downstream ingestion endpoint without changing the exporter.
+
+#### `PayloadValidator`
+
+```python
+class PayloadValidator(Protocol):
+    def validate(self, resource: str, payload: Mapping[str, object]) -> list[Finding]: ...
+```
+
+Today: validates against local JSON Schema files. At scale: delegates to a schema registry service (Confluent Schema Registry, AWS Glue Schema Registry) or a custom validation service. The Gateway's payload validation path calls this port and does not care where the validator logic runs.
+
+---
+
+### What Happens to Copy-on-Write at Scale
+
+`EpistemicGraph` uses a targeted copy-on-write strategy via its internal `_copy()` method. On every mutation, it creates a **shallow copy of the collection dicts** (new dict instances sharing the same entity references), then **deep-copies only the specific entities it actually modifies**  --  the ones whose backlinks, status, or fields change:
+
+```python
+def _copy(self) -> EpistemicGraph:
+    return EpistemicGraph(
+        version=self.version,
+        hypotheses=dict(self.hypotheses),       # new dict, shared entity refs
+        assumptions=dict(self.assumptions),
+        ...
+    )
+
+def transition_prediction(self, pid, new_status) -> EpistemicGraph:
+    new = self._copy()
+    new.predictions[pid] = copy.deepcopy(new.predictions[pid])  # only this one
+    ...
+    return new
+```
+
+The cost per mutation is **O(N_mutated_entities)**, not O(N_total_entities). A status transition that touches one prediction deep-copies that one prediction, regardless of how many thousands of other entities exist in the graph. This is already a well-considered design, not a naive full-copy approach.
+
+The remaining concern at very large scale is the collection dict reallocation itself  --  creating twelve new dicts on every mutation is still O(number of collections), which is constant and cheap, but the dict objects do hold references to all entities. A DB-backed `EpistemicGraphPort` proxy eliminates this entirely: mutations become database writes, rollback becomes a database transaction rollback, and the Gateway's `_finalize_mutation` path  --  which swaps `self._graph = new_graph` on success  --  simply receives the proxy back unchanged.
+
+The copy-on-write pattern is therefore not a scalability liability. It is an implementation choice in one concrete class, already optimised for the in-memory tier, and fully isolated behind a protocol boundary.
+
+---
+
+### The Invariant Rules Are Backend-Agnostic
+
+The 31 invariant functions in `invariants.py` all have the signature:
+
+```python
+def validate_*(graph: EpistemicGraphPort) -> list[Finding]: ...
+```
+
+They depend only on the Protocol. A DB-backed proxy that correctly implements `EpistemicGraphPort`  --  including `.hypotheses`, `.predictions`, `.assumptions`, `prediction_implicit_assumptions()`, etc.  --  will be validated identically by all 31 invariant rules without any modification. The semantic correctness guarantees that make Episteme useful for research (no retracted citations, no cycles, no contradictory test/condition assignments, etc.) are preserved regardless of storage backend.
+
+This is the deeper reason the invariant rules are defined as pure functions operating on a Protocol rather than as methods on `EpistemicGraph`. It was a deliberate choice to keep invariant logic independent of storage implementation, precisely so it remains authoritative at any scale tier.
+
+---
+
+### The `result: object` Field in `record_analysis_result`
+
+```python
+def record_analysis_result(
+    self,
+    anid: AnalysisId,
+    result: object,
+    *,
+    git_sha: str | None = None,
+    result_date: date | None = None,
+) -> EpistemicGraphPort: ...
+```
+
+The `result` field is typed as `object`  --  the widest possible type. This is not laziness. It is a deliberate decision to leave the result representation open.
+
+For a researcher in a notebook, `result` might be a plain Python dict summarizing an analysis output. For a mass AI workload, `result` might be a URI pointing to a large artifact in object storage, or a content-addressed hash referencing an immutable result store. The Protocol does not constrain this  --  the storage adapter decides how to persist and retrieve the `result` field.
+
+At scale, Episteme's job is provenance tracking: *that* an analysis ran, *when* it ran, *against which* graph version, and *what it produced* (as a reference). It does not need to embed the results. The `object` type signature already accommodates the pointer pattern without any Protocol change.
+
+---
+
+### Summary: What Changes and What Does Not
+
+| Component | At local scale | At mass AI scale | Changes needed |
+|-----------|---------------|-----------------|----------------|
+| `EpistemicGraph` (concrete) | In-memory, copy-on-write | Replaced by a DB proxy | Only in adapters layer |
+| `EpistemicGraphPort` (Protocol) | Satisfied by `EpistemicGraph` | Satisfied by DB proxy | **Never changes** |
+| `Gateway` | Calls `EpistemicGraphPort` | Calls `EpistemicGraphPort` | **Zero changes** |
+| `_EpistemeClientCore` | Calls `Gateway` | Calls `Gateway` | **Zero changes** |
+| `EpistemeClient` / `connect()` | Builds `EpistemicGraph` | Builds DB proxy via `GraphRepository` | Config/factory only |
+| `invariants.py` | Depends on Protocol | Depends on Protocol | **Zero changes** |
+| View services | Depend on Protocol | Depend on Protocol | **Zero changes** |
+| CLI / MCP | Call Gateway | Call Gateway | **Zero changes** |
+| `GraphRepository` adapter | JSON file | DB / object store | New adapter file |
+| `TransactionLog` adapter | Local JSONL | Kafka / Kinesis | New adapter file |
+| `GraphExporter` / `ArtifactSink` | Local filesystem | Object storage | New adapter file |
+
+The pattern is consistent: the cost of scaling is always *one new adapter file per backend*. The benefit is that everything above the adapter layer  --  all the domain logic, invariant enforcement, interface code, and client surface  --  continues to work unchanged.
+
+This is what it means to say that `EpistemicGraphPort` is the correct abstraction seam. It is the line in the architecture where infrastructure concerns stop and domain concerns begin. Scaling infrastructure never crosses that line.
+
+---
+
+*This document covers the Episteme architecture as of the current codebase. It will be updated as the system evolves through its milestones.*
+
+---
+
+## 22. AI Agency: How Episteme Supports AI Research Agents
+
+This section explains how Episteme's architecture supports AI agents as research participants  --  from assistants that keep a human's reasoning consistent, to fully autonomous investigators running closed-loop discovery. It covers the safety model, agent interaction modes, provenance requirements, and the specific architectural seams that make all of this possible without restructuring the kernel.
+
+---
+
+### 22.1. Structural Constraint as a Form of AI Safety
+
+Most AI safety work operates at the output layer  --  RLHF, output filtering, guardrails on responses. Episteme offers something different: **architectural safety at the reasoning layer**.
+
+Because the epistemic kernel enforces 31+ invariants on every write, an agent using Episteme as its world model cannot silently hallucinate progress. To advance its internal state, it must:
+
+1. Register a `Hypothesis`
+2. Derive a `Prediction`
+3. Obtain an `Observation` (from a tool, simulator, or real instrument)
+4. Feed that observation back through the Gateway to adjudicate the prediction
+
+The Gateway blocks any mutation that violates epistemic logic  --  circular reasoning, orphaned predictions, invalid state transitions. If the observation refutes the prediction, the kernel forces `REFUTED`. The agent cannot finesse its way around this.
+
+**The key distinction:** this constrains what gets *recorded as the agent's internal state*, not just what it outputs. That is a meaningful difference from output-layer safety.
+
+**Forced formalization as an independent benefit:** translating reasoning into formal entities (Hypothesis, Prediction, Observation) is itself a quality gate  --  it suppresses the vagueness where hallucinations thrive. This is valuable regardless of whether an AI or human is doing it, and is worth treating as a first-class benefit rather than a side effect of hallucination-proofing. Note, however, that formalization raises the floor but changes the shape of the problem: an agent that produces formally valid but substantively empty entities can still game the system. The protocol makes dishonesty *structurally noisy*, not impossible.
+
+---
+
+### 22.2. The Gateway as Queryable External Long-Term Memory
+
+A large research graph  --  200 hypotheses, 800 predictions, 2000 observations  --  is completely unworkable in an LLM's context window. But the agent does not need to load the whole graph. It queries the Gateway:
+
+- *"Give me all predictions currently in a STRESSED state."*
+- *"What is the blast radius of refuting Assumption A-01?"*
+- *"Which load-bearing assumptions have no test coverage?"*
+
+What distinguishes this from generic vector-store offloading is that the queries return **structurally guaranteed answers**. The blast radius of refuting A-01 is not a fuzzy retrieval  --  it is a precise, invariant-enforced traversal of the graph. The agent can trust the answer in a way it cannot trust a similarity search.
+
+This is how Episteme solves the context-window problem for complex, long-running research: not by compressing the graph, but by making it precisely queryable.
+
+---
+
+### 22.3. Structural Soundness vs. Epistemic Honesty
+
+These are distinct guarantees that must not be conflated.
+
+**Structural soundness:** Is the recorded reasoning internally consistent? The kernel enforces this hard, at write time.
+
+**Epistemic honesty:** Is the agent reporting the whole truth? No software can fully enforce this  --  but Episteme can make dishonesty *structurally noisy*.
+
+#### How the protocol makes gaps visible
+
+- **The Analysis as a tether.** An `Analysis` entity is a provenance pointer to code or a process. If an agent registers an Analysis but never registers a linked Observation, `validate_coverage` flags this as a blind spot.
+- **Independence Group inventory.** If an agent claims high confirmation for a hypothesis, the protocol requires evidence to be partitioned into groups with documented separations. Running 50 trials but registering only 1 makes it structurally difficult to satisfy the `PairwiseSeparation` requirements  --  the inventory of trials will not match the claimed statistical power.
+- **Adjudication invariants.** `validate_adjudication_has_observations` prevents an agent from transitioning a prediction to `CONFIRMED` without citing the specific observations that justify it.
+
+#### The atomic tooling requirement
+
+The analysis-completeness guarantee only holds if observation registration is **atomic with experiment execution**. If an agent can run an analysis and then decide whether to register the observation, the noise floor drops significantly.
+
+The correct design: do not give the agent a `run_experiment` tool and a separate `register_observation` tool. Provide a single atomic tool  --  when the agent "runs" the experiment, the output is piped directly into the Gateway as a `PRELIMINARY` observation. This is a requirement for epistemic honesty, not just a design option.
+
+This is an *interface-layer* design decision, not a kernel change. The MCP tool definition wraps `register_observation` plus analysis execution into one tool call. The kernel stays the same.
+
+#### The QC agent pattern
+
+In an autonomous swarm setup: a "Primary Researcher" agent runs analyses and registers results; a "Quality Control" agent has read-only access to the graph and uses the 31 validators to find stale analyses or missing observations. This mirrors peer review  --  the QC agent is structurally independent from the agent whose work it is reviewing.
+
+---
+
+### 22.4. The Eight Agent Modes
+
+The agent's relationship to the Gateway is not binary. There is a spectrum from fully human-led to fully AI-led, plus several orthogonal modes that do not fit neatly on that axis.
+
+#### Mode 1: Assistant  --  "Epistemic Bookkeeper"
+
+The human is the source of truth. The AI's job is to keep the human's reasoning logically sound.
+
+- When the human says *"I think X causes Y,"* the AI calls the Gateway to register a `Hypothesis`.
+- The Gateway returns `WARNING` findings because the hypothesis lacks a `Prediction` or motivation.
+- The AI uses these findings as a Socratic checklist: *"I have recorded the hypothesis. To make this testable, what is a specific prediction we can derive from it?"*
+- If the human suggests a change that would create a logical cycle or orphan evidence, the AI uses the invariant validators to intervene: *"We cannot change that assumption yet  --  these three predictions are currently relying on it."*
+
+The AI is a translator and enforcer, not a reasoner. It has no research agenda of its own.
+
+#### Mode 2: Hybrid  --  "Supervised Investigator"
+
+The human sets the high-level `Objective` and key `Assumptions`, then releases an autonomous agent to run N analysis cycles. When the human returns, they do not see a result  --  they see a **fully versioned, queryable epistemic graph** showing exactly how the agent reached its conclusion, with every reasoning step legible and auditable.
+
+The real value of hybrid mode is not just "human sees results at the end." It is that the human can **inspect and intervene at any point mid-run** with full context  --  and because the graph is versioned, they can see the *delta of reasoning* over any time window, not just the current state.
+
+#### Mode 3: Autonomous  --  "Closed-Loop Discovery"
+
+The AI is given a high-level `Objective` and uses Episteme as its internal world model to plan and execute the full research cycle independently:
+
+1. Register a `Hypothesis`
+2. Derive a `Prediction`
+3. Obtain an `Observation`
+4. Adjudicate the prediction; if `REFUTED`, search for a superseding hypothesis
+
+The invariant logic gate prevents shortcutting  --  the agent literally cannot advance its internal state without valid epistemic logic. This is where the structural safety guarantees matter most.
+
+#### Mode 4: Inductive  --  "Pattern Miner"
+
+The three modes above assume hypothesis-first reasoning. But Episteme's entity model explicitly supports inductive workflows  --  `Observations` arrive first, patterns emerge, then hypotheses get formed around them.
+
+An agent in this mode mines an existing corpus of observations (experimental data, literature, sensor logs) for structure, surfacing candidate `Hypotheses` for a human to evaluate. It does not derive predictions and test them  --  it works backward from evidence to explanation.
+
+This maps naturally to exploratory research phases or to domains where data collection precedes theory (genomics, observational astronomy, large-scale ML experiments). The `Objective(EXPLORATORY)` entity type is the anchor point.
+
+#### Mode 5: Adversarial  --  "Red-Team Critic"
+
+An agent whose explicit job is to *attack* the current graph rather than advance it. It queries for structural weaknesses  --  HIGH and LOAD_BEARING assumptions with thin test coverage, predictions whose observations are disputed or retracted, independence groups with incomplete pairwise separations  --  and either designs challenges or surfaces them to a human.
+
+The 31 validators are essentially a built-in red-team toolkit; this mode puts an agent in the driver's seat of running them systematically and acting on what they find. Most valuable as a scheduled agent that runs after major graph mutations, or as a gate before a hypothesis can be promoted to a high-confidence state.
+
+#### Mode 6: Archivist  --  "Retrospective Formalizer"
+
+An agent that takes existing research  --  published papers, lab notebooks, experimental logs, internal reports  --  and *constructs* an epistemic graph from it after the fact. Not conducting research, but formalizing implicit reasoning chains that were never recorded.
+
+The output is a graph that makes a prior project's epistemic structure legible and queryable for the first time  --  enabling blast-radius analysis, assumption auditing, or onboarding of new team members on legacy work.
+
+The challenge specific to this mode: the agent must make judgment calls about what the original researchers *intended* as assumptions vs. hypotheses vs. observations, and those calls should be flagged for human review. This requires a confidence-annotation mechanism that is not yet designed.
+
+#### Mode 7: Peer Reviewer  --  "External Auditor"
+
+An agent given read-only access to a completed or in-progress graph, tasked with producing a structured audit report:
+
+- Which assumptions were untested?
+- Which confirmations are self-attested (same agent registered evidence and adjudicated)?
+- Where are the independence group gaps?
+- Which `REFUTED` predictions have no `refutation_criteria`?
+- Are supersession chains complete and consistent?
+
+The output is a human-readable audit report backed by structured `Finding` objects from the validator suite. Analogous to a journal peer reviewer or an institutional research integrity review.
+
+#### Mode 8: Debater  --  "Competing Investigator"
+
+Multiple autonomous agents assigned competing hypotheses, all writing to the same graph, with the invariant system as the referee. Each agent:
+
+- Registers its own hypotheses and derives predictions
+- Runs analyses and records observations
+- Attempts to adjudicate predictions in its favor
+- Must formally justify independence claims when its evidence overlaps with a competing agent's
+
+The graph becomes the arena. The independence group machinery mediates what counts as genuinely separate evidence. A human (or a separate arbiter agent) can inspect the graph at any point and see which hypothesis has the stronger epistemic support structure  --  not just which agent argued more persuasively.
+
+This mode is the most natural fit for scientific controversies, competing research programs, or adversarial validation of AI-generated hypotheses. An open design question is the resolution mechanism: two competing agents can both produce structurally valid evidence for contradictory claims. Independence groups help with evidence overlap, but genuine scientific disagreements require a judgment layer not yet provided.
+
+#### Mode comparison
+
+| Mode | Who leads | Graph direction | Key constraint |
+|------|-----------|-----------------|----------------|
+| Assistant | Human | Forward | Validator findings as Socratic prompts |
+| Hybrid | Human sets scope, AI executes | Forward | Human intervention points |
+| Autonomous | AI | Forward | Invariant logic gate |
+| Inductive | AI (data-driven) | Backward (obs → hyp) | Hypothesis formation discipline |
+| Adversarial | AI | Lateral (attack) | Completeness of challenge |
+| Archivist | AI | Reconstructive | Judgment confidence flagging |
+| Peer Reviewer | AI | Read-only | Independence from primary researcher |
+| Debater | Multiple AIs | Parallel forward | Arbitration mechanism |
+
+---
+
+### 22.5. Verifiable Adjudication
+
+A text-block `adjudication_rationale` is subject to the same confabulation problem Episteme is trying to solve. An agent that cherry-picked can also write a convincing rationale for why it did not.
+
+The solution: make the rationale a **structured object with verifiable pointers**, not a string.
+
+```
+AdjudicationRationale:
+    text: str                          # human-readable explanation
+    evidence_refs: list[str]           # content-addressed hashes or immutable URIs
+    authored_by: AgentRef | HumanRef   # who wrote this rationale
+```
+
+**Why `evidence_refs` matters:** a reference to a git SHA, a content-addressed hash of raw output, or an immutable URI in object storage is structurally verifiable. A human auditor can follow it. The rationale becomes a pointer into an immutable record rather than a summary of one.
+
+`Analysis` already has `last_result_sha` and `last_result_date`  --  the provenance instinct is already in the codebase and extends naturally to adjudication.
+
+**Why `authored_by` matters:** knowing that a rationale was written by the same agent that ran the analysis is itself a finding. Self-attestation is structurally weaker than external attestation. This field enables a new validator:
+
+#### `validate_independence_of_adjudication`
+
+High-stakes state transitions (`CONFIRMED`, `REFUTED`) where `authored_by` is the same agent that registered the evidence should generate a `WARNING` finding. The validator surfaces the self-attestation pattern without blocking it  --  a human auditor or independent QC agent can then sign off.
+
+**Scope note:** once agent identity is added to adjudications, it implicitly commits the project to identity, reputation, and trust hierarchies. This is a significant extension  --  not "one more field"  --  and should be designed deliberately rather than growing incrementally.
+
+**On immutability:** `evidence_refs` pointing to mutable storage can be subverted after the fact. Content-addressed references (hashes, not URLs) close this loop  --  the content at the hash cannot change without breaking the reference.
+
+---
+
+### 22.6. Tamper-Evident Transaction Log
+
+The current architecture leaves the transaction log implementation to the adapter layer. For the swarm and autonomous use cases, the adapter should be **append-only and merkle-linked**.
+
+Why this matters: if an agent can delete or alter transaction log entries, it can rewrite history  --  covering failed paths, deleted observations, or overridden state transitions. A merkle-linked log makes this structurally impossible: any alteration to a past entry breaks the cryptographic chain forward, making the tampering immediately visible on inspection.
+
+This is the infrastructure-level answer to the "can the agent rewrite history?" question. The domain-level answer is the versioned graph. Both are needed.
+
+An agent that cherry-picks must actively subvert multiple layers:
+
+1. Delete `Analysis` records (leaves gaps in the transaction log)
+2. Falsify `PairwiseSeparation` records (human-readable, auditable)
+3. Ignore `CRITICAL` findings from validators
+4. Break the merkle chain (immediately visible)
+
+Each layer is independently detectable. Together they make dishonesty structurally noisy enough that a QC agent or human auditor will find it.
+
+---
+
+### 22.7. Swarm Architecture
+
+A multi-agent research swarm needs:
+
+| Need | How Episteme provides it |
+|------|--------------------------|
+| Coordination without collision | Single Gateway mutation boundary; copy-on-write; transaction log |
+| Division of labor | Each agent queries specific graph slices; domain naturally partitioned |
+| Confirmation bias prevention | Independence groups and pairwise separations formalize evidence independence |
+| Audit trail | Versioned graph + append-only transaction log |
+| Peer review | Read-only QC agent running validators against primary researcher's graph |
+| Context window management | Precision queries return invariant-enforced answers, not fuzzy retrievals |
+
+The **concurrent write coordination** gap: the current `_finalize_mutation` swaps the graph reference, which works for single-threaded use but needs compare-and-swap or optimistic locking for true concurrency. The `GraphRepository` port is exactly where this belongs  --  the seam is correct, it just needs filling for the swarm use case. The `EpistemicGraph.version` field already exists as the hook.
+
+---
+
+### 22.8. Agent Degradation Model
+
+When an autonomous agent hits a `CRITICAL` finding it cannot resolve, it needs a strategy. The copy-on-write graph makes rollback cheap (keep the old graph), but the agent needs decision logic for *when to abandon a line of investigation*. Episteme provides the primitives:
+
+- **Retract a hypothesis:** transitions it to `RETRACTED`, validators flag downstream predictions.
+- **File a dead end:** records what was tried and why it failed, shrinking the hypothesis space.
+- **Supersede:** register a new prediction or hypothesis that replaces the blocked one.
+- **Escalate:** surface the `CRITICAL` finding to a human via the QC pattern.
+
+The *strategy*  --  which of these to choose  --  is domain-specific and lives in the agent's policy, not in Episteme. Episteme provides the graph operations; the agent provides the judgment. This boundary is deliberate.
+
+---
+
+### 22.9. What the Architecture Already Supports vs. What Needs Building
+
+| Capability | Current state | Work needed |
+|------------|---------------|-------------|
+| Invariant logic gate | 31 validators + `_finalize_mutation` CRITICAL-block | None  --  works for any caller |
+| Queryable long-term memory | `refutation_impact`, `assumption_support_status`, `parameter_impact` on `EpistemicGraphPort` | Gateway wiring (Milestone 3) |
+| Copy-on-write versioning | Implemented | None |
+| Independence groups / pairwise separations | Full entity types with validators | None |
+| Single gateway mutation boundary | Defined, stub implementation | Gateway implementation (Milestone 3) |
+| Protocol-based ports | All protocol classes defined | None |
+| Agent attribution (`authored_by`) | Not present | Extend `TransactionLog` protocol; add `authored_by` to structured adjudication rationale |
+| Structured adjudication | `adjudication_rationale` is a plain string | New `AdjudicationRationale` type on `Prediction` |
+| Transaction log | Protocol only, no adapter | Implement adapter (Milestone 4); merkle-linking for swarm use |
+| Concurrent writes | `version` field exists, no enforcement | `GraphRepository.save()` version check (Milestone 4) |
+| Atomic observation+analysis | Separate operations | MCP tool design (Milestone 5  --  interface layer) |
+
+The architecture does not need to change. The kernel, entity model, invariant system, and protocol-based ports already support all eight agent modes. What is needed is implementation of existing stubs and additive extensions that slot into existing seams.
+
+---
+
+*This section captures design thinking from early exploration of AI agency patterns. It should be treated as architectural rationale and design direction, not as a specification for immediate implementation.*

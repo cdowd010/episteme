@@ -39,15 +39,26 @@ def run_health_check(
 ) -> HealthReport:
     """Run domain invariant validation and return a structured report.
 
+    Findings are sorted CRITICAL first, then WARNING, then INFO.
+
     Args:
         graph: The in-memory epistemic graph to validate.
         validator: Domain validator to run invariant checks.
 
     Returns:
         HealthReport: Structured report with overall status and findings.
-
-    Raises:
-        NotImplementedError: Not yet implemented.
     """
-    raise NotImplementedError
+    findings = validator.validate(graph)
+
+    _severity_order = {Severity.CRITICAL: 0, Severity.WARNING: 1, Severity.INFO: 2}
+    findings_sorted = sorted(findings, key=lambda f: _severity_order[f.severity])
+
+    if any(f.severity == Severity.CRITICAL for f in findings_sorted):
+        overall = "CRITICAL"
+    elif any(f.severity == Severity.WARNING for f in findings_sorted):
+        overall = "WARNINGS"
+    else:
+        overall = "HEALTHY"
+
+    return HealthReport(overall=overall, findings=findings_sorted)
 

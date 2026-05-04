@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from ..epistemic.ports import EpistemicGraphPort
-from .metrics import GraphMetrics
+from .metrics import GraphMetrics, compute_metrics
 
 
 # ── Read model ───────────────────────────────────────────────────
@@ -68,12 +68,16 @@ def get_status(
 
     Returns:
         ProjectStatus: The assembled project status.
-
-    Raises:
-        NotImplementedError: Not yet implemented.
-
     """
-    raise NotImplementedError
+    metrics = compute_metrics(graph)
+    return ProjectStatus(
+        project_name=project_name,
+        location=location,
+        metrics=metrics,
+        health_summary=health_summary,
+        governance_session=governance_session,
+        extra=dict(extra) if extra is not None else {},
+    )
 
 
 # ── Serialization ────────────────────────────────────────────────
@@ -89,12 +93,37 @@ def format_status_dict(status: ProjectStatus) -> dict:
 
     Returns:
         dict: A primitive representation of the status.
-
-    Raises:
-        NotImplementedError: Not yet implemented.
-
     """
-    raise NotImplementedError
+    m = status.metrics
+    pm = m.prediction_metrics
+    return {
+        "project_name": status.project_name,
+        "location": status.location,
+        "health_summary": status.health_summary,
+        "governance_session": status.governance_session,
+        "metrics": {
+            "hypothesis_count": m.hypothesis_count,
+            "assumption_count": m.assumption_count,
+            "analysis_count": m.analysis_count,
+            "objective_count": m.objective_count,
+            "discovery_count": m.discovery_count,
+            "dead_end_count": m.dead_end_count,
+            "parameter_count": m.parameter_count,
+            "independence_group_count": m.independence_group_count,
+            "pairwise_separation_count": m.pairwise_separation_count,
+            "predictions": {
+                "total": pm.total,
+                "by_status": pm.by_status,
+                "by_tier": pm.by_tier,
+                "tier_a_confirmed": pm.tier_a_confirmed,
+                "tier_a_total": pm.tier_a_total,
+                "stressed": pm.stressed,
+            },
+            "uncovered_quantitative_hypotheses": m.uncovered_quantitative_hypotheses,
+            "empirical_assumptions_without_consequence": m.empirical_assumptions_without_consequence,
+        },
+        "extra": status.extra,
+    }
 
 
 __all__ = ["ProjectStatus", "format_status_dict", "get_status"]

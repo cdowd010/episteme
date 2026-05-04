@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .epistemic.types import Finding
+from .epistemic.types import Finding, Severity
 
 _CONFIG_FILENAME = "episteme.toml"
 
@@ -142,14 +142,28 @@ def validate_workspace(context: ProjectContext) -> list[Finding]:
     """Validate the expected directory layout for a workspace.
 
     Checks that the expected directories exist and are accessible.
+    Returns INFO findings for present directories and WARNING findings
+    for any that are missing.
 
     Args:
         context: The runtime context to validate.
 
     Returns:
-        list[Finding]: Findings for missing or unexpected paths.
-
-    Raises:
-        NotImplementedError: Not yet implemented.
+        list[Finding]: Findings for missing paths. Empty means all
+            expected directories are present.
     """
-    raise NotImplementedError
+    findings: list[Finding] = []
+    expected = [
+        ("project directory", context.paths.project_dir),
+        ("data directory", context.paths.data_dir),
+    ]
+    for label, path in expected:
+        if not path.exists():
+            findings.append(
+                Finding(
+                    severity=Severity.WARNING,
+                    source=f"workspace/{label.replace(' ', '_')}",
+                    message=f"Expected {label} not found: {path}",
+                )
+            )
+    return findings

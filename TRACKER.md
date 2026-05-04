@@ -135,7 +135,7 @@ These are execution constraints. Work that violates them should be rejected.
 
 ---
 
-## Milestone 7: Views -- Health, Status, Metrics
+## Milestone 7: Views -- COMPLETE
 
 > requires: Epistemic Kernel, DomainValidator (from M3 validate.py)
 
@@ -144,21 +144,21 @@ the kernel, but health in particular is needed for the target.
 
 ### Health
 
-- [ ] `run_health_check(graph, validator)` in `views/health.py` -- run validator, compute overall status, return `HealthReport`
-- [ ] Test: returns HEALTHY on a clean graph
-- [ ] Test: returns WARNING / CRITICAL on a graph with violations
+- [x] `run_health_check(graph, validator)` in `views/health.py` -- run validator, compute overall status, return `HealthReport`
+- [x] Test: returns HEALTHY on a clean graph
+- [x] Test: returns WARNING / CRITICAL on a graph with violations
 
 ### Status
 
-- [ ] `get_status(graph)` in `views/status.py` -- entity counts, coverage statistics, overall project state → `ProjectStatus`
-- [ ] `format_status_dict(status)` -- serialize for display
-- [ ] Tests: counts match registered entities; coverage stats correct
+- [x] `get_status(graph)` in `views/status.py` -- entity counts, coverage statistics, overall project state → `ProjectStatus`
+- [x] `format_status_dict(status)` -- serialize for display
+- [x] Tests: counts match registered entities; coverage stats correct
 
 ### Metrics
 
-- [ ] `compute_metrics(graph)` in `views/metrics.py` -- prediction outcomes, coverage ratios → `PredictionMetrics`, `GraphMetrics`
-- [ ] `tier_a_evidence_summary(graph)` -- summary of fully-specified evidence
-- [ ] Tests: metrics correct for known graph states
+- [x] `compute_metrics(graph)` in `views/metrics.py` -- prediction outcomes, coverage ratios → `PredictionMetrics`, `GraphMetrics`
+- [x] `tier_a_evidence_summary(graph)` -- summary of fully-specified evidence
+- [x] Tests: metrics correct for known graph states
 
 ---
 
