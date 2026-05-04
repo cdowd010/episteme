@@ -172,6 +172,7 @@ the kernel, but health in particular is needed for the target.
 - [ ] Click-based command group: `episteme health`, `episteme validate`, `episteme status`
 - [ ] `--json` flag on all commands for machine-readable output
 - [ ] Rich terminal formatting for human-readable output
+- [ ] `episteme snapshot save <label>` / `episteme snapshot load <label>` -- named graph snapshots for phase branching and historical browsing
 
 ### MCP Server
 
